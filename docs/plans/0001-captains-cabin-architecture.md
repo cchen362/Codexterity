@@ -160,7 +160,7 @@ Residual accepted risk: a major OpenAI UI overhaul will need a theme refresh (re
 | Phase | Goal | Key gate |
 |---|---|---|
 | **1. Research & Architecture** *(this doc)* | Understand + decide | **Your sign-off on §12** |
-| **2. Asset Generation** *(active)* | Lock palette (exact hex, both modes); pick + license fonts; generate low-contrast textures via [`asset-generation-prompts.md`](../specs/asset-generation-prompts.md); author syntax palette | Palette + font license approved by owner; WCAG AA verified |
+| **2. Asset Generation** *(active)* | Lock palette (exact hex, both modes); pick + license fonts; generate low-contrast textures via [`asset-generation-prompts.md`](../specs/asset-generation-prompts.md); author syntax palette | Palette + font license approved by owner **from a rendered HTML visual (swatch board + a mock of Codex's own UI restyled), never from hex/text alone**; WCAG AA verified |
 | **3. CSS & Theme Dev** | **Gate 0: launch-test the injector (A vs B) on the real app.** Then build `theme.css` token layer, named hooks, textures; hot-reload dev loop | Theme visibly applied to running Codex, verified in-app by you |
 | **4. Packaging** | `.ccskin` format + injector CLI (apply/restore/verify) + safe-CSS validation | Clean apply/restore round-trip; nothing residual |
 | **5. Windows Installer** | Launcher + MSIX exe resolver + installer + shortcuts | Fresh-machine install works; survives a simulated app-version bump |
