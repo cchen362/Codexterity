@@ -1,8 +1,8 @@
 # Plan 0001 — Captain's Cabin: Architecture & Roadmap
 
-**Status:** Phase 1 (Research & Architecture) — **awaiting sign-off.** No skin code written yet.
+**Status:** Phase 1 (Research & Architecture) **COMPLETE**. Naming locked (Codexterity / `cdx` / Captain's Cabin), agent-docs bootstrapped, committed. **Phase 2 (Asset Generation) is the active next milestone** — see §11 and [`docs/specs/asset-generation-prompts.md`](../specs/asset-generation-prompts.md).
 **Depends on:** [`docs/research/phase1-research-findings.md`](../research/phase1-research-findings.md) (the evidence).
-**Owner decision required before Phase 2:** approve the architecture below (see §12).
+**Decision state:** D-0001-1 (injection) and D-0001-5 (naming) are **accepted** (see [`docs/DECISIONS.md`](../DECISIONS.md)). D-0001-2/3/4 (styling / non-destructive / package format) remain owner-pending but do **not** gate Phase 2 asset work.
 
 ---
 
@@ -160,7 +160,7 @@ Residual accepted risk: a major OpenAI UI overhaul will need a theme refresh (re
 | Phase | Goal | Key gate |
 |---|---|---|
 | **1. Research & Architecture** *(this doc)* | Understand + decide | **Your sign-off on §12** |
-| **2. Asset Generation** | Lock palette (exact hex, both modes); pick + license fonts; generate low-contrast textures; author syntax palette | Palette + font license approved; WCAG AA verified |
+| **2. Asset Generation** *(active)* | Lock palette (exact hex, both modes); pick + license fonts; generate low-contrast textures via [`asset-generation-prompts.md`](../specs/asset-generation-prompts.md); author syntax palette | Palette + font license approved by owner; WCAG AA verified |
 | **3. CSS & Theme Dev** | **Gate 0: launch-test the injector (A vs B) on the real app.** Then build `theme.css` token layer, named hooks, textures; hot-reload dev loop | Theme visibly applied to running Codex, verified in-app by you |
 | **4. Packaging** | `.ccskin` format + injector CLI (apply/restore/verify) + safe-CSS validation | Clean apply/restore round-trip; nothing residual |
 | **5. Windows Installer** | Launcher + MSIX exe resolver + installer + shortcuts | Fresh-machine install works; survives a simulated app-version bump |
