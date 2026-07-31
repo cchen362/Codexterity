@@ -7,6 +7,17 @@ Each mockup is a self-contained HTML file — fonts embedded as data URIs, no ex
 | File | Date | What it decided |
 |---|---|---|
 | [`0001-captains-cabin-palette-approval.html`](0001-captains-cabin-palette-approval.html) | 2026-07-31 | The Phase 2 approval sheet. Ground, palette, typography and the asset set. |
+| [`0002-captains-cabin-character-pass.html`](0002-captains-cabin-character-pass.html) | 2026-07-31 | Layer 2 chrome detailing — open. Awaiting the hero image before judgement. |
+
+## About `0002-captains-cabin-character-pass.html`
+
+**Rebuild this one; do not edit it.** `node tools/mockup/build-mockup.mjs` regenerates it, parsing values straight out of `themes/captains-cabin/theme.css` — so the mockup cannot drift from the shipped theme, and the build fails outright if the theme stops parsing.
+
+It answers a concern raised after Phase 2 committed: with textures cut, the theme read as a palette-and-font change. The response was that the *character* layer had never been built. This mockup toggles **Flat — as committed** against a **Character pass** applying Layer 2 named hooks: title-bar brass hairline and crest, an active-task brass rail, thin brass scrollbars, popover depth, a brass marker on code headers, lit button and card edges, brass selection, and the model pill in brass.
+
+Everything it adds decorates **chrome**. Nothing is placed behind body text, so [D-0001-6](../DECISIONS.md) and the contrast proof are untouched.
+
+**It picks up the hero image automatically.** Drop `hero-empty-state.webp` (or `.png`) into `themes/captains-cabin/assets/` and rebuild; no code change. Until then the empty state shows a placeholder, which is why this decision is still open — the hero is the largest single visual element and the theme should not be judged complete without it.
 
 ## About `0001-captains-cabin-palette-approval.html`
 

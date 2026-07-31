@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Compass rose">
+  <!--
+    Captain's Cabin crest. Hand-authored, never generated: crisp at any DPI, ~1 KB,
+    and re-tints with the accent because every fill is currentColor.
+    OFF BY DEFAULT — the brief forbids gimmicks. A corner mark at most.
+  -->
+  <g fill="currentColor">
+    <!-- Cardinal points -->
+    <path d="M16 2 18.2 16 13.8 16Z"/>
+    <path d="M16 30 18.2 16 13.8 16Z"/>
+    <path d="M30 16 16 18.2 16 13.8Z"/>
+    <path d="M2 16 16 18.2 16 13.8Z"/>
+    <!-- Ordinal points, held back so the cardinals read first -->
+    <g opacity=".55">
+      <path d="M22.7 9.3 17.13 17.13 14.87 14.87Z"/>
+      <path d="M22.7 22.7 14.87 17.13 17.13 14.87Z"/>
+      <path d="M9.3 22.7 14.87 14.87 17.13 17.13Z"/>
+      <path d="M9.3 9.3 14.87 17.13 17.13 14.87Z"/>
+    </g>
+  </g>
+  <circle cx="16" cy="16" r="13.2" fill="none" stroke="currentColor" stroke-width="1" opacity=".38"/>
+  <circle cx="16" cy="16" r="1.3" fill="currentColor"/>
+</svg>
