@@ -1,0 +1,85 @@
+{
+  "name": "Captain's Cabin",
+  "version": "0.1.0",
+  "ground": "#0E141F",
+  "minimumContrast": 4.5,
+  "note": "Every role is solved against the code surface of its own mode. Regenerate with tools/palette/emit-theme.mjs; do not hand-edit.",
+  "modes": {
+    "dark": {
+      "variable": {
+        "color": "#F4EAD4",
+        "contrast": 15.02
+      },
+      "keyword": {
+        "color": "#CA7260",
+        "contrast": 5.2
+      },
+      "string": {
+        "color": "#699569",
+        "contrast": 5.22
+      },
+      "function": {
+        "color": "#AE8339",
+        "contrast": 5.22
+      },
+      "number": {
+        "color": "#6790A5",
+        "contrast": 5.22
+      },
+      "type": {
+        "color": "#57958C",
+        "contrast": 5.2
+      },
+      "operator": {
+        "color": "#8F8A7B",
+        "contrast": 5.21
+      },
+      "comment": {
+        "color": "#898475",
+        "contrast": 4.81
+      },
+      "_meta": {
+        "surface": "#111722",
+        "foreground": "#F4EAD4"
+      }
+    },
+    "light": {
+      "variable": {
+        "color": "#182336",
+        "contrast": 13.55
+      },
+      "keyword": {
+        "color": "#9D493A",
+        "contrast": 5.24
+      },
+      "string": {
+        "color": "#426C44",
+        "contrast": 5.22
+      },
+      "function": {
+        "color": "#825B10",
+        "contrast": 5.23
+      },
+      "number": {
+        "color": "#40677C",
+        "contrast": 5.23
+      },
+      "type": {
+        "color": "#2E6C65",
+        "contrast": 5.23
+      },
+      "operator": {
+        "color": "#686255",
+        "contrast": 5.21
+      },
+      "comment": {
+        "color": "#6D675A",
+        "contrast": 4.83
+      },
+      "_meta": {
+        "surface": "#F6EDDB",
+        "foreground": "#182336"
+      }
+    }
+  }
+}

@@ -1,57 +1,66 @@
 # Asset Manifest — Captain's Cabin
 
-**Living spec.** Every image/font asset the theme needs, with intent, format, and constraints.
-Governing principle from the brief: **subtle, low-contrast, readability-first.** Textures are *felt*, not *seen*. If an asset draws attention to itself, it's wrong.
+**Living spec.** Every asset the theme needs.
 
-Delivery mechanism: images are embedded as **scoped Blob/data URLs exposed via CSS variables** (the convention the mature community tools use, e.g. `--cc-texture-oak`), so the theme stays a self-contained package with no external file references at runtime.
-
-Hard caps (borrowed from mature theme pipelines, for sanity + fast injection): total package ≤ 32 MiB, individual texture ≤ ~400 KB where possible.
+> **Rewritten in Phase 2 (2026-07-31). This supersedes the original manifest.**
+> That version specified five tiling textures (oak, leather, parchment, brass, canvas) plus a vignette overlay. **All of them were cut.** If you are working from a description that mentions wood grain or leather panels, it is out of date — see [D-0001-6 and D-0001-8](../DECISIONS.md).
 
 ---
 
-## Textures (tiled, seamless, low-contrast)
+## The short version
 
-| Asset | Var | Format | Size | Intent |
-|---|---|---|---|---|
-| Dark oak — primary surface | `--cc-texture-oak` | WebP, seamless tile | ~512×512, <300 KB | App background / main surface. Very low contrast; grain barely perceptible. |
-| Aged leather — panels | `--cc-texture-leather` | WebP, seamless tile | ~512×512, <300 KB | Sidebars, popovers, elevated panels. |
-| Weathered parchment — light-mode base | `--cc-texture-parchment` | WebP, seamless tile | ~512×512, <300 KB | Light-theme background / message surfaces. |
-| Brushed brass — accents | `--cc-texture-brass` | WebP or CSS gradient | small | Active states, key numbers, title-bar trim. Prefer a CSS gradient if it reads as convincingly to avoid an image dependency. |
-| Canvas/linen — subtle secondary | `--cc-texture-canvas` | WebP, seamless tile | ~512×512, <200 KB | Optional secondary surface texture. |
+**Captain's Cabin ships no raster assets.** It is CSS plus two fonts.
 
-## Lighting / atmosphere overlays
-
-| Asset | Var | Format | Intent |
-|---|---|---|---|
-| Candlelight vignette | `--cc-overlay-vignette` | PNG w/ alpha or radial-gradient CSS | Soft warm darkening at edges; concentrates "light" toward the working area. Prefer pure CSS radial-gradient (no asset) if achievable. |
-| Soft top fade | (reuse `app-shell-main-content-top-fade`) | CSS | Warm scroll fade. |
-
-> Prefer **procedural CSS** (gradients, box-shadows, `filter`) over image assets wherever it reads convincingly. Every avoided image is one less thing to load, license, and maintain. Textures are only for grain that CSS can't fake.
-
-## Optional decorative (must be defeatable)
-
-| Asset | Var | Notes |
-|---|---|---|
-| Compass-rose / ship's-crest title-bar mark | `--cc-crest` | SVG, monochrome brass. **Off by default** or extremely subtle — the brief forbids gimmicks. A tiny corner mark at most. No moving ships, no parrots, no waves. |
-
-## Syntax palette (code editor)
-
-Not an image — a set of colour values authored to match the chrome and sit on parchment/oak with **AA+ contrast** for every token class (keyword, string, comment, function, number, etc.). Delivered as either a Pierre-compatible theme JSON (if we can hook the Pierre loader) or as CSS-variable overrides on the editor's token classes. Mechanism TBD in Phase 3; palette values authored in Phase 2.
-
-## Fonts (see UI inventory §Fonts)
-
-| Role | Deliverable |
+| Category | Status |
 |---|---|
-| Display/UI | One characterful face (design-floor compliant), shipped as woff2 with its license. |
-| Monospace | One warm legible mono, shipped as woff2 with its license. |
+| Tiling surface textures | **Cut.** None. Surfaces are flat token colour. |
+| Lighting / atmosphere overlays | **Cut as assets.** What remains is expressed through the surface ramp and borders. |
+| Fonts | **Two, bundled**, both SIL OFL 1.1. |
+| Empty-state hero image | **Optional, not built.** Nothing generated. The theme is complete without it. |
+| Compass-rose crest | **Optional, not built.** Hand-authored SVG if ever added, never raster. |
 
-Font selection + license verification is a **Phase 2 gate** — a font we can't legally redistribute in the package is disqualified regardless of looks.
+## Why the textures were cut
+
+Recorded here because it is the kind of decision a future agent would otherwise re-propose in good faith.
+
+1. **It read as an error, not as a material.** Tiled photographic grain is *high-frequency* luminance variation. On a flat UI surface the eye files that under "compression artifact" or "discolouration," not under "oak." The owner's reaction to a rendered comparison was exactly that, at every strength tested.
+2. **Dark grounds are the worst case.** The ground sits at roughly 9% lightness. There is no headroom below it, so grain can only *lighten* patches — which is precisely what a stain or a banding artifact looks like.
+3. **It broke the contrast proof.** Every figure this theme claims is computed against a flat colour. Put luminance variation behind body text and the value that governs legibility becomes the worst pixel rather than the average, so WCAG AA stops being provable. Readability is this project's first design law and it outranks the texture.
+
+Depth now comes from the **six-step surface ramp** in `theme.css` and from borders. That is enough: the ramp was always doing most of the work.
 
 ---
 
-## Asset production plan (Phase 2)
+## Fonts (the only shipped assets)
 
-1. Lock the palette (exact hex, both modes) — **before** any texture is generated, so textures are tinted to the palette, not the reverse.
-2. Generate seamless textures at low contrast; verify tiling has no visible seam and no repeating "hero" feature that the eye locks onto.
-3. Validate every text/surface pair for WCAG AA.
-4. Verify at **375px mobile-equivalent density first**, then desktop (per design floor), even though Codex Desktop is desktop-primary — the density discipline still applies to panels/popovers.
+Location: `themes/captains-cabin/assets/fonts/`. The packaging build inlines these as data URIs so the theme never references a remote resource.
+
+| Role | Family | File | Licence | Redistributable |
+|---|---|---|---|---|
+| Display + UI | **Fraunces** (variable) | `fraunces-latin-variable.woff2` (118 KB) | SIL OFL 1.1 — `Fraunces-OFL.txt` | ✅ Yes |
+| Monospace | **Monaspace Xenon** | `monaspace-xenon-latin-400.woff2` (47 KB) | SIL OFL 1.1 — `Monaspace-OFL.txt` | ✅ Yes |
+
+Both are Latin subsets from Fontsource. The OFL permits bundling and redistribution with any software provided the copyright notice and licence travel with the font and the fonts are never sold on their own. **Monaspace carries a Reserved Font Name** ("Monaspace", including the "Xenon" subfamily) — so a *modified* version may not keep that name. We ship it unmodified apart from the Latin subset; if the font is ever altered, rename it.
+
+Roles and rationale are recorded in [`customizable-ui-inventory.md`](customizable-ui-inventory.md) §Fonts.
+
+---
+
+## Optional, not built
+
+Neither of these exists. Both are recorded so the option stays open, and neither may become a dependency: **the theme must remain complete and correct without them.**
+
+### Empty-state hero
+
+A single atmospheric image behind the new-session screen — the one place imagery earns its keep, because no dense text sits over it. If it is ever added it must sit under a scrim that resolves to solid `--color-background-surface` before any body text begins, so contrast stays provable. Prompt in [`asset-generation-prompts.md`](asset-generation-prompts.md).
+
+### Compass-rose crest
+
+A tiny monochrome title-bar mark, **off by default**. Hand-authored SVG using `currentColor` so it re-tints with the accent — never a raster generation. The brief forbids gimmicks; a corner mark at most.
+
+---
+
+## Verification
+
+- Every text/surface pair passes **WCAG AA**, checked by `node tools/palette/audit.mjs` (152/152).
+- Because surfaces are flat, those figures hold unconditionally — there is no compositing step that can invalidate them. **Any change that puts variation behind text voids this and requires a new proof.**

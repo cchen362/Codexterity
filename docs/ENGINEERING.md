@@ -81,11 +81,22 @@ The shape is decided (Plan 0001) even though code is not yet written. Record it 
 
 **Readability outranks aesthetics — always.** Every text/surface pairing a theme produces must pass **WCAG AA** contrast. A gorgeous low-contrast theme that tires the eyes over a long coding session is a failed theme. This is the project's first design law.
 
-**The Captain's Cabin palette and typography are a Phase 2 deliverable and are NOT YET LOCKED.** Do not invent hex values or font choices and treat them as settled. When Phase 2 locks them, the exact palette (both `.electron-dark` and `.electron-light` modes) lives in `themes/captains-cabin/theme.css`, the fonts and their roles are recorded in `docs/specs/customizable-ui-inventory.md`, and this section gains a pointer to them. Until then, only the floor below binds.
+**The Captain's Cabin palette and typography are LOCKED (Phase 2, 2026-07-31).** The exact values for both `.electron-dark` and `.electron-light` live in [`themes/captains-cabin/theme.css`](../themes/captains-cabin/theme.css); the code palette is in `syntax.json` beside it; the fonts and their roles are recorded in [`docs/specs/customizable-ui-inventory.md`](specs/customizable-ui-inventory.md) §Fonts. Read those files for values — never a mockup, and never this file.
+
+**Palette values are derived, not hand-picked.** Ramps are stepped in OKLCH and every contrast-critical token is *solved* for its WCAG AA target by binary search. The derivation is [`tools/palette/palette-engine.mjs`](../tools/palette/palette-engine.mjs); the check is `audit.mjs`; the emitter is `emit-theme.mjs`. To change a colour, change the recipe and regenerate — do not hand-edit `theme.css`:
+
+```bash
+node tools/palette/audit.mjs        # 152 checks; must be 152/152
+node tools/palette/emit-theme.mjs   # rewrites theme.css + syntax.json
+```
+
+**Surfaces are flat token colour (D-0001-6).** No tiling texture, no gradient wash, no image behind content. This is a *contrast* rule before it is an aesthetic one: every figure the theme claims is computed against a flat colour, and luminance variation behind text makes the governing value the worst pixel rather than the average. Reintroducing a surface texture means redoing the contrast proof. Depth comes from the six-step surface ramp and borders; shadows appear only where a floating element must separate from what is behind it.
 
 **No AI Slop (the floor, binding on every theme).** No Inter/Roboto/Arial/Open Sans/Lato/system-ui as a primary/display font. No purple/indigo gradients as a default reach. One accent colour, used sparingly (badges, active states, key numbers) — never as a background fill. No emoji as an icon system — one consistent icon set. No lorem ipsum or filler copy. Motion is purposeful (feedback, orientation), never decorative, and respects reduced-motion. Exact hex only — no "close enough" drift.
 
-**Captain's Cabin specifics (from the brief):** premium, elegant, subtle, immersive — a captain's chart room, *not* a cartoon pirate theme. Materials: dark oak, brass, leather, weathered parchment, ink, deep navy. Warm candlelight, soft shadows. Accent: antique brass/gold. No moving ships, no waves, no parrots, no gimmicks. Textures are *felt*, not seen — the user should almost forget the theme is there after a few minutes.
+**Captain's Cabin specifics (as built, revised in Phase 2):** premium, elegant, subtle — a captain's chart room at night, *not* a cartoon pirate theme. **The ground is deep navy `#0E141F`**; light mode is weathered parchment carrying navy ink. Materials: ink, sea, brass, parchment, lamplight. Accent: antique brass, one colour, used sparingly — badges, active states, focus, key numbers — never as a background fill. No moving ships, no waves, no parrots, no gimmicks.
+
+> **This paragraph was rewritten in Phase 2 and the change is deliberate.** The original brief listed dark oak and leather and described textures as "felt, not seen." The owner reviewed a rendered mockup of both an oak and a navy ground and chose navy; separately, the tiling textures were cut for the contrast reason above. There is therefore **no wood and no leather in this theme**, and no raster texture of any kind. If you are working from an older description, this paragraph supersedes it.
 
 ---
 

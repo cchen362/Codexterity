@@ -1,8 +1,10 @@
 # Plan 0001 — Captain's Cabin: Architecture & Roadmap
 
-**Status:** Phase 1 (Research & Architecture) **COMPLETE**. Naming locked (Codexterity / `cdx` / Captain's Cabin), agent-docs bootstrapped, committed. **Phase 2 (Asset Generation) is the active next milestone** — see §11 and [`docs/specs/asset-generation-prompts.md`](../specs/asset-generation-prompts.md).
+**Status:** Phase 1 (Research & Architecture) **COMPLETE**. Phase 2 (Palette, Type & Assets) **COMPLETE** — ground, palette, syntax palette and typography are locked and emitted; the theme ships **no raster assets**. **Phase 3 (CSS & Theme Dev) is the active next milestone**, beginning with Gate 0: launch-testing the injector against the real app.
 **Depends on:** [`docs/research/phase1-research-findings.md`](../research/phase1-research-findings.md) (the evidence).
-**Decision state:** D-0001-1 (injection) and D-0001-5 (naming) are **accepted** (see [`docs/DECISIONS.md`](../DECISIONS.md)). D-0001-2/3/4 (styling / non-destructive / package format) remain owner-pending but do **not** gate Phase 2 asset work.
+**Decision state:** D-0001-1 (injection) and D-0001-5 (naming) **accepted**. D-0001-6 (flat surfaces), D-0001-7 (ground/palette/type locked) and D-0001-8 (rejected directions) **accepted 2026-07-31**, each from a rendered visual. D-0001-2/3/4 remain owner-pending but do not gate Phase 3.
+
+> **Phase 2 changed the brief.** The theme's ground is **deep navy `#0E141F`**, not dark oak, and all tiling textures were cut. Sections below that describe wood, leather, or texture assets are superseded — see [`docs/DECISIONS.md`](../DECISIONS.md) and [`docs/specs/asset-manifest.md`](../specs/asset-manifest.md).
 
 ---
 
@@ -99,10 +101,10 @@ Codexterity/
 
 Full detail in [`docs/specs/css-architecture.md`](../specs/css-architecture.md). Essence:
 
-1. **Layer 1 — Token overrides (does 80% of the work).** A block scoped to `.electron-dark` (and `.electron-light`) redefining the semantic `--color-*`, `--radius-*`, `--shadow-*` variables to the Captain's Cabin palette. Because Codex's Tailwind utilities (`bg-token-*`, `text-token-*`) consume these variables, one override cascades everywhere — including future UI.
-2. **Layer 2 — Named-hook rules.** A handful of rules on stable classes (`app-header-tint`, scrollbars, `popupContent`) for the title-bar treatment and texture application that tokens alone can't express.
-3. **Layer 3 — Texture/atmosphere.** Embedded texture vars + CSS gradients for oak/leather/parchment/candlelight. Procedural CSS preferred over images.
-4. **Layer 4 — Syntax palette.** Separate, matched to the chrome.
+1. **Layer 1 — Token overrides (does 80% of the work).** ✅ *Built in Phase 2.* A block scoped to `.electron-dark` (and `.electron-light`) redefining the semantic `--color-*`, `--radius-*` variables to the Captain's Cabin palette. Because Codex's Tailwind utilities (`bg-token-*`, `text-token-*`) consume these variables, one override cascades everywhere — including future UI.
+2. **Layer 2 — Named-hook rules.** *Phase 3.* A handful of rules on stable classes (`app-header-tint`, scrollbars, `popupContent`) for the title-bar treatment that tokens alone can't express.
+3. **Layer 3 — Shape & typography.** ✅ *Built in Phase 2.* Tighter `--radius-*`, plus Fraunces and Monaspace Xenon. **Formerly "Texture/atmosphere"** — surface textures were cut (D-0001-6); there are no `--cc-texture-*` variables.
+4. **Layer 4 — Syntax palette.** ✅ *Authored in Phase 2* as `--cc-syntax-*` vars plus `syntax.json`. Which one the editor consumes is a Phase 3 question.
 
 **Rules:** never target hash-suffixed filenames; never rely on deep child chains; every structural selector is a declared landmark with graceful degradation; every text/surface pair passes WCAG AA. Authoring uses a real `.css` file (with a hot-reload dev loop via a file-watcher in the injector), compiled/inlined into the package at build.
 
@@ -134,7 +136,7 @@ See [`docs/specs/customizable-ui-inventory.md`](../specs/customizable-ui-invento
 
 ## 8. Required assets
 
-See [`docs/specs/asset-manifest.md`](../specs/asset-manifest.md).
+See [`docs/specs/asset-manifest.md`](../specs/asset-manifest.md). **Outcome of Phase 2: two OFL fonts, and nothing else.** All tiling textures were cut (D-0001-6); the empty-state hero and the compass-rose crest remain optional and unbuilt. The `.ccskin` is text plus two woff2 files, which retires the 32 MiB cap in §5 as a practical concern.
 
 ## 9. Packaging / installer strategy per OS
 
@@ -160,8 +162,8 @@ Residual accepted risk: a major OpenAI UI overhaul will need a theme refresh (re
 | Phase | Goal | Key gate |
 |---|---|---|
 | **1. Research & Architecture** *(this doc)* | Understand + decide | **Your sign-off on §12** |
-| **2. Asset Generation** *(active)* | Lock palette (exact hex, both modes); pick + license fonts; generate low-contrast textures via [`asset-generation-prompts.md`](../specs/asset-generation-prompts.md); author syntax palette | Palette + font license approved by owner **from a rendered HTML visual (swatch board + a mock of Codex's own UI restyled), never from hex/text alone**; WCAG AA verified |
-| **3. CSS & Theme Dev** | **Gate 0: launch-test the injector (A vs B) on the real app.** Then build `theme.css` token layer, named hooks, textures; hot-reload dev loop | Theme visibly applied to running Codex, verified in-app by you |
+| **2. Palette, Type & Assets** ✅ **COMPLETE** | Lock ground + palette (exact hex, both modes); pick + licence fonts; author syntax palette; decide the asset set | ✅ Approved by owner from a rendered mockup (swatch board + restyled Codex UI, three grounds, both modes, both pairings). 152/152 WCAG AA. Textures cut; no raster assets |
+| **3. CSS & Theme Dev** *(active)* | **Gate 0: launch-test the injector (A vs B) on the real app.** Then Layer 2 named hooks, editor palette wiring, hot-reload dev loop | Theme visibly applied to running Codex, verified in-app by you |
 | **4. Packaging** | `.ccskin` format + injector CLI (apply/restore/verify) + safe-CSS validation | Clean apply/restore round-trip; nothing residual |
 | **5. Windows Installer** | Launcher + MSIX exe resolver + installer + shortcuts | Fresh-machine install works; survives a simulated app-version bump |
 | **6. macOS Installer** | Wrapper `.app` + `.dmg`; **friend's Mac verification** (DOM parity + launch) | Friend confirms theme applies on macOS |

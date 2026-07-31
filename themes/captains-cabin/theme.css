@@ -1,0 +1,213 @@
+/*
+ * Captain's Cabin — a theme package for Codexterity
+ * ------------------------------------------------
+ * Ground: deep navy (#0E141F). Accent: antique brass, used sparingly.
+ * Light mode is weathered parchment carrying navy ink.
+ *
+ * THIS FILE IS THE SINGLE SOURCE OF TRUTH FOR THIS THEME'S TOKEN VALUES.
+ * Mockups and palette studies under docs/ are design inputs; no other file
+ * carries a copy of these values. See docs/ENGINEERING.md § Design & Aesthetic Rules.
+ *
+ * Every value is derived in OKLCH and solved against a WCAG AA target rather than
+ * chosen by eye; the derivation lives in tools/palette/palette-engine.mjs and the
+ * check in tools/palette/audit.mjs. Regenerate with:  node tools/palette/emit-theme.mjs
+ *
+ * D-0001-2 — Token-first styling. Every rule below redefines one of Codex's own
+ * semantic custom properties on its root theme class. Codex is Tailwind v4 with a
+ * token layer, so a single override cascades through every bg-token- and
+ * text-token- utility — including UI OpenAI has not shipped yet. Structural
+ * selectors are a last resort; each one is a declared LANDMARK, marked as such
+ * below, and degrades to the stock look rather than breaking if it stops matching.
+ *
+ * D-0001-6 — Surfaces are FLAT token colour. No tiling texture, no gradient wash
+ * behind content. Every contrast figure this theme claims is computed against a
+ * flat colour; luminance variation behind text would make the governing value the
+ * worst pixel rather than the average, and readability is this project's first law.
+ * Do not reintroduce surface textures without redoing the contrast proof.
+ */
+
+.electron-dark {
+  /* Dark — the night watch */
+
+  /* Surfaces — the six-step ground ramp */
+  --color-background-surface: #0E141F;
+  --color-token-main-surface-primary: #0E141F;
+  --color-token-bg-secondary: #151B26;
+  --color-background-elevated-primary: #19202B;
+  --color-background-elevated-secondary: #222731;
+  --color-token-bg-tertiary: #222731;
+  --color-token-diff-surface: #111722;
+
+  /* Text — four tiers of ink */
+  --color-text-primary: #F4EAD4;
+  --color-text-foreground: #F4EAD4;
+  --color-token-foreground: #F4EAD4;
+  --color-text-secondary: #BAB19C;
+  --color-text-foreground-secondary: #BAB19C;
+  --color-text-tertiary: #978E7A;
+  --color-text-quaternary: #6E6552;
+  --color-text-on-accent: #23272F;
+
+  /* Status ink */
+  --color-text-success: #669E7A;
+  --color-text-warning: #D47C46;
+  --color-text-error: #DB746E;
+
+  /* Borders */
+  --color-border-light: #151B26;
+  --color-border: #1E2430;
+  --color-border-heavy: #5F6675;
+  --color-border-focus: #C0A454;
+
+  /* Brass — the single accent */
+  --color-background-button-primary: #C0A454;
+  --color-background-button-primary-hover: #D2B565;
+  --color-background-button-primary-active: #AF9342;
+  --color-background-button-secondary: #222731;
+
+  /* Icons */
+  --color-icon-primary: #F4EAD4;
+  --color-icon-secondary: #978E7A;
+  --color-icon-tertiary: #6E6552;
+
+  /* Status & diff surfaces */
+  --color-background-status-success: #0C2717;
+  --color-background-danger-active: #331716;
+  --color-editor-added: #092414;
+  --color-editor-deleted: #301413;
+
+  /* Aliased spellings of the same values */
+  --color-token-border-default: #1E2430;
+  --color-token-border-light: #151B26;
+  --color-token-border-heavy: #5F6675;
+
+  /* Syntax palette — consumed by the editor layer (see syntax.json) */
+  --cc-syntax-variable: #F4EAD4;
+  --cc-syntax-keyword: #CA7260;
+  --cc-syntax-string: #699569;
+  --cc-syntax-function: #AE8339;
+  --cc-syntax-number: #6790A5;
+  --cc-syntax-type: #57958C;
+  --cc-syntax-operator: #8F8A7B;
+  --cc-syntax-comment: #898475;
+}
+
+.electron-light {
+  /* Light — the chart room by day */
+
+  /* Surfaces — the six-step ground ramp */
+  --color-background-surface: #F0E7D5;
+  --color-token-main-surface-primary: #F9F0DD;
+  --color-token-bg-secondary: #E7DECC;
+  --color-background-elevated-primary: #FFF6E4;
+  --color-background-elevated-secondary: #F9F0DD;
+  --color-token-bg-tertiary: #DFD7C5;
+  --color-token-diff-surface: #F6EDDB;
+
+  /* Text — four tiers of ink */
+  --color-text-primary: #182336;
+  --color-text-foreground: #182336;
+  --color-token-foreground: #182336;
+  --color-text-secondary: #34425C;
+  --color-text-foreground-secondary: #34425C;
+  --color-text-tertiary: #4D5D7B;
+  --color-text-quaternary: #7081A0;
+  --color-text-on-accent: #FDF7E8;
+
+  /* Status ink */
+  --color-text-success: #2E6443;
+  --color-text-warning: #92440A;
+  --color-text-error: #9B3A37;
+
+  /* Borders */
+  --color-border-light: #E7DECC;
+  --color-border: #D9D0BE;
+  --color-border-heavy: #72819D;
+  --color-border-focus: #896D15;
+
+  /* Brass — the single accent */
+  --color-background-button-primary: #896D15;
+  --color-background-button-primary-hover: #7A600C;
+  --color-background-button-primary-active: #6C5402;
+  --color-background-button-secondary: #E7DECC;
+
+  /* Icons */
+  --color-icon-primary: #182336;
+  --color-icon-secondary: #4F5D79;
+  --color-icon-tertiary: #7081A0;
+
+  /* Status & diff surfaces */
+  --color-background-status-success: #CAE6D3;
+  --color-background-danger-active: #F8D4D1;
+  --color-editor-added: #CEEAD7;
+  --color-editor-deleted: #FCD8D5;
+
+  /* Aliased spellings of the same values */
+  --color-token-border-default: #D9D0BE;
+  --color-token-border-light: #E7DECC;
+  --color-token-border-heavy: #72819D;
+
+  /* Syntax palette — consumed by the editor layer (see syntax.json) */
+  --cc-syntax-variable: #182336;
+  --cc-syntax-keyword: #9D493A;
+  --cc-syntax-string: #426C44;
+  --cc-syntax-function: #825B10;
+  --cc-syntax-number: #40677C;
+  --cc-syntax-type: #2E6C65;
+  --cc-syntax-operator: #686255;
+  --cc-syntax-comment: #6D675A;
+}
+
+/*
+ * Shape. Tighter than stock: joinery, not pillows.
+ */
+.electron-dark,
+.electron-light {
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 7px;
+  --radius-xl: 9px;
+  --radius-2xl: 12px;
+  --radius-3xl: 16px;
+  --radius-4xl: 20px;
+  --radius-full: 9999px;
+}
+
+/*
+ * Typography.
+ *
+ * Fraunces (display + UI) and Monaspace Xenon (monospace), both SIL OFL 1.1 and
+ * therefore redistributable inside the .ccskin. The woff2 files and their licence
+ * texts live in assets/fonts/; the packaging build inlines them as data URIs, so
+ * the shipped theme never references a remote resource.
+ *
+ * LANDMARK — 'pre, code, kbd, samp'. Codex sets an explicit monospace family on
+ * code, so inheritance alone cannot reach it. These are semantic HTML elements
+ * rather than utility-class combinations, which makes this the most durable
+ * structural hook available. If it stops matching, code renders in the stock
+ * monospace stack and nothing breaks.
+ */
+.electron-dark,
+.electron-light {
+  font-family: 'Fraunces', Georgia, serif;
+  font-variation-settings: 'SOFT' 30, 'WONK' 0, 'opsz' 14;
+}
+
+.electron-dark :is(pre, code, kbd, samp),
+.electron-light :is(pre, code, kbd, samp) {
+  font-family: 'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variation-settings: normal;
+}
+
+/*
+ * Motion — deliberately absent.
+ *
+ * This theme adds no animation or transition of its own, so it has nothing to
+ * suppress under prefers-reduced-motion. A blanket
+ * `@media (prefers-reduced-motion) { * { animation-iteration-count: 1 !important } }`
+ * was written here and removed: it would have governed CODEX's animations rather
+ * than ours, stopping loading spinners after a single rotation. Respecting the
+ * preference for motion we introduce is our job; overriding the host app's motion
+ * is not. If a future layer adds motion, scope the reduced-motion rule to exactly
+ * that motion — never to `*`.
+ */

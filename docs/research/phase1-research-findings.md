@@ -127,7 +127,9 @@ Detailed inventory: [`docs/specs/customizable-ui-inventory.md`](../specs/customi
 
 ## 10. Required image assets
 
-See [`docs/specs/asset-manifest.md`](../specs/asset-manifest.md) for the full list, dimensions, and formats. High level: dark-oak / leather / parchment textures (tiled, low-contrast), a subtle vignette/candlelight overlay, an optional title-bar crest, and a matching syntax palette. All kept small, low-contrast, and readability-first per the brief.
+> **SUPERSEDED by Phase 2 (2026-07-31).** This section records what Phase 1 *expected* to need. The actual answer turned out to be **almost nothing**: all tiling textures were cut and the theme ships no raster assets, only two OFL fonts. Kept unedited as a record of the original reasoning — read [`docs/specs/asset-manifest.md`](../specs/asset-manifest.md) for what is true now. The rest of this document (the Electron/fuse/token evidence) remains current.
+
+Original Phase 1 expectation: dark-oak / leather / parchment textures (tiled, low-contrast), a subtle vignette/candlelight overlay, an optional title-bar crest, and a matching syntax palette. All kept small, low-contrast, and readability-first per the brief.
 
 ## 11. Risks from future Codex updates
 
