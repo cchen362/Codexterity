@@ -1,0 +1,120 @@
+# Codexterity — Engineering Guidelines
+
+**This is the single authoritative engineering guide for this repository.** It is read by every coding agent: Claude Code loads it via `CLAUDE.md`, Codex via `AGENTS.md`. Edit this file, never a per-tool wrapper — the wrappers exist only so each tool finds its way here.
+
+## What This Is
+
+Codexterity is a **non-destructive theming engine for OpenAI's Codex Desktop app** (Windows + macOS). It reskins the app at runtime by injecting CSS through the app's own official Electron APIs — never by modifying, patching, or re-signing Codex's files. The engine hosts installable theme packages; the first is **Captain's Cabin** (a premium dark-wood/brass/candlelight aesthetic). CLI command: `cdx`.
+
+Living specs: `docs/specs/` (customizable-ui-inventory, css-architecture, asset-manifest). Evidence base: `docs/research/phase1-research-findings.md`. Active plan: `docs/plans/0001-captains-cabin-architecture.md`.
+
+## Source-of-Truth Order
+
+When documents disagree, use this order:
+
+1. Live code, launcher scripts, and the running app's actual behaviour.
+2. This file for engineering constraints and repository conventions.
+3. `docs/DECISIONS.md` for settled cross-tool decisions.
+4. The living specs in `docs/specs/` for the UI/CSS/asset boundaries.
+5. Completed implementation plans for decision history and feature-specific detail.
+6. Open implementation plans for intended future behavior only.
+
+Do not describe planned work as shipped. Always read a plan's status header before treating it as fact. **As of this writing no product code exists yet** — the project is at the end of Phase 1 (research + architecture). Phases 2–7 are planned, not built.
+
+## Settled Decisions — how they are marked
+
+Some behaviour in this codebase looks arbitrary and is not. Those choices are **owner decisions**, marked in two places:
+
+- **In the code they govern**, as a comment citing the decision by id: `D-<plan>-<n>` (e.g. `D-0001-1` for the first decision in Plan 0001). The marker sits in the same file as the behaviour, so it cannot drift out of sync with it. **Keep the whole citation on one line** — the grep below is line-based.
+- **In `docs/DECISIONS.md`**, for decisions with no single code home.
+
+**Before proposing a change to existing behaviour, grep for a decision marker near the code you would touch:**
+
+```bash
+grep -rnE "D-[0-9]+-[0-9]+" <the file or directory>
+```
+
+One pattern, one notation. **Never invent a second notation.** If you find a marker, the decision **stands** until the owner reopens it. Surface it and ask; do not silently reverse it. Absence of a marker is **not** evidence that a design is open — check the plan docs and `docs/DECISIONS.md` too.
+
+---
+
+## Non-Negotiable Engineering Rules
+
+**No bandaiding. Ever.**
+If something is broken, find the root cause and fix it. Do not patch symptoms, suppress errors, add try/catch to hide failures, or work around a bug without understanding it. Leave the codebase cleaner than you found it.
+
+**No `// TODO` or `// FIXME` left in committed code.**
+If it's not implemented, don't commit it. If it needs doing, do it now or track it in the plan doc.
+
+**Check before you assume.**
+Before adding a new utility, helper, or dependency — grep for an existing one and check the existing stack.
+
+**Fail loudly in development, gracefully in production.**
+Never swallow errors silently. For the injector specifically: if a theme cannot be applied cleanly (missing DOM landmark, failed validation), **degrade to the stock look and report it — never leave the app half-styled or broken.** The user must always be able to fall back to an unthemed, fully-functional Codex.
+
+**The non-destructive boundary is absolute (D-0001-3).**
+Never modify, patch, overwrite, or re-sign any Codex application file on any OS. Never read or write `~/.codex/auth.json`, `~/.codex/.credentials.json`, API keys, or auth tokens. The injector's reach is styling only. This is a structural guarantee, not a convention — code must make the violation impossible, not merely avoided.
+
+---
+
+## Current Architecture
+
+The shape is decided (Plan 0001) even though code is not yet written. Record it here as it becomes real; a reader should not have to reverse-engineer a convention the code alone would not teach.
+
+**The model: a per-OS Launcher starts Codex with a shared Injector attached.**
+
+- **Launcher** (`launcher/windows`, `launcher/macos`) — the *only* platform-specific code. Resolves the installed Codex executable in a version-independent way (Windows: `Get-AppxPackage`, never a hardcoded MSIX path; macOS: the `.app` in `/Applications`) and starts it with injection enabled.
+- **Injector** (`injector/`) — shared Node core. Primary mechanism: `NODE_OPTIONS=--require <preload>` running the official `webContents.insertCSS()` in Codex's main process, opening **no** debug port (D-0001-1). Fallback: loopback CDP injection, built but not default, for resilience if OpenAI hardens the Electron fuses. Re-applies on new windows/navigations; verifies declared DOM landmarks and degrades gracefully.
+- **Themes** (`themes/<name>/`) — *data packages*, not code. A theme is a manifest + validated CSS + syntax palette + embedded assets, distributed as a `.ccskin` (D-0001-4). The injector is theme-agnostic; adding a theme adds a folder, never touches the injector.
+
+**The load-bearing styling principle (D-0001-2):** override Codex's own semantic CSS custom properties (`--color-*`, `--radius-*`, `--shadow-*`) scoped to its root theme classes (`.electron-dark` / `.electron-light`). Codex is Tailwind v4 with a token layer, so one variable override cascades app-wide — including into UI OpenAI has not shipped yet. Prefer token overrides over structural selectors, which are fragile; treat any structural selector as a declared, verified landmark.
+
+**Why this survives Codex updates:** the engine never depends on Codex's files staying put (Windows seals them anyway) and binds to OpenAI's own token indirection rather than to markup. A UI refactor that keeps token names needs zero changes; one that renames them needs a recolour, not a rebuild.
+
+---
+
+## Design & Aesthetic Rules
+
+**`themes/<name>/theme.css` is the single source of truth for that theme's token values.** It is the stylesheet the injector actually loads, so its values are what ship. Read that file for every token value; no other file carries a copy. Mockups and palette explorations under `docs/` are design *inputs* — never copy a value out of one into a shipped theme without verifying it in the running app.
+
+**Consume tokens via `var(--token)`, never a baked literal.** Overrides redefine OpenAI's `--color-*`/`--radius-*`/`--shadow-*` variables; never hardcode a colour where a variable belongs.
+
+**Readability outranks aesthetics — always.** Every text/surface pairing a theme produces must pass **WCAG AA** contrast. A gorgeous low-contrast theme that tires the eyes over a long coding session is a failed theme. This is the project's first design law.
+
+**The Captain's Cabin palette and typography are a Phase 2 deliverable and are NOT YET LOCKED.** Do not invent hex values or font choices and treat them as settled. When Phase 2 locks them, the exact palette (both `.electron-dark` and `.electron-light` modes) lives in `themes/captains-cabin/theme.css`, the fonts and their roles are recorded in `docs/specs/customizable-ui-inventory.md`, and this section gains a pointer to them. Until then, only the floor below binds.
+
+**No AI Slop (the floor, binding on every theme).** No Inter/Roboto/Arial/Open Sans/Lato/system-ui as a primary/display font. No purple/indigo gradients as a default reach. One accent colour, used sparingly (badges, active states, key numbers) — never as a background fill. No emoji as an icon system — one consistent icon set. No lorem ipsum or filler copy. Motion is purposeful (feedback, orientation), never decorative, and respects reduced-motion. Exact hex only — no "close enough" drift.
+
+**Captain's Cabin specifics (from the brief):** premium, elegant, subtle, immersive — a captain's chart room, *not* a cartoon pirate theme. Materials: dark oak, brass, leather, weathered parchment, ink, deep navy. Warm candlelight, soft shadows. Accent: antique brass/gold. No moving ships, no waves, no parrots, no gimmicks. Textures are *felt*, not seen — the user should almost forget the theme is there after a few minutes.
+
+---
+
+## File Conventions
+
+Directory roles are visible from the tree (see Plan 0001 §folder-structure). The conventions the layout alone would not teach:
+
+- Keep one primary exported module per file.
+- Before creating a helper, search the whole repo for a domain equivalent.
+- **Layer rule:** the `injector/` core is platform-agnostic and contains *all* styling/injection logic; `launcher/<os>/` is the *only* place OS-specific code lives and does nothing but resolve-and-launch. Injection logic never leaks into a launcher, and platform branches never leak into the injector core. Themes are data — no executable logic in a `.ccskin`.
+
+## Verification Expectations
+
+**No automated test harness exists yet** (it lands with the injector in Phase 4). Do not claim a test command that isn't in the repo. When the harness exists, record the real commands here per the detected `package.json` scripts.
+
+The binding verification rule for this project, per the owner's standing practice (*"tests passing ≠ done"*):
+
+- **Every theme/injector change is verified by launching Codex through the launcher and looking at the real, running app** — not by a green unit test, not by a subagent's self-report. Confirm the theme applies, the app stays fully functional, and nothing is half-styled.
+- **Contrast is checked, not eyeballed:** validate WCAG AA on the text/surface pairs a change touches.
+- **Cross-platform claims require the target OS.** A theme "works on macOS" only after it is verified on macOS (a collaborator's machine) — Windows-only verification does not establish it.
+- Documentation changes: run `git diff --check` and verify every link and status claim against live files.
+
+Never call work complete from a build alone when the visible result in the running app is the actual deliverable.
+
+## Recording Decisions
+
+When a session settles something durable another agent could re-litigate — an injection-mechanism change, a "do not re-propose" ruling, a deliberate non-fix — record it **in the same commit**:
+
+- If it governs specific code, put a `D-<plan>-<n>` marker in that code and one pointer row in `docs/DECISIONS.md`.
+- If it has no code home, write it out in full in `docs/DECISIONS.md`.
+
+Agent-private memory is not shared between tools. Anything recorded only there is invisible to the next agent and will drift.
