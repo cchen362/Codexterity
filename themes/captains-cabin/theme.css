@@ -200,6 +200,73 @@
 }
 
 /*
+ * Layer 2 — Named-hook rules (the "character pass").
+ *
+ * D-0001-10 — The owner approved this treatment on 2026-08-01 by toggling it
+ * against the flat build in docs/mockups/0002-captains-cabin-character-pass.html
+ * and judging it "more polished and refined."
+ *
+ * Every rule here decorates CHROME — title bar, scrollbars, popovers, selection.
+ * None of it puts luminance variation behind body text, so D-0001-6 and the
+ * 152/152 contrast proof are untouched. That scoping is the whole reason this
+ * layer is permitted; do not extend it onto a content surface.
+ *
+ * The accent is always read through var(--color-background-button-primary) so a
+ * palette regeneration recolours this layer automatically.
+ *
+ * LANDMARKS. Four of the rules below target Tier-2 named hooks from
+ * docs/specs/customizable-ui-inventory.md. They are hand-written semantic
+ * classes rather than hashed utility combos, which makes them the most durable
+ * structural hooks the app offers — but NONE has yet been observed in a running
+ * Codex, because Gate 0 has not run. Each degrades to the stock look if absent:
+ * an unmatched selector paints nothing. If a hook is renamed upstream the theme
+ * loses a flourish; it never breaks and never half-styles.
+ */
+
+/* Selection — no landmark required, so this is the layer's most durable rule. */
+.electron-dark ::selection,
+.electron-light ::selection {
+  background: color-mix(in oklab, var(--color-background-button-primary) 34%, transparent);
+  color: var(--color-text-primary);
+}
+
+/* Scrollbars. `scrollbar-color` is a standard property and inherits, so it
+ * reaches every scroll container without a structural selector. */
+.electron-dark,
+.electron-light {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--color-background-button-primary) 45%, transparent) transparent;
+}
+
+/* LANDMARK — .app-header-tint (Tier 2). A brass hairline along the header's
+ * lower edge, replacing the stock border rather than adding to it. */
+.electron-dark .app-header-tint,
+.electron-light .app-header-tint {
+  background: var(--color-background-elevated-secondary);
+  border-bottom-color: transparent;
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--color-background-button-primary) 34%, transparent);
+}
+
+/* LANDMARK — .popupContent (Tier 2). Depth plus a lit top edge, so a floating
+ * panel separates from what is behind it. Shadows appear only here, where a
+ * floating element genuinely needs to detach. */
+.electron-dark .popupContent,
+.electron-light .popupContent {
+  background: var(--color-background-elevated-secondary);
+  border: 1px solid var(--color-border-heavy);
+  box-shadow:
+    0 18px 40px -12px rgb(0 0 0 / 0.7),
+    inset 0 1px 0 color-mix(in oklab, var(--color-background-button-primary) 20%, transparent);
+}
+
+/* LANDMARK — .app-shell-main-content-top-fade (Tier 2). The scroll fade has to
+ * resolve to OUR ground or it reveals the stock colour as content scrolls under it. */
+.electron-dark .app-shell-main-content-top-fade,
+.electron-light .app-shell-main-content-top-fade {
+  background: linear-gradient(to bottom, var(--color-background-surface), transparent);
+}
+
+/*
  * Motion — deliberately absent.
  *
  * This theme adds no animation or transition of its own, so it has nothing to

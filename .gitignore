@@ -7,6 +7,9 @@ build/
 out/
 *.ccskin
 
+# Per-machine launch config — holds absolute scratchpad paths, never shared
+.claude/launch.json
+
 # Scratch / temp
 scratchpad/
 *.log
