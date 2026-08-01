@@ -108,6 +108,33 @@ if ($entryPoint -ne 'Windows.FullTrustApplication') {
         "blocked outright, and this is a real Gate 0 finding, not something to route around.")
 }
 
+# ---------------------------------------------------------------------------
+# 2a. Refuse to launch over a running instance.
+#
+# Codex is single-instance. Starting it while a copy is already running makes
+# the new process hand off to the existing one ("Opening in existing browser
+# session") and exit immediately -- so our NODE_OPTIONS never reaches an
+# Electron main process and the theme is silently NOT applied. The user sees a
+# perfectly normal, completely unthemed Codex and no error at all, which is the
+# worst failure mode available to us.
+#
+# Detection matches on the PACKAGE PATH, not the process name: the executable
+# is ChatGPT.exe (not Codex.exe), and a name match on "ChatGPT" would also hit
+# the unrelated "ChatGPT Classic" app.
+#
+# This reports and stops rather than terminating anything. Closing the user's
+# running editor -- possibly mid-conversation -- is not a launcher's decision.
+# ---------------------------------------------------------------------------
+$running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -and $_.Path.StartsWith($package.InstallLocation, [StringComparison]::OrdinalIgnoreCase)
+})
+if ($running.Count -gt 0) {
+    Write-Fail ("Codex is already running ($($running.Count) process(es), e.g. PID $($running[0].Id)). " +
+        "Codex is single-instance: launching now would hand off to the running copy and exit, and the " +
+        "theme would NOT be applied -- with no visible error. Quit Codex completely, then re-run this " +
+        "launcher. Nothing has been changed or closed for you.")
+}
+
 $exePath = Join-Path $package.InstallLocation $executableRelative
 if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
     Write-Fail "Resolved executable does not exist at '$exePath'."

@@ -184,6 +184,19 @@ async function reportRootEnvironment(webContents) {
         }
         fonts.push(family + '=' + state);
       }
+      // Code surfaces. The 'pre, code, kbd, samp' landmark matched nothing at
+      // Gate 0, but the empty state contains no code, so that was never evidence
+      // of absence. Reported per-tag with the font actually resolved, so a zero
+      // on a screen without code is legible as "not applicable" rather than
+      // "missing" — and so the answer is recorded on whatever screen the user
+      // happens to be on, instead of needing a special run.
+      const code = [];
+      for (const tag of ['pre', 'code', 'kbd', 'samp']) {
+        const n = document.querySelectorAll(tag).length;
+        const el = n ? document.querySelector(tag) : null;
+        code.push(tag + '=' + n + (el ? ' font=' + getComputedStyle(el).fontFamily.split(',')[0] : ''));
+      }
+
       const heading = document.querySelector('.heading-xl, .heading-lg, .heading-2xl');
       const headingFont = heading ? getComputedStyle(heading).fontFamily : '(no heading on screen)';
       const bodyFont = document.body ? getComputedStyle(document.body).fontFamily : '(no body)';
@@ -191,6 +204,7 @@ async function reportRootEnvironment(webContents) {
       return {
         painted,
         fonts,
+        code,
         headingFont,
         bodyFont,
         rootClass: root.className || '(none)',
@@ -213,6 +227,7 @@ async function reportRootEnvironment(webContents) {
     }
     for (const row of env.painted || []) log(`  painted ${row}`);
     if (env.fonts) log(`  fonts loadable: ${env.fonts.join('  ')}`);
+    if (env.code) log(`  code surfaces: ${env.code.join('  ')}`);
     if (env.bodyFont) log(`  body font-family:    ${env.bodyFont}`);
     if (env.headingFont) log(`  heading font-family: ${env.headingFont}`);
   } catch (err) {

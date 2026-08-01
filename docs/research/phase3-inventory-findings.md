@@ -294,8 +294,14 @@ screen containing a code block before anything structural is written for it.
 - **Codex is single-instance.** Launching it while an instance is running prints
   `Opening in existing browser session`, hands off, and exits — the new process never
   initialises, so **the injector does not attach**. A user who has Codex open and then clicks
-  the Captain's Cabin shortcut gets an unthemed app and no error. The launcher must detect a
-  running instance and say so. Not fixed in this pass; recorded as Phase 3 work.
+  the Captain's Cabin shortcut gets an unthemed app and no error. **Fixed:** the launcher now
+  detects a running instance and refuses with an explanation, matching on the package path.
+  It reports and stops rather than terminating anything.
+- **Codex's window exposes no UI-automation tree.** A `Snapshot` of the focused ChatGPT
+  window returns "No interactive elements", so the app cannot be driven from outside to reach
+  a particular screen. Anything that must be observed on a specific screen has to be
+  *instrumented to record itself* on whatever screen the user is on — which is how the code
+  surface check works.
 - **The executable is `ChatGPT.exe`**, and its processes are named `ChatGPT` — not `Codex`.
   Match on the package path (`*OpenAI.Codex_*`) when identifying processes; a name match on
   `codex` finds nothing, and a name match on `ChatGPT` would also hit the unrelated
