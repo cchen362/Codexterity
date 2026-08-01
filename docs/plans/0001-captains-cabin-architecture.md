@@ -6,6 +6,15 @@
 
 > **Phase 2 changed the brief.** The theme's ground is **deep navy `#0E141F`**, not dark oak, and all tiling textures were cut. Sections below that describe wood, leather, or texture assets are superseded — see [`docs/DECISIONS.md`](../DECISIONS.md) and [`docs/specs/asset-manifest.md`](../specs/asset-manifest.md).
 
+### Phase 3 entry state — open items, in order
+
+1. **Hero artwork — owner is generating it** (2026-08-01). Two finished prompts in [`asset-generation-prompts.md`](../specs/asset-generation-prompts.md). Drops at `themes/captains-cabin/assets/hero-empty-state.{webp,png}`; `node tools/mockup/build-mockup.mjs` detects and embeds it with no code change. **Promoted from optional to a real deliverable** — it is the largest single visual element and its absence was why the theme read as a recolour.
+2. **Judge the character pass.** [`docs/mockups/0002-captains-cabin-character-pass.html`](../mockups/0002-captains-cabin-character-pass.html) toggles flat vs Layer 2 chrome detailing. **Built but never looked at by anyone** — verified only programmatically. Owner approval is required before any of it becomes shipped CSS.
+3. **Then decide** whether further image assets are justified beyond the hero. Deliberately deferred until the hero can be seen in place.
+4. **Then Gate 0** — the injector launch test (§1). Nothing in this theme has ever been seen in real Codex.
+
+**The load-bearing constraint for all of the above:** decoration behind body text breaks the contrast proof; decoration on chrome does not. D-0001-6 is scoped to content surfaces, and the character pass stays on chrome deliberately.
+
 ---
 
 ## 1. Architecture recommendation
@@ -163,7 +172,7 @@ Residual accepted risk: a major OpenAI UI overhaul will need a theme refresh (re
 |---|---|---|
 | **1. Research & Architecture** *(this doc)* | Understand + decide | **Your sign-off on §12** |
 | **2. Palette, Type & Assets** ✅ **COMPLETE** | Lock ground + palette (exact hex, both modes); pick + licence fonts; author syntax palette; decide the asset set | ✅ Approved by owner from a rendered mockup (swatch board + restyled Codex UI, three grounds, both modes, both pairings). 152/152 WCAG AA. Textures cut; no raster assets |
-| **3. CSS & Theme Dev** *(active)* | **Gate 0: launch-test the injector (A vs B) on the real app.** Then Layer 2 named hooks, editor palette wiring, hot-reload dev loop | Theme visibly applied to running Codex, verified in-app by you |
+| **3. CSS & Theme Dev** *(active)* | Embed the hero + approve the character pass (see entry state above); **Gate 0: launch-test the injector (A vs B) on the real app**; then promote Layer 2 into `theme.css`, wire the editor palette, build the hot-reload dev loop | Theme visibly applied to running Codex, verified in-app by you |
 | **4. Packaging** | `.ccskin` format + injector CLI (apply/restore/verify) + safe-CSS validation | Clean apply/restore round-trip; nothing residual |
 | **5. Windows Installer** | Launcher + MSIX exe resolver + installer + shortcuts | Fresh-machine install works; survives a simulated app-version bump |
 | **6. macOS Installer** | Wrapper `.app` + `.dmg`; **friend's Mac verification** (DOM parity + launch) | Friend confirms theme applies on macOS |
