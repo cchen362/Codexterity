@@ -16,7 +16,7 @@ One line each. Once the governed code exists, its `D-` marker is authoritative a
 
 | ID | Ruling | Reasoning lives in |
 |---|---|---|
-| **D-0001-1** | **Injection mechanism.** Build our own injector (no dependency on existing projects). Primary = `NODE_OPTIONS=--require <preload>` running official `webContents.insertCSS()` in the main process — **no debug port ever opened**. Fallback (built, not default) = loopback CDP injection. | `injector/` (marker at build) · [Plan 0001 §1](plans/0001-captains-cabin-architecture.md) · [findings §5](research/phase1-research-findings.md) |
+| **D-0001-1** | **Injection mechanism.** Build our own injector (no dependency on existing projects). Primary = `NODE_OPTIONS=--require <preload>` running an official Electron main-process API — **no debug port ever opened**. **AMENDED 2026-08-01: the API is `webContents.executeJavaScript` appending one `<style>` element, not `insertCSS()`** — see the amendment below. Fallback (built, not default) = loopback CDP injection, **not needed**. | [`injector/core/inject.js`](../injector/core/inject.js) · [Plan 0001 §1](plans/0001-captains-cabin-architecture.md) · [gate0-findings §2](research/gate0-findings.md) |
 | **D-0001-2** | **Styling strategy.** Token-first: override semantic `--color-*` / `--radius-*` / `--shadow-*` on `.electron-dark` / `.electron-light`. Structural selectors only as declared, verified landmarks with graceful degradation. | `themes/*/theme.css` (marker at build) · [Plan 0001 §4](plans/0001-captains-cabin-architecture.md) |
 | **D-0001-3** | **Non-destructive by construction.** Never modify, patch, or re-sign Codex's files on any OS. The injector structurally cannot read/write `auth.json`, `.credentials.json`, or API keys. Worst case = stock look; never brick. | `injector/` + `launcher/` (marker at build) · [Plan 0001 §1](plans/0001-captains-cabin-architecture.md) |
 | **D-0001-4** | **Theme package format.** `.ccskin` = zip of `manifest.json` (target app + version range + landmarks) + safe-CSS-validated `theme.css` + `syntax.json` + embedded assets. Size-capped; no remote references. | `injector/theme-loader/` (marker at build) · [Plan 0001 §5](plans/0001-captains-cabin-architecture.md) |
@@ -24,6 +24,37 @@ One line each. Once the governed code exists, its `D-` marker is authoritative a
 | **D-0001-9** | **Hero artwork: `hero-empty-state.webp`, shipped ungraded except for a highlight rolloff.** The generated lamp core clipped at luminance 0.935 — effectively blown white in a deliberately low-key image — and is rolled off to 0.530. Nothing else is altered. A brass re-tint toward `#C0A454` was built, rendered and **rejected on sight**; see D-0001-8. | [`themes/captains-cabin/assets/`](../themes/captains-cabin/assets/) · [`asset-manifest.md`](specs/asset-manifest.md) |
 | **D-0001-10** | **Layer 2 "character pass" is approved and shipped.** Chrome-only decoration: brass selection, thin brass scrollbars, a brass hairline on `.app-header-tint`, depth + lit edge on `.popupContent`, and the scroll fade resolved to our ground. Scoped to chrome so D-0001-6 and the contrast proof are untouched. | [`tools/palette/emit-theme.mjs`](../tools/palette/emit-theme.mjs) (marker in the Layer 2 block) |
 | **D-0001-7** | **Captain's Cabin ground, palette and typography are locked.** Ground = deep navy `#0E141F`; light mode = parchment with navy ink; accent = antique brass. Type = Fraunces (display/UI) + Monaspace Xenon (mono), both SIL OFL 1.1 and redistributable. Values are *derived* in OKLCH by `tools/palette/`, never hand-picked. | [`themes/captains-cabin/theme.css`](../themes/captains-cabin/theme.css) · [`tools/palette/palette-engine.mjs`](../tools/palette/palette-engine.mjs) |
+
+### D-0001-1 — amendment, 2026-08-01: the working primary API
+
+Recorded after Gate 0 ran the injector against the real app. **The decision itself does not
+change**; only the specific API it names, and the amendment strengthens rather than weakens
+the guarantee it was chosen for.
+
+**`webContents.insertCSS()` is broken on this Electron fork.** It throws
+`TypeError: o.webFrame[t] is not a function` inside Electron's own sandboxed-renderer
+`webFrame` proxy, on every window, identically with and without `cssOrigin`. Not a
+configuration problem, and not fixable without modifying Codex's files, which D-0001-3
+forbids absolutely.
+
+**The shipped primary is `webContents.executeJavaScript` appending a single `<style>` element**
+with a stable id. It travels a *different* main→renderer channel, it is equally official, and
+it opens **no debug port** — so the whole reason mechanism A beat mechanism B survives intact.
+**The CDP fallback was not needed and must not be made default without owner approval.**
+
+Two costs, both real, both commented at the code:
+
+- **Author origin, not user origin.** Our overrides are custom-property definitions competing
+  with Codex's own. In practice this is comfortable: Codex defines its semantic layer inside
+  `@layer utilities`, and an unlayered author rule beats a layered one regardless of order or
+  specificity. Verified in the running app — **no `!important` is required anywhere**
+  ([phase3-inventory-findings §1](research/phase3-inventory-findings.md)). A stock author rule
+  marked `!important` would still win, and none currently is.
+- **It is a DOM node**, so the app could in principle re-render it away, where an inserted
+  stylesheet could not. The stable id makes re-application idempotent, and the injector
+  re-applies on `dom-ready`, `did-navigate` and `did-navigate-in-page`.
+
+Anchor: [`injector/core/inject.js`](../injector/core/inject.js) (`applyThemeViaStyleTag`).
 
 ## Superseded or hollowed-out — do not re-stamp
 

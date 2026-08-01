@@ -15,6 +15,9 @@ scratchpad/
 *.log
 *.tmp
 
+# Playwright MCP session output (snapshots, console logs) — QA artefacts, not source
+.playwright-mcp/
+
 # OS cruft
 Thumbs.db
 .DS_Store

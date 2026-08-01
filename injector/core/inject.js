@@ -6,13 +6,18 @@
  * Platform-agnostic. Runs inside Codex Desktop's Electron MAIN process,
  * loaded via NODE_OPTIONS=--require <preload.js> (D-0001-1, primary mechanism).
  *
+ * D-0001-1 (amended 2026-08-01) — the primary API is
+ * webContents.executeJavaScript appending one <style> element, NOT
+ * insertCSS(), which is broken on this Electron fork. Still an official API,
+ * still no debug port. See applyThemeViaStyleTag below and docs/DECISIONS.md.
+ *
  * D-0001-3 — non-destructive by construction. This module never touches any
  * file inside the Codex install directory, never opens a debug port, and
  * never reads or writes ~/.codex/auth.json, ~/.codex/.credentials.json, or
  * any API key/token. It reads exactly one file: the theme CSS path handed to
- * it via CDX_THEME_CSS_PATH, and calls exactly one privileged Electron API,
- * webContents.insertCSS(), which is read-only with respect to the app itself
- * (it mutates only the in-memory render tree of a window we did not create).
+ * it via CDX_THEME_CSS_PATH, and the Electron APIs it calls are read-only
+ * with respect to the app itself (they mutate only the in-memory render tree
+ * of a window we did not create).
  *
  * If the theme cannot be applied cleanly, this module logs the failure and
  * leaves the window exactly as Codex rendered it — never half-styled, never
@@ -21,6 +26,8 @@
  */
 
 const fs = require('fs');
+const path = require('path');
+const { runProbe } = require('./probe.js');
 
 // D-0001-2 — declared landmarks from themes/captains-cabin/theme.css and
 // docs/specs/customizable-ui-inventory.md. Gate 0's job is to report, for the
@@ -145,56 +152,55 @@ async function reportRootEnvironment(webContents) {
 }
 
 /**
- * Enumerate every CSS custom property Codex defines on its own root, and report
- * which ones this theme overrides and which it misses.
+ * Probe mode (Phase 3 task A).
  *
- * Gate 0 established that the theme's tokens DO resolve in the running app while
- * major surfaces stay stock — which means the app paints them from properties
- * the theme never redefines. The token list in docs/specs came from static
- * analysis of a bundle; this reads the live CSSOM instead, and the difference
- * between the two is the actual Phase 3 work list.
+ * Gate 0's token-gap probe is DELETED rather than kept behind a flag, because a
+ * measurement that cannot distinguish our properties from Codex's is not a
+ * weaker measurement — it is a wrong one, and leaving it runnable invites it to
+ * be quoted again (docs/research/gate0-findings.md §4.3). Its replacement is
+ * injector/core/probe.js, which samples with injection SUPPRESSED and reads
+ * stylesheet text rather than resolved computed values.
  *
- * Read-only: enumerates property NAMES and values from stylesheets already
- * loaded in the page. Touches no app file and no user data.
+ * CDX_PROBE=1              enable probe mode; the theme is deliberately NOT applied
+ * CDX_PROBE_OUT=<dir>      where reports are written (ours, never Codex's)
+ * CDX_PROBE_AT=6000,30000  ms after dom-ready to sample, so a later sample can
+ *                          catch a screen the first one could not — e.g. one
+ *                          containing code, which the empty state never does.
  */
-async function reportTokenGap(webContents, ourCss) {
-  const ourNames = Array.from(new Set(
-    (ourCss.match(/--[a-zA-Z0-9-]+(?=\s*:)/g) || [])
-  ));
-  // Enumerated off getComputedStyle rather than by walking document.styleSheets:
-  // the app's own sheets are opaque to cssRules (a CSSOM walk returned zero
-  // properties while the very same tokens demonstrably resolved), whereas the
-  // computed style is the resolved truth regardless of which sheet supplied it.
-  const script = `
-    (() => {
-      const OURS = new Set(${JSON.stringify(ourNames)});
-      const cs = getComputedStyle(document.documentElement);
-      const all = Array.from(cs).filter((p) => p.startsWith('--'));
-      const missing = [], covered = [];
-      for (const name of all) {
-        const entry = name + ' = ' + cs.getPropertyValue(name).trim();
-        (OURS.has(name) ? covered : missing).push(entry);
-      }
-      return {
-        totalTheirs: all.length,
-        covered: covered.length,
-        missing: missing.sort(),
-      };
-    })();
-  `;
-  try {
-    const gap = await webContents.executeJavaScript(script, true);
-    log(`  TOKEN GAP: app defines ${gap.totalTheirs} root custom properties; ` +
-        `theme overrides ${gap.covered}; ${gap.missing.length} unclaimed`);
-    for (const entry of gap.missing) log(`    unclaimed: ${entry}`);
-  } catch (err) {
-    log(`  token gap probe FAILED: ${err.message}`);
-  }
+const PROBE_ENABLED = !!process.env.CDX_PROBE;
+
+function probeOutDir() {
+  if (process.env.CDX_PROBE_OUT) return process.env.CDX_PROBE_OUT;
+  if (debugLogPath) return path.dirname(debugLogPath);
+  return process.cwd();
 }
 
-async function reportLandmarks(webContents, css) {
+function probeSchedule() {
+  const raw = process.env.CDX_PROBE_AT;
+  if (!raw) return [6000];
+  const parsed = raw.split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n >= 0);
+  if (!parsed.length) {
+    log(`CDX_PROBE_AT="${raw}" contained no usable millisecond offsets; falling back to 6000.`);
+    return [6000];
+  }
+  return parsed;
+}
+
+function scheduleProbes(webContents) {
+  const offsets = probeSchedule();
+  const outDir = probeOutDir();
+  log(`PROBE MODE: theme injection is suppressed on purpose. Sampling webContents#${webContents.id} ` +
+      `at ${offsets.join('ms, ')}ms after dom-ready; reports -> ${outDir}`);
+  offsets.forEach((ms) => {
+    setTimeout(() => {
+      if (webContents.isDestroyed()) return;
+      runProbe(webContents, log, outDir, `wc${webContents.id}-t${ms}`);
+    }, ms);
+  });
+}
+
+async function reportLandmarks(webContents) {
   await reportRootEnvironment(webContents);
-  if (process.env.CDX_TOKEN_GAP && css) await reportTokenGap(webContents, css);
   try {
     const results = await webContents.executeJavaScript(buildLandmarkProbeScript(), true);
     results.forEach((result, i) => {
@@ -213,7 +219,11 @@ async function reportLandmarks(webContents, css) {
 }
 
 /**
- * Second official-API injection route, used only when insertCSS is unavailable.
+ * D-0001-1 (amended 2026-08-01) — THE SHIPPED PRIMARY INJECTION ROUTE.
+ *
+ * insertCSS() is attempted first only because it is the cleaner API where it
+ * works; on this Electron fork it always throws, and this is what actually
+ * applies the theme. Gate 0 measured that; docs/DECISIONS.md records it.
  *
  * Appends (or replaces) a single <style> element via webContents
  * .executeJavaScript. This is a DIFFERENT main->renderer IPC channel from the
@@ -257,7 +267,7 @@ async function applyTheme(webContents, css) {
   try {
     await webContents.insertCSS(css, { cssOrigin: 'user' });
     log(`injected OK via insertCSS on ${label} — ${bytes} bytes`);
-    await reportLandmarks(webContents, css);
+    await reportLandmarks(webContents);
     return;
   } catch (err) {
     log(`insertCSS FAILED on ${label}: ${err.message}`);
@@ -272,7 +282,7 @@ async function applyTheme(webContents, css) {
       `injected OK via executeJavaScript style tag on ${label} — ` +
         `${result.bytes} chars, lastChildOfHead=${result.lastChildOfHead}`
     );
-    await reportLandmarks(webContents, css);
+    await reportLandmarks(webContents);
     return;
   } catch (err) {
     // Both official routes are gone. Degrade to the stock look — never leave
@@ -288,6 +298,17 @@ async function applyTheme(webContents, css) {
 function attachToWindow(win, css) {
   const wc = win.webContents;
   const label = `webContents#${wc.id}`;
+
+  // In probe mode the theme is never applied — an injected sheet would make
+  // Codex's own token vocabulary unreadable, which is precisely the mistake
+  // Gate 0's invalid measurement made.
+  if (PROBE_ENABLED) {
+    wc.once('dom-ready', () => {
+      log(`dom-ready on ${label} (url=${wc.getURL()})`);
+      scheduleProbes(wc);
+    });
+    return;
+  }
 
   wc.on('dom-ready', () => {
     log(`dom-ready on ${label} (url=${wc.getURL()})`);
