@@ -31,6 +31,39 @@ One line each. Once the governed code exists, its `D-` marker is authoritative a
 |---|---|
 | _None yet._ | |
 
+## Open — reopened by the owner, not yet settled
+
+### D-0001-7 (typography half) — REOPENED 2026-08-01
+
+**The ground/palette half of D-0001-7 stands and is not in question.** Only the type
+half is reopened, by the owner, after seeing Fraunces render in the real app at Gate 0:
+*"the fonts are not crisp enough and it can be challenging or tough to read in long
+sessions."*
+
+**Why this is a legitimate reopening rather than a preference.** It collides with the
+project's own first design law in `docs/ENGINEERING.md`: *"Readability outranks
+aesthetics — always. A gorgeous low-contrast theme that tires the eyes over a long
+coding session is a failed theme."* An owner reporting eye strain in the running app is
+that law firing.
+
+**Diagnosis (to be tested, not assumed).** Fraunces is a *display* serif — high stroke
+contrast, softly modulated terminals, optical sizing tuned for large settings. It is
+currently doing double duty as both the display face and the UI/body face. At 13–14px
+UI text the stroke contrast is what reads as "not crisp"; `opsz 14` mitigates it but
+cannot change what the face is.
+
+**The likely resolution is a split, not a replacement:** keep Fraunces for display
+(headings, hero, title bar) where it earns its character, and introduce a dedicated
+*text* face for UI and body. That is the pairing Fraunces was designed to be half of.
+
+**Do not pick the text face in prose.** The owner judges type from a rendered visual and
+has reversed a stated preference on sight before. Build the comparison first — same
+screen, same sizes, several candidates — then ask. Any candidate must clear the design
+floor (no Inter/Roboto/Arial/Open Sans/Lato/system-ui) and must be OFL or otherwise
+redistributable inside a `.ccskin`.
+
+**Not settled. Do not ship a font change until the owner approves one from a render.**
+
 ## Decisions with no code home
 
 External facts, project identity, and policy that no single file governs.
