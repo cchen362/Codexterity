@@ -2,21 +2,21 @@
 
 **Living spec.** Every asset the theme needs.
 
-> **Rewritten in Phase 2 (2026-07-31). This supersedes the original manifest.**
-> That version specified five tiling textures (oak, leather, parchment, brass, canvas) plus a vignette overlay. **All of them were cut.** If you are working from a description that mentions wood grain or leather panels, it is out of date — see [D-0001-6 and D-0001-8](../DECISIONS.md).
+> **Rewritten in Phase 2 (2026-07-31); updated in Phase 3 (2026-08-01).**
+> The Phase 2 rewrite superseded an original manifest that specified five tiling textures (oak, leather, parchment, brass, canvas) plus a vignette overlay — **all cut**, see [D-0001-6 and D-0001-8](../DECISIONS.md). Phase 3 then shipped the one raster asset Phase 2 left optional: the empty-state hero. If you are working from a description that says the theme ships no raster assets at all, that statement is now out of date — see below.
 
 ---
 
 ## The short version
 
-**Captain's Cabin ships no raster assets.** It is CSS plus two fonts.
+**Captain's Cabin ships one raster asset: the empty-state hero.** Everything else is CSS plus two fonts.
 
 | Category | Status |
 |---|---|
 | Tiling surface textures | **Cut.** None. Surfaces are flat token colour. |
-| Lighting / atmosphere overlays | **Cut as assets.** What remains is expressed through the surface ramp and borders. |
+| Lighting / atmosphere overlays | **Cut as tiled/wash assets.** What remains as CSS is expressed through the surface ramp and borders. |
 | Fonts | **Two, bundled**, both SIL OFL 1.1. |
-| Empty-state hero image | **Optional, not built.** Nothing generated. The theme is complete without it. |
+| Empty-state hero image | **Shipped (D-0001-9).** `themes/captains-cabin/assets/hero-empty-state.webp`, 1600×900, 121 KB, WEBP. Empty-state only, under a scrim. |
 | Compass-rose crest | **Optional, not built.** Hand-authored SVG if ever added, never raster. |
 
 ## Why the textures were cut
@@ -46,17 +46,21 @@ Roles and rationale are recorded in [`customizable-ui-inventory.md`](customizabl
 
 ---
 
-## Optional, not built
+## Shipped: the empty-state hero
 
-Neither of these exists. Both are recorded so the option stays open, and neither may become a dependency: **the theme must remain complete and correct without them.**
+**`themes/captains-cabin/assets/hero-empty-state.webp`** — 1600×900, 121 KB, WEBP. Shipped 2026-08-01 (D-0001-9), Phase 3.
 
-### Empty-state hero
+A single atmospheric image behind the new-session screen — the one place imagery earns its keep, because no dense text sits over it. It sits under a scrim that resolves to solid `--color-background-surface` before any body text begins, so contrast stays provable. **The theme must remain complete and correct without it**; that property was verified before the image existed and the image does not change it — an absent file degrades to the pre-Phase-3 flat empty state, not to breakage.
 
-A single atmospheric image behind the new-session screen — the one place imagery earns its keep, because no dense text sits over it. If it is ever added it must sit under a scrim that resolves to solid `--color-background-surface` before any body text begins, so contrast stays provable. Prompt in [`asset-generation-prompts.md`](asset-generation-prompts.md).
+It is a chart-table composition (Prompt A of [`asset-generation-prompts.md`](asset-generation-prompts.md)): a navigator's chart table shot from above at night, lit by a brass oil lamp sitting just outside the top of frame, brass dividers and a parallel rule catching the light upper-left-of-centre, the chart falling away into navy shadow toward the bottom and edges. The owner chose it from a rendered comparison in the mockup, not from the files in isolation — see [`asset-generation-prompts.md`](asset-generation-prompts.md) for the full acceptance-checklist accounting, including one deliberate deviation from the original brief (warm coverage is ~15% of frame, not "narrow").
+
+The only alteration made to the generated file is a highlight rolloff: the lamp core, which clipped at luminance 0.935 (effectively blown white in a deliberately low-key image), was compressed to 0.530. Hue and warmth were left untouched. Full reasoning in [D-0001-9](../DECISIONS.md).
+
+**Nothing has confirmed how this renders in a running Codex — Gate 0 has not happened.** Every claim above traces to the standalone mockup, not to the app.
 
 ### Compass-rose crest
 
-A tiny monochrome title-bar mark, **off by default**. Hand-authored SVG using `currentColor` so it re-tints with the accent — never a raster generation. The brief forbids gimmicks; a corner mark at most.
+Not built. Recorded so the option stays open, and it may not become a dependency: the theme must remain complete and correct without it. A tiny monochrome title-bar mark, **off by default**. Hand-authored SVG using `currentColor` so it re-tints with the accent — never a raster generation. The brief forbids gimmicks; a corner mark at most.
 
 ---
 

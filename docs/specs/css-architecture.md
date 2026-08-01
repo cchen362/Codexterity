@@ -7,7 +7,7 @@
 ```
 theme.css
 ├─ Layer 1  Token overrides   → .electron-dark { --color-*: … }  (+ .electron-light)
-├─ Layer 2  Named-hook rules  → .app-header-tint, scrollbars, .popupContent
+├─ Layer 2  Named-hook rules  → .app-header-tint, scrollbars, .popupContent, ::selection
 ├─ Layer 3  Shape + type      → --radius-*, font-family (one declared landmark)
 └─ Layer 4  Syntax palette    → --cc-syntax-* vars, mirrored in syntax.json
 ```
@@ -30,8 +30,22 @@ Real, shipped values (excerpt — [`theme.css`](../../themes/captains-cabin/them
 
 **Do not hand-edit those values.** They are derived in OKLCH and solved against WCAG AA targets by `tools/palette/palette-engine.mjs`. Change the recipe, then run `node tools/palette/emit-theme.mjs`.
 
-### Layer 2 — Named hooks
-Rules on stable, hand-written classes for things tokens can't express — title-bar tint, scrollbar styling, popover panels. Scope title-bar rules to the desktop surface with the `electron:` variant where useful.
+### Layer 2 — Named hooks (the "character pass") — shipped, scope narrowed
+
+**Approved and shipped 2026-08-01 (D-0001-10)**, after the owner toggled it against the flat build in [`docs/mockups/0002-captains-cabin-character-pass.html`](../mockups/0002-captains-cabin-character-pass.html).
+
+**It lives in [`tools/palette/emit-theme.mjs`](../../tools/palette/emit-theme.mjs), not in `theme.css`.** That is deliberate, not an oversight: `theme.css` is generated wholesale by that emitter (see "Authoring & build" below), so a hand-edit to `theme.css` would be silently reverted by the next regeneration. Writing the Layer 2 block into the emitter is the only way for it to survive a rebuild.
+
+What actually ships is narrower than the mockup demonstrates:
+
+- `::selection` (brass selection colour, both modes) and `scrollbar-color` (thin brass scrollbars) — need no DOM landmark, since both are standard properties that inherit from the theme class.
+- Three Tier-2 named hooks from the UI inventory, each a real, declared landmark: `.app-header-tint` (a brass hairline on the title bar), `.popupContent` (depth plus a lit top edge on floating panels), `.app-shell-main-content-top-fade` (the scroll fade resolved to our ground rather than stock).
+
+**Deferred until Gate 0:** the mockup also demonstrates an active-item rail, a code-header marker, lit button/card edges, and a brass title-bar crest. None of those has a durable hook — the mockup's rules target class names it invented for demonstration, not names ever observed in the app. Inventing Tier-3 selectors against an app nobody has yet launched would be a guess, so they wait for Gate 0 (the injector launch test, [Plan 0001 §1](../plans/0001-captains-cabin-architecture.md)) to identify a real landmark.
+
+**None of the four Tier-2 landmarks has ever been observed in a running Codex.** They come from the UI inventory's static analysis, not from Gate 0, which has not run. Each degrades gracefully if the selector doesn't match in the real app: an unmatched rule paints nothing, so the theme loses a flourish rather than half-styling.
+
+Scope is chrome-only by design — title bar, scrollbars, popovers, selection, the content-area fade — so [D-0001-6](../DECISIONS.md) (flat surfaces behind text) and the contrast proof are untouched. Scope title-bar rules to the desktop surface with the `electron:` variant where useful.
 
 ### Layer 3 — Shape & typography
 Tighter `--radius-*` values than stock (joinery, not pillows), plus the font families. Fonts reach most of the app by inheritance from the theme class; code needs one declared landmark, `:is(pre, code, kbd, samp)`, because Codex sets an explicit monospace family that inheritance cannot override. Semantic HTML elements were chosen deliberately over utility-class combinations — they are the most durable structural hook available, and if the selector ever stops matching, code simply renders in the stock monospace stack.

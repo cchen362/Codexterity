@@ -1,17 +1,17 @@
 # Plan 0001 — Captain's Cabin: Architecture & Roadmap
 
-**Status:** Phase 1 (Research & Architecture) **COMPLETE**. Phase 2 (Palette, Type & Assets) **COMPLETE** — ground, palette, syntax palette and typography are locked and emitted; the theme ships **no raster assets**. **Phase 3 (CSS & Theme Dev) is the active next milestone**, beginning with Gate 0: launch-testing the injector against the real app.
+**Status:** Phase 1 (Research & Architecture) **COMPLETE**. Phase 2 (Palette, Type & Assets) **COMPLETE** — ground, palette, syntax palette and typography are locked and emitted. **Phase 3 (CSS & Theme Dev) is active.** The hero artwork and the Layer 2 character pass both shipped 2026-08-01 (D-0001-9, D-0001-10); the theme now carries one raster asset (the empty-state hero) plus text and two fonts. **Gate 0 — the injector launch test against the real app — has not run and is in progress via a separate work stream.** Nothing in this theme has ever been seen in a running Codex; every visual claim in this doc and its specs traces to a mockup, not to the app.
 **Depends on:** [`docs/research/phase1-research-findings.md`](../research/phase1-research-findings.md) (the evidence).
-**Decision state:** D-0001-1 (injection) and D-0001-5 (naming) **accepted**. D-0001-6 (flat surfaces), D-0001-7 (ground/palette/type locked) and D-0001-8 (rejected directions) **accepted 2026-07-31**, each from a rendered visual. D-0001-2/3/4 remain owner-pending but do not gate Phase 3.
+**Decision state:** D-0001-1 (injection) and D-0001-5 (naming) **accepted**. D-0001-6 (flat surfaces), D-0001-7 (ground/palette/type locked) and D-0001-8 (rejected directions) **accepted 2026-07-31**, each from a rendered visual. D-0001-9 (hero artwork) and D-0001-10 (character pass shipped to `emit-theme.mjs`) **accepted 2026-08-01**. D-0001-2/3/4 remain owner-pending but do not gate Phase 3.
 
 > **Phase 2 changed the brief.** The theme's ground is **deep navy `#0E141F`**, not dark oak, and all tiling textures were cut. Sections below that describe wood, leather, or texture assets are superseded — see [`docs/DECISIONS.md`](../DECISIONS.md) and [`docs/specs/asset-manifest.md`](../specs/asset-manifest.md).
 
 ### Phase 3 entry state — open items, in order
 
-1. **Hero artwork — owner is generating it** (2026-08-01). Two finished prompts in [`asset-generation-prompts.md`](../specs/asset-generation-prompts.md). Drops at `themes/captains-cabin/assets/hero-empty-state.{webp,png}`; `node tools/mockup/build-mockup.mjs` detects and embeds it with no code change. **Promoted from optional to a real deliverable** — it is the largest single visual element and its absence was why the theme read as a recolour.
-2. **Judge the character pass.** [`docs/mockups/0002-captains-cabin-character-pass.html`](../mockups/0002-captains-cabin-character-pass.html) toggles flat vs Layer 2 chrome detailing. **Built but never looked at by anyone** — verified only programmatically. Owner approval is required before any of it becomes shipped CSS.
-3. **Then decide** whether further image assets are justified beyond the hero. Deliberately deferred until the hero can be seen in place.
-4. **Then Gate 0** — the injector launch test (§1). Nothing in this theme has ever been seen in real Codex.
+1. ~~**Hero artwork.**~~ **RESOLVED 2026-08-01.** Shipped as `themes/captains-cabin/assets/hero-empty-state.webp` (1600×900, 121 KB), D-0001-9. Chosen from Prompt A over two rejected Prompt B candidates in a rendered mockup comparison; one highlight-rolloff alteration only. Full accounting in [`asset-generation-prompts.md`](../specs/asset-generation-prompts.md) and [`asset-manifest.md`](../specs/asset-manifest.md).
+2. ~~**Judge the character pass.**~~ **RESOLVED 2026-08-01.** Approved by the owner toggling [`docs/mockups/0002-captains-cabin-character-pass.html`](../mockups/0002-captains-cabin-character-pass.html) against the flat build. Shipped, narrower than the mockup, into `tools/palette/emit-theme.mjs` (D-0001-10) — see [`css-architecture.md`](../specs/css-architecture.md) Layer 2 for what shipped vs what waits on Gate 0.
+3. ~~**Further image assets beyond the hero.**~~ **RESOLVED 2026-08-01.** The owner did not request any beyond the hero; none are planned.
+4. **Gate 0 — the injector launch test (§1).** **IN PROGRESS**, via a separate work stream — not yet reported here. Nothing in this theme has ever been seen in real Codex; treat every visual claim in this plan and its specs as mockup-derived until Gate 0 reports back. Do not record a Gate 0 result in this doc until that work stream lands it.
 
 **The load-bearing constraint for all of the above:** decoration behind body text breaks the contrast proof; decoration on chrome does not. D-0001-6 is scoped to content surfaces, and the character pass stays on chrome deliberately.
 
@@ -111,7 +111,7 @@ Codexterity/
 Full detail in [`docs/specs/css-architecture.md`](../specs/css-architecture.md). Essence:
 
 1. **Layer 1 — Token overrides (does 80% of the work).** ✅ *Built in Phase 2.* A block scoped to `.electron-dark` (and `.electron-light`) redefining the semantic `--color-*`, `--radius-*` variables to the Captain's Cabin palette. Because Codex's Tailwind utilities (`bg-token-*`, `text-token-*`) consume these variables, one override cascades everywhere — including future UI.
-2. **Layer 2 — Named-hook rules.** *Phase 3.* A handful of rules on stable classes (`app-header-tint`, scrollbars, `popupContent`) for the title-bar treatment that tokens alone can't express.
+2. **Layer 2 — Named-hook rules.** ✅ *Shipped 2026-08-01 (D-0001-10), scope narrowed.* `::selection`, `scrollbar-color`, plus three real Tier-2 landmarks — `app-header-tint`, `popupContent`, `app-shell-main-content-top-fade`. Lives in `tools/palette/emit-theme.mjs`, not `theme.css` (see [`css-architecture.md`](../specs/css-architecture.md)). The mockup's other chrome flourishes have no confirmed landmark and wait for Gate 0.
 3. **Layer 3 — Shape & typography.** ✅ *Built in Phase 2.* Tighter `--radius-*`, plus Fraunces and Monaspace Xenon. **Formerly "Texture/atmosphere"** — surface textures were cut (D-0001-6); there are no `--cc-texture-*` variables.
 4. **Layer 4 — Syntax palette.** ✅ *Authored in Phase 2* as `--cc-syntax-*` vars plus `syntax.json`. Which one the editor consumes is a Phase 3 question.
 
@@ -145,7 +145,7 @@ See [`docs/specs/customizable-ui-inventory.md`](../specs/customizable-ui-invento
 
 ## 8. Required assets
 
-See [`docs/specs/asset-manifest.md`](../specs/asset-manifest.md). **Outcome of Phase 2: two OFL fonts, and nothing else.** All tiling textures were cut (D-0001-6); the empty-state hero and the compass-rose crest remain optional and unbuilt. The `.ccskin` is text plus two woff2 files, which retires the 32 MiB cap in §5 as a practical concern.
+See [`docs/specs/asset-manifest.md`](../specs/asset-manifest.md). **Outcome of Phase 2: two OFL fonts, and nothing else.** All tiling textures were cut (D-0001-6). **Phase 3 (2026-08-01) added the empty-state hero** — `hero-empty-state.webp`, 1600×900, 121 KB (D-0001-9) — the theme's only raster asset. The compass-rose crest remains optional and unbuilt. The `.ccskin` is now text, two woff2 files, and one webp, which still sits comfortably under the 32 MiB cap in §5.
 
 ## 9. Packaging / installer strategy per OS
 
@@ -172,7 +172,7 @@ Residual accepted risk: a major OpenAI UI overhaul will need a theme refresh (re
 |---|---|---|
 | **1. Research & Architecture** *(this doc)* | Understand + decide | **Your sign-off on §12** |
 | **2. Palette, Type & Assets** ✅ **COMPLETE** | Lock ground + palette (exact hex, both modes); pick + licence fonts; author syntax palette; decide the asset set | ✅ Approved by owner from a rendered mockup (swatch board + restyled Codex UI, three grounds, both modes, both pairings). 152/152 WCAG AA. Textures cut; no raster assets |
-| **3. CSS & Theme Dev** *(active)* | Embed the hero + approve the character pass (see entry state above); **Gate 0: launch-test the injector (A vs B) on the real app**; then promote Layer 2 into `theme.css`, wire the editor palette, build the hot-reload dev loop | Theme visibly applied to running Codex, verified in-app by you |
+| **3. CSS & Theme Dev** *(active)* | ✅ Hero embedded, ✅ character pass approved and shipped to `emit-theme.mjs` (see entry state above); **Gate 0: launch-test the injector (A vs B) on the real app** *(in progress, separate work stream)*; then wire the editor palette, build the hot-reload dev loop | Theme visibly applied to running Codex, verified in-app by you |
 | **4. Packaging** | `.ccskin` format + injector CLI (apply/restore/verify) + safe-CSS validation | Clean apply/restore round-trip; nothing residual |
 | **5. Windows Installer** | Launcher + MSIX exe resolver + installer + shortcuts | Fresh-machine install works; survives a simulated app-version bump |
 | **6. macOS Installer** | Wrapper `.app` + `.dmg`; **friend's Mac verification** (DOM parity + launch) | Friend confirms theme applies on macOS |

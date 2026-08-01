@@ -7,7 +7,7 @@ Each mockup is a self-contained HTML file — fonts embedded as data URIs, no ex
 | File | Date | What it decided |
 |---|---|---|
 | [`0001-captains-cabin-palette-approval.html`](0001-captains-cabin-palette-approval.html) | 2026-07-31 | The Phase 2 approval sheet. Ground, palette, typography and the asset set. |
-| [`0002-captains-cabin-character-pass.html`](0002-captains-cabin-character-pass.html) | 2026-07-31 | Layer 2 chrome detailing — open. Awaiting the hero image before judgement. |
+| [`0002-captains-cabin-character-pass.html`](0002-captains-cabin-character-pass.html) | 2026-07-31 (built), **2026-08-01 (decided)** | Layer 2 chrome detailing. **Approved and shipped** — see below for what shipped vs what stayed a mockup-only demonstration. |
 
 ## About `0002-captains-cabin-character-pass.html`
 
@@ -17,7 +17,12 @@ It answers a concern raised after Phase 2 committed: with textures cut, the them
 
 Everything it adds decorates **chrome**. Nothing is placed behind body text, so [D-0001-6](../DECISIONS.md) and the contrast proof are untouched.
 
-**It picks up the hero image automatically.** Drop `hero-empty-state.webp` (or `.png`) into `themes/captains-cabin/assets/` and rebuild; no code change. Until then the empty state shows a placeholder, which is why this decision is still open — the hero is the largest single visual element and the theme should not be judged complete without it.
+**It picked up the hero image automatically** once `hero-empty-state.webp` was dropped into `themes/captains-cabin/assets/` and the mockup rebuilt — no code change. That resolved the item blocking judgement.
+
+**Decided 2026-08-01 (D-0001-10).** The owner reviewed the toggle and approved the character pass — but **only part of what this mockup demonstrates actually shipped**, so read the mockup as a superset, not as a preview of the final CSS:
+
+- **Shipped**, into `tools/palette/emit-theme.mjs` (not `theme.css` — see [`css-architecture.md`](../specs/css-architecture.md)): brass selection, thin brass scrollbars, the title-bar hairline on `.app-header-tint`, depth plus a lit top edge on `.popupContent`, and the scroll fade on `.app-shell-main-content-top-fade` resolved to the theme's own ground.
+- **Historical / demonstration-only, deferred pending Gate 0:** the active-task rail, the code-header brass marker, lit button/card edges, and the title-bar crest. These target class names the mockup invented to demonstrate the *idea*, not names ever confirmed in the real app. None of the four landmarks that *did* ship, and none of these deferred ones either, has ever been observed in a running Codex — Gate 0 (the injector launch test) has not run. Treat this mockup's non-shipped flourishes as a wishlist for whatever Gate 0 turns up, not as pending work with a known destination.
 
 ## About `0001-captains-cabin-palette-approval.html`
 
