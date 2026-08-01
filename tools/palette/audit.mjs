@@ -31,6 +31,44 @@ export const CHECKS = [
   ['Focus ring on ground', 'border-focus', 'background-surface', 3.0],
   ['Focus ring on popover', 'border-focus', 'background-elevated-secondary', 3.0],
   ['Brass button on ground', 'background-button-primary', 'background-surface', 3.0],
+
+  // ── Chrome layer (added with the measured token expansion, 2026-08-01) ──────
+  // Every surface the theme newly claims has to carry the same ink it did before,
+  // and every accent that is now brass has to stay legible AS TEXT — the accent
+  // trace in docs/research/phase3-inventory-findings.md shows these tokens
+  // painting link text and icons, not just fills.
+  ['Body text on sidebar', 'text-primary', 'background-surface-under', 4.5],
+  ['Supporting text on sidebar', 'text-secondary', 'background-surface-under', 4.5],
+  ['Meta text on sidebar', 'text-tertiary', 'background-surface-under', 4.5],
+  ['Body text on editor surface', 'text-primary', 'background-editor-opaque', 4.5],
+  ['Body text on menu bar', 'text-primary', 'background-application-menu', 4.5],
+  ['Menu label on menu bar', 'foreground-application-menu', 'background-application-menu', 4.5],
+  ['Body text on control field', 'text-primary', 'background-control', 4.5],
+  ['Body text on panel', 'text-primary', 'background-panel', 4.5],
+
+  ['Accent text on ground', 'text-accent', 'background-surface', 4.5],
+  ['Accent text on popover', 'text-accent', 'background-elevated-secondary', 4.5],
+  ['Accent text on sidebar', 'text-accent', 'background-surface-under', 4.5],
+  ['Accent icon on ground', 'icon-accent', 'background-surface', 4.5],
+  // The two decorative hues are brass now; check them under their own names so a
+  // future edit that un-collapses them cannot quietly ship an unreadable link.
+  ['Link hue on ground', 'accent-blue', 'background-surface', 4.5],
+  ['Discovery hue on ground', 'accent-purple', 'background-surface', 4.5],
+  ['Success hue on ground', 'accent-green', 'background-surface', 4.5],
+  ['Error hue on ground', 'accent-red', 'background-surface', 4.5],
+  ['Warning hue on ground', 'accent-orange', 'background-surface', 4.5],
+
+  ['Body text on accent surface', 'text-primary', 'background-accent', 4.5],
+  ['Body text on accent surface (active)', 'text-primary', 'background-accent-active', 4.5],
+  ['Body text on hovered row', 'text-primary', 'background-button-secondary-hover', 4.5],
+  ['Body text on pressed row', 'text-primary', 'background-button-secondary-active', 4.5],
+  ['Meta text on hovered row', 'text-tertiary', 'background-button-secondary-hover', 4.5],
+  ['Body text on warning ground', 'text-primary', 'background-status-warning', 4.5],
+  ['Body text on error ground', 'text-primary', 'background-status-error', 4.5],
+  ['Error edge on ground', 'border-error', 'background-surface', 3.0],
+  ['Warning edge on ground', 'border-warning', 'background-surface', 3.0],
+  ['Modified decoration on ground', 'decoration-modified', 'background-surface', 4.5],
+  ['Unchanged decoration on ground', 'decoration-unchanged', 'background-surface', 3.0],
 ];
 
 export function run(p) {

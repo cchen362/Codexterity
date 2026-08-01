@@ -97,6 +97,151 @@ const ROLE = {
 // way. The ground's identity carries into light mode through the ink and borders.
 const PARCHMENT = { L: 0.930, C: 0.026, H: 85 };
 
+/**
+ * The chrome layer — everything outside the six core surfaces and four ink tiers.
+ *
+ * WHY THIS EXISTS. The measured inventory
+ * (docs/research/phase3-inventory-findings.md) found that Codex defines 97 custom
+ * properties on `.electron-dark`, and this theme originally claimed 24 of them.
+ * The unclaimed 73 are precisely what stayed stock in the running app: the
+ * sidebar (`background-surface-under`), the menus
+ * (`background-elevated-primary-opaque`, `background-application-menu`), the
+ * editor surfaces (`background-editor-opaque`), and every accent.
+ *
+ * D-0001-11 — ACCENT POLICY, decided by the owner 2026-08-01 from the measured
+ * accent trace. The design floor permits ONE accent, and brass is it, so the two
+ * DECORATIVE accents (`accent-blue`, `accent-purple` — the link/mention hue and
+ * the discovery hue) collapse into brass. The three SEMANTIC status hues
+ * (`accent-green`, `accent-red`, `accent-orange`) do NOT: an error that looks
+ * identical to a success is a readability failure, and readability outranks
+ * aesthetics. They are instead re-derived into this theme's own world by reusing
+ * the status inks, which are already OKLCH-solved against this ground for AA.
+ * Do not "finish the job" by collapsing the status hues too.
+ *
+ * Everything here is DERIVED from values already solved above — no new hand-picked
+ * colour enters the theme through this function.
+ *
+ * @param p      the partially built palette (surfaces + ink + status already solved)
+ * @param ctx    { surf, tint, worst, ground, dir } from the caller's own mode
+ */
+function deriveChrome(p, { surf, tint, worst, dir }) {
+  // ── Surfaces the app paints that the core ramp did not name ────────────────
+  // The sidebar sits a step BELOW the ground, as Codex's own does (#0e0e0e under
+  // a #111111 ground). Going down rather than up keeps every text/surface pair
+  // already solved against the LIGHTEST surface comfortably valid.
+  p['background-surface-under']            = surf(dir === 'up' ? -0.014 : -0.014);
+  p['background-editor-opaque']            = p['token-diff-surface'];
+  p['background-elevated-primary-opaque']  = p['background-elevated-primary'];
+  p['background-elevated-secondary-opaque'] = p['background-elevated-secondary'];
+  p['background-control']                  = p['token-bg-tertiary'];
+  p['background-control-opaque']           = p['token-bg-tertiary'];
+  p['background-panel']                    = p['background-elevated-primary'];
+
+  // The application menu bar — its own surface in Codex, and one of the three
+  // regions Gate 0 saw stay stock.
+  p['background-application-menu']         = surf(dir === 'up' ? 0.030 : -0.026);
+  p['foreground-application-menu']         = p['text-secondary'];
+  p['border-application-menu-separator']   = p['border'];
+
+  // ── The one accent, and the two decorative hues that collapse into it ──────
+  // Solved against the WORST (lightest in dark mode, darkest in light) surface so
+  // accent text clears AA wherever it lands, not merely on the ground.
+  p['text-accent']    = solveL(ROLE.brass, worst, 4.8, dir);
+  p['icon-accent']    = p['text-accent'];
+  p['accent-blue']    = p['text-accent'];   // link / mention  — decorative, collapses
+  p['accent-purple']  = p['text-accent'];   // discovery       — decorative, collapses
+
+  // ── The three semantic status hues — kept distinct, re-derived in-palette ──
+  p['accent-green']   = p['text-success'];
+  p['accent-red']     = p['text-error'];
+  p['accent-orange']  = p['text-warning'];
+  p['accent-yellow']  = p['text-warning'];
+  p['icon-success']   = p['text-success'];
+  p['icon-warning']   = p['text-warning'];
+  p['icon-error']     = p['text-error'];
+  p['border-error']   = p['text-error'];
+  p['border-warning'] = p['text-warning'];
+
+  // Git decorations follow the same three hues; "unchanged" is deliberately mute.
+  p['decoration-added']     = p['text-success'];
+  p['decoration-deleted']   = p['text-error'];
+  p['decoration-modified']  = p['text-warning'];
+  p['decoration-unchanged'] = p['text-quaternary'];
+
+  // ── Accent surfaces: selection, find-match, progress. Brass-tinted ground,
+  //    never brass itself — a fill would break the "accent is never a background
+  //    fill" rule in the design floor.
+  //
+  // Every step below is a FRACTION of the ramp's own extent (ground → the surface
+  // the ink was solved against) rather than a fixed lightness delta. That is what
+  // makes the guard at the end of this function satisfiable by construction: a
+  // fraction under 1.0 cannot land outside the ramp, in either mode, for any
+  // ground. Fixed deltas were tried first and were wrong for light mode, whose
+  // ramp extent is 0.050 where dark's is 0.082 — the same number is a modest lift
+  // in one and off the end of the ramp in the other.
+  const aDir = dir === 'up' ? 1 : -1;
+  const extent = Math.abs(hexToOklch(worst).L - hexToOklch(p['background-surface']).L);
+  const step = (fraction) => aDir * fraction * extent;
+
+  p['background-accent']        = tint(ROLE.brass.H, step(0.49));
+  p['background-accent-hover']  = tint(ROLE.brass.H, step(0.71));
+  p['background-accent-active'] = tint(ROLE.brass.H, step(0.93));
+
+  // Row hover / press. These sit under list rows everywhere in the sidebar.
+  //
+  // The steps are small on purpose, and the size is a constraint rather than a
+  // taste call. Every ink tier above is solved against `worst` — the lightest
+  // surface in the ramp (dark mode) — so a hover surface LIGHTER than `worst`
+  // silently invalidates that proof. A first attempt used +0.100/+0.120 and the
+  // audit caught it: meta text landed at 4.32:1 on a hovered row. A hover lift
+  // should in any case read as less elevation than a popover, not more; stock
+  // Codex uses roughly an 8% white overlay, which is about this size.
+  p['background-button-secondary-hover']  = surf(step(0.55));
+  p['background-button-secondary-active'] = surf(step(0.76));
+  p['background-button-tertiary']         = p['background-button-secondary'];
+  p['background-button-tertiary-hover']   = p['background-button-secondary-hover'];
+  p['background-button-tertiary-active']  = p['background-button-secondary-active'];
+
+  // Status surfaces to match the success/danger pair the core already solves.
+  p['background-status-warning'] = tint(ROLE.warning.H, step(0.67));
+  p['background-status-error']   = p['background-danger-active'];
+
+  // Labels on the filled brass button, and the tertiary ink tier Codex names
+  // separately from ours.
+  p['text-button-primary']        = p['text-on-accent'];
+  p['text-button-secondary']      = p['text-secondary'];
+  p['text-button-tertiary']       = p['text-tertiary'];
+  p['text-foreground-tertiary']   = p['text-tertiary'];
+
+  // GUARD — the ink tiers are solved against `worst`, so no surface this layer
+  // introduces may sit beyond it, or every text/surface figure the theme claims
+  // becomes optimistic for the surfaces added here. The audit would catch it for
+  // the specific pairs it lists; this catches it for all of them, at the point
+  // where the mistake is actually made. If a design genuinely needs a lighter
+  // surface, raise it in the core ramp and re-solve the ink — do not relax this.
+  const worstL = hexToOklch(worst).L;
+  const beyond = (hex) => (dir === 'up' ? hexToOklch(hex).L > worstL + 1e-6
+                                        : hexToOklch(hex).L < worstL - 1e-6);
+  // Scoped to surfaces that carry the ORDINARY ink tiers. The brass button fills
+  // are deliberately outside the ramp — they are the accent, and they carry
+  // `text-on-accent`, which is solved against the darkest brass state and audited
+  // separately ("Button label on brass", ×3). Holding them to the neutral ramp's
+  // bound would forbid the accent from being an accent.
+  const CARRIES_ORDINARY_INK = /^(background|token-bg)/;
+  const ACCENT_FILL = /^background-button-primary/;
+  const offenders = Object.entries(p)
+    .filter(([k, v]) => CARRIES_ORDINARY_INK.test(k) && !ACCENT_FILL.test(k) &&
+                        typeof v === 'string' && beyond(v))
+    .map(([k, v]) => `${k} (${v})`);
+  if (offenders.length) {
+    throw new Error(
+      `Surface(s) beyond the one the ink was solved against (${worst}): ${offenders.join(', ')}. ` +
+      'Raise the core ramp and re-solve the ink rather than relaxing this check.'
+    );
+  }
+  return p;
+}
+
 export function buildDark(groundHex) {
   const g = hexToOklch(groundHex);
   const surf = (dL, dC = 0) => oklchToHex({ L: g.L + dL, C: Math.max(0, g.C + dC), H: g.H });
@@ -145,7 +290,7 @@ export function buildDark(groundHex) {
   p['background-danger-active']  = tint(ROLE.error.H, 0.055);
   p['editor-added']              = tint(ROLE.success.H, 0.042);
   p['editor-deleted']            = tint(ROLE.error.H, 0.042);
-  return p;
+  return deriveChrome(p, { surf, tint, worst, dir: 'up' });
 }
 
 export function buildLight(groundHex) {
@@ -201,7 +346,7 @@ export function buildLight(groundHex) {
   p['background-danger-active']  = tint(ROLE.error.H, -0.030);
   p['editor-added']              = tint(ROLE.success.H, -0.018);
   p['editor-deleted']            = tint(ROLE.error.H, -0.018);
-  return p;
+  return deriveChrome(p, { surf, tint, worst, dir: 'down' });
 }
 
 // Syntax palette, derived so it always sits on that ground's code surface.

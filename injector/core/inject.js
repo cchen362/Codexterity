@@ -123,11 +123,43 @@ async function reportRootEnvironment(webContents) {
     (() => {
       const root = document.documentElement;
       const cs = getComputedStyle(root);
+      // Two kinds of token, on purpose.
+      //
+      // The first four are ones WE define, and prove the sheet applied at all.
+      // The rest are DOWNSTREAM of ours — Codex derives them through its own
+      // four-stage chain (see docs/research/phase3-inventory-findings.md §1),
+      // and they are what actually paints the sidebar, the menu bar, links and
+      // the empty-state card icons. Checking only our own names would prove the
+      // stylesheet landed while the app still looked stock, which is exactly the
+      // gap Gate 0 fell into. 47 of our tokens are also set INLINE on <html>, so
+      // this is also the standing check that the cascade still goes our way.
       const probe = ['--color-background-surface', '--color-text-primary',
-                     '--color-background-button-primary', '--radius-lg'];
+                     '--color-background-button-primary', '--radius-lg',
+                     '--color-background-surface-under', '--color-accent-purple',
+                     '--color-token-charts-purple', '--color-token-text-link-foreground',
+                     '--color-background-application-menu', '--color-token-side-bar-background'];
       const tokens = {};
       for (const t of probe) tokens[t] = cs.getPropertyValue(t).trim() || '(unset)';
+      // A resolved token is not a painted pixel. The empty-state card icons were
+      // the visible symptom of the multi-accent violation, so the check that
+      // closes it has to read what the ELEMENTS compute, not what the root
+      // holds — an icon could still be painted by an inline fill attribute or a
+      // hue we never traced. Sampled by the utility classes the icons actually
+      // carry (docs/research/phase3-inventory-findings.md §3).
+      const painted = [];
+      for (const sel of ['.text-token-charts-green', '.text-token-charts-blue',
+                         '.text-token-charts-purple', '.text-token-charts-orange',
+                         '.text-token-charts-red']) {
+        const el = document.querySelector(sel);
+        if (!el) { painted.push(sel + ' = (absent)'); continue; }
+        const cs = getComputedStyle(el);
+        const kid = el.querySelector('path, circle, rect');
+        painted.push(sel + ' color=' + cs.color +
+          (kid ? ' childFill=' + getComputedStyle(kid).fill : ''));
+      }
+
       return {
+        painted,
         rootClass: root.className || '(none)',
         bodyClass: document.body ? (document.body.className || '(none)') : '(no body)',
         styleTagPresent: !!document.getElementById('codexterity-theme'),
@@ -146,6 +178,7 @@ async function reportRootEnvironment(webContents) {
     for (const [name, value] of Object.entries(env.tokens)) {
       log(`  ${name}: ${value}`);
     }
+    for (const row of env.painted || []) log(`  painted ${row}`);
   } catch (err) {
     log(`  root environment probe FAILED: ${err.message}`);
   }
@@ -197,6 +230,34 @@ function scheduleProbes(webContents) {
       runProbe(webContents, log, outDir, `wc${webContents.id}-t${ms}`);
     }, ms);
   });
+}
+
+/**
+ * Re-read the token report once the app has settled.
+ *
+ * reportRootEnvironment runs at `dom-ready`, which is EARLY — before Codex's
+ * later stylesheets have loaded. At that moment its own downstream tokens
+ * (--color-token-*) have not been defined yet and read back as "(unset)". That
+ * is a property of when we sampled, not evidence that the theme failed to
+ * reach them, and reading it as a finding would be the same mistake as Gate 0's
+ * invalid measurement in the opposite direction.
+ *
+ * Set CDX_VERIFY_AT=<ms> to take a second reading after the app has settled.
+ * That is the one that tells you whether the theme reached what Codex paints.
+ */
+function scheduleSettledVerification(webContents) {
+  const raw = process.env.CDX_VERIFY_AT;
+  if (!raw) return;
+  const ms = Number(raw);
+  if (!Number.isFinite(ms) || ms < 0) {
+    log(`CDX_VERIFY_AT="${raw}" is not a millisecond value; skipping the settled re-check.`);
+    return;
+  }
+  setTimeout(() => {
+    if (webContents.isDestroyed()) return;
+    log(`settled token re-check on webContents#${webContents.id} (+${ms}ms):`);
+    reportRootEnvironment(webContents);
+  }, ms);
 }
 
 async function reportLandmarks(webContents) {
@@ -309,6 +370,8 @@ function attachToWindow(win, css) {
     });
     return;
   }
+
+  wc.once('dom-ready', () => scheduleSettledVerification(wc));
 
   wc.on('dom-ready', () => {
     log(`dom-ready on ${label} (url=${wc.getURL()})`);

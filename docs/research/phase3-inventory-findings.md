@@ -107,11 +107,51 @@ names would be pointless.
 - **Our overrides win the cascade for the right reason.** Codex's stage-1 definitions sit in
   `@layer utilities`; ours are **unlayered**, and unlayered author styles beat layered ones
   regardless of order or specificity. No `!important` is needed anywhere.
-- **Only 67 custom properties are inline on `<html>`** (2,957 bytes) — all sizing and a few
-  `--color-*` duplicates, none load-bearing for colour. **Nothing needs `!important`.** This
-  was the one fact that could have forced an ugly strategy, and it did not.
+- **67 custom properties are inline on `<html>`** (2,957 bytes), written by Codex a moment
+  after boot — and **47 of them are ones this theme also defines**, so the theme *does*
+  need `!important`. See §1.1; an earlier draft of this document claimed the opposite.
 - **There are no adopted stylesheets.** `document.adoptedStyleSheets` is empty; everything is
   reachable from `document.styleSheets`.
+
+### 1.1 The theme needs `!important` — measured, after this document first said it did not
+
+This section corrects a claim made above in an earlier draft. It is left visible rather than
+quietly edited away, because the wrong version was arrived at by exactly the kind of
+reasoning this project keeps having to unlearn: the inline token *names* were read, judged
+"not load-bearing for colour" by eye, and never checked against the theme's own list. 47 of
+the 67 overlap.
+
+**What was measured.** Injecting the expanded theme without `!important` and re-reading the
+tokens after the app settled (`CDX_VERIFY_AT=15000`):
+
+| Token | At `dom-ready` | At +15 s | |
+|---|---|---|---|
+| `--color-background-surface` | `#0E141F` (ours) | `#111111` | **reverted to stock** |
+| `--radius-lg` | `7px` (ours) | `calc(.625rem * 1.25)` | **reverted to stock** |
+| `--color-background-button-primary` | `#C0A454` (ours) | `rgb(9,9,9)` | **reverted to stock** |
+| `--color-text-primary` | `#F4EAD4` (ours) | `#F4EAD4` (ours) | held — Codex never writes this one |
+
+Our `<style id="codexterity-theme">` was still **present** in the document at +15 s and still
+last in `<head>`. It was not removed; it was **outranked**. An inline declaration beats every
+non-important author rule at any specificity, and the one token that held is precisely the
+one Codex does not write inline.
+
+**Why this is a cascade fact, not a defeat.** It is the author-origin cost that D-0001-1's
+amendment already names, coming due. A **user-origin** stylesheet — what
+`webContents.insertCSS()` would have produced — beats inline styles *without* `!important`.
+`insertCSS` is broken on this fork, so the theme is author-origin, and `!important` is the
+only cascade mechanism that reaches an inline declaration at all.
+
+**Why it is safe.** Every important declaration is a custom-property *definition*. Marking a
+definition important fixes which value the variable holds; it forces nothing on the
+properties that read it, so Codex's own layout, state and interaction rules keep winning
+normally. Recorded as **D-0001-12**.
+
+**The lesson for the next probe.** The first settled reading also showed several
+`--color-token-*` as `(unset)` — which was *not* a finding, but an artefact of sampling at
+`dom-ready`, before Codex's later stylesheets load. A negative result needs its control flow
+checked before it is believed, in both directions: one sample was falsely reassuring and the
+next was falsely alarming, and both were taken with the same instrument.
 
 ---
 
@@ -176,8 +216,20 @@ and nothing to fight. **All five collapse by overriding five stage-1 tokens**:
 `--color-text-accent`, `--color-accent-blue`, `--color-accent-green`, `--color-accent-purple`,
 `--color-accent-orange`.
 
-That is a five-line fix once the palette values are decided — and deciding them is a design
-question, not an engineering one (see §6).
+**RESOLVED the same day.** The owner chose the policy recorded as **D-0001-11**: the two
+*decorative* hues (link blue, discovery purple) collapse into brass; the three *semantic*
+status hues stay distinct but are re-derived into this theme's own world. Verified in the
+running app by reading what the icons actually compute, not merely what the root resolves:
+
+```
+painted .text-token-charts-blue    color=rgb(172,143,63)   childFill=rgb(172,143,63)   → brass #AC8F3F
+painted .text-token-charts-purple  color=rgb(172,143,63)   childFill=rgb(172,143,63)   → brass #AC8F3F
+painted .text-token-charts-green   color=rgb(102,158,122)  childFill=rgb(102,158,122)  → verdigris
+painted .text-token-charts-orange  color=rgb(212,124,70)   childFill=rgb(212,124,70)   → burnt ochre
+```
+
+A resolved token is not a painted pixel, so the check reads the elements. That check is now
+permanent in `reportRootEnvironment` and runs on every launch.
 
 ---
 

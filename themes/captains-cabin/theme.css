@@ -19,6 +19,29 @@
  * selectors are a last resort; each one is a declared LANDMARK, marked as such
  * below, and degrades to the stock look rather than breaking if it stops matching.
  *
+ * D-0001-12 — Every declaration below is !important, and it has to be.
+ *
+ * Codex writes 67 custom properties as an INLINE style on <html> a moment after
+ * boot, and 47 of them are ones this theme also defines. An inline declaration
+ * outranks every non-important author rule at any specificity, so without
+ * !important the theme applies at dom-ready and is then silently reverted: our
+ * <style> element is still in the document (verified present), still last in
+ * <head>, and simply outranked. Measured directly — with CDX_VERIFY_AT=15000 the
+ * settled re-check read --color-background-surface back as Codex's stock
+ * #111111 while our own inert token --color-text-primary, which Codex never
+ * writes inline, still read #F4EAD4.
+ *
+ * This is the author-origin cost recorded in D-0001-1's amendment coming due. A
+ * USER-origin stylesheet — what webContents.insertCSS() would have given us —
+ * beats inline styles without !important, but insertCSS is broken on this
+ * Electron fork. !important is not a specificity shortcut here; it is the only
+ * cascade mechanism that reaches an inline declaration at all.
+ *
+ * It is safe in scope: these are custom-property DEFINITIONS. Marking a
+ * definition important fixes which value the variable holds; it forces nothing
+ * on the properties that read it, so Codex's own layout and state rules keep
+ * winning normally.
+ *
  * D-0001-6 — Surfaces are FLAT token colour. No tiling texture, no gradient wash
  * behind content. Every contrast figure this theme claims is computed against a
  * flat colour; luminance variation behind text would make the governing value the
@@ -30,132 +53,274 @@
   /* Dark — the night watch */
 
   /* Surfaces — the six-step ground ramp */
-  --color-background-surface: #0E141F;
-  --color-token-main-surface-primary: #0E141F;
-  --color-token-bg-secondary: #151B26;
-  --color-background-elevated-primary: #19202B;
-  --color-background-elevated-secondary: #222731;
-  --color-token-bg-tertiary: #222731;
-  --color-token-diff-surface: #111722;
+  --color-background-surface: #0E141F !important;
+  --color-token-main-surface-primary: #0E141F !important;
+  --color-token-bg-secondary: #151B26 !important;
+  --color-background-elevated-primary: #19202B !important;
+  --color-background-elevated-secondary: #222731 !important;
+  --color-token-bg-tertiary: #222731 !important;
+  --color-token-diff-surface: #111722 !important;
 
   /* Text — four tiers of ink */
-  --color-text-primary: #F4EAD4;
-  --color-text-foreground: #F4EAD4;
-  --color-token-foreground: #F4EAD4;
-  --color-text-secondary: #BAB19C;
-  --color-text-foreground-secondary: #BAB19C;
-  --color-text-tertiary: #978E7A;
-  --color-text-quaternary: #6E6552;
-  --color-text-on-accent: #23272F;
+  --color-text-primary: #F4EAD4 !important;
+  --color-text-foreground: #F4EAD4 !important;
+  --color-token-foreground: #F4EAD4 !important;
+  --color-text-secondary: #BAB19C !important;
+  --color-text-foreground-secondary: #BAB19C !important;
+  --color-text-tertiary: #978E7A !important;
+  --color-text-quaternary: #6E6552 !important;
+  --color-text-on-accent: #23272F !important;
 
   /* Status ink */
-  --color-text-success: #669E7A;
-  --color-text-warning: #D47C46;
-  --color-text-error: #DB746E;
+  --color-text-success: #669E7A !important;
+  --color-text-warning: #D47C46 !important;
+  --color-text-error: #DB746E !important;
 
   /* Borders */
-  --color-border-light: #151B26;
-  --color-border: #1E2430;
-  --color-border-heavy: #5F6675;
-  --color-border-focus: #C0A454;
+  --color-border-light: #151B26 !important;
+  --color-border: #1E2430 !important;
+  --color-border-heavy: #5F6675 !important;
+  --color-border-focus: #C0A454 !important;
 
   /* Brass — the single accent */
-  --color-background-button-primary: #C0A454;
-  --color-background-button-primary-hover: #D2B565;
-  --color-background-button-primary-active: #AF9342;
-  --color-background-button-secondary: #222731;
+  --color-background-button-primary: #C0A454 !important;
+  --color-background-button-primary-hover: #D2B565 !important;
+  --color-background-button-primary-active: #AF9342 !important;
+  --color-background-button-secondary: #222731 !important;
 
   /* Icons */
-  --color-icon-primary: #F4EAD4;
-  --color-icon-secondary: #978E7A;
-  --color-icon-tertiary: #6E6552;
+  --color-icon-primary: #F4EAD4 !important;
+  --color-icon-secondary: #978E7A !important;
+  --color-icon-tertiary: #6E6552 !important;
 
   /* Status & diff surfaces */
-  --color-background-status-success: #0C2717;
-  --color-background-danger-active: #331716;
-  --color-editor-added: #092414;
-  --color-editor-deleted: #301413;
+  --color-background-status-success: #0C2717 !important;
+  --color-background-status-warning: #311A0B !important;
+  --color-background-status-error: #331716 !important;
+  --color-background-danger-active: #331716 !important;
+  --color-editor-added: #092414 !important;
+  --color-editor-deleted: #301413 !important;
+
+  /* Chrome surfaces the app paints separately */
+  --color-background-surface-under: #0B111C !important;
+  --color-background-panel: #19202B !important;
+  --color-background-editor-opaque: #111722 !important;
+  --color-background-elevated-primary-opaque: #19202B !important;
+  --color-background-elevated-secondary-opaque: #222731 !important;
+  --color-background-control: #222731 !important;
+  --color-background-control-opaque: #222731 !important;
+
+  /* Application menu bar */
+  --color-background-application-menu: #151B26 !important;
+  --color-foreground-application-menu: #BAB19C !important;
+  --color-border-application-menu-separator: #1E2430 !important;
+
+  /* Accent — brass, and the two decorative hues that collapse into it (D-0001-11) */
+  --color-text-accent: #AC8F3F !important;
+  --color-icon-accent: #AC8F3F !important;
+  --color-accent-blue: #AC8F3F !important;
+  --color-accent-purple: #AC8F3F !important;
+  --color-background-accent: #251C01 !important;
+  --color-background-accent-hover: #2A2004 !important;
+  --color-background-accent-active: #2E2408 !important;
+
+  /* Status hues — kept DISTINCT on purpose (D-0001-11) */
+  --color-accent-green: #669E7A !important;
+  --color-accent-red: #DB746E !important;
+  --color-accent-orange: #D47C46 !important;
+  --color-accent-yellow: #D47C46 !important;
+  --color-icon-success: #669E7A !important;
+  --color-icon-warning: #D47C46 !important;
+  --color-icon-error: #DB746E !important;
+  --color-border-error: #DB746E !important;
+  --color-border-warning: #D47C46 !important;
+  --color-decoration-added: #669E7A !important;
+  --color-decoration-deleted: #DB746E !important;
+  --color-decoration-modified: #D47C46 !important;
+  --color-decoration-unchanged: #6E6552 !important;
+
+  /* Interaction states — list rows and secondary buttons */
+  --color-background-button-secondary-hover: #181E2A !important;
+  --color-background-button-secondary-active: #1C222E !important;
+  --color-background-button-tertiary: #222731 !important;
+  --color-background-button-tertiary-hover: #181E2A !important;
+  --color-background-button-tertiary-active: #1C222E !important;
+
+  /* Button and tertiary ink */
+  --color-text-button-primary: #23272F !important;
+  --color-text-button-secondary: #BAB19C !important;
+  --color-text-button-tertiary: #978E7A !important;
+  --color-text-foreground-tertiary: #978E7A !important;
 
   /* Aliased spellings of the same values */
-  --color-token-border-default: #1E2430;
-  --color-token-border-light: #151B26;
-  --color-token-border-heavy: #5F6675;
+  --color-token-border-default: #1E2430 !important;
+  --color-token-border-light: #151B26 !important;
+  --color-token-border-heavy: #5F6675 !important;
+
+  /* Terminal — the 16 ANSI slots, under Codex's VS Code spellings */
+  --vscode-terminal-ansiBlack: #6E6552 !important;
+  --vscode-terminal-ansiBrightBlack: #978E7A !important;
+  --vscode-terminal-ansiRed: #DB746E !important;
+  --vscode-terminal-ansiBrightRed: #DB746E !important;
+  --vscode-terminal-ansiGreen: #669E7A !important;
+  --vscode-terminal-ansiBrightGreen: #669E7A !important;
+  --vscode-terminal-ansiYellow: #D47C46 !important;
+  --vscode-terminal-ansiBrightYellow: #D47C46 !important;
+  --vscode-terminal-ansiBlue: #6790A5 !important;
+  --vscode-terminal-ansiBrightBlue: #6790A5 !important;
+  --vscode-terminal-ansiMagenta: #CA7260 !important;
+  --vscode-terminal-ansiBrightMagenta: #CA7260 !important;
+  --vscode-terminal-ansiCyan: #57958C !important;
+  --vscode-terminal-ansiBrightCyan: #57958C !important;
+  --vscode-terminal-ansiWhite: #BAB19C !important;
+  --vscode-terminal-ansiBrightWhite: #F4EAD4 !important;
 
   /* Syntax palette — consumed by the editor layer (see syntax.json) */
-  --cc-syntax-variable: #F4EAD4;
-  --cc-syntax-keyword: #CA7260;
-  --cc-syntax-string: #699569;
-  --cc-syntax-function: #AE8339;
-  --cc-syntax-number: #6790A5;
-  --cc-syntax-type: #57958C;
-  --cc-syntax-operator: #8F8A7B;
-  --cc-syntax-comment: #898475;
+  --cc-syntax-variable: #F4EAD4 !important;
+  --cc-syntax-keyword: #CA7260 !important;
+  --cc-syntax-string: #699569 !important;
+  --cc-syntax-function: #AE8339 !important;
+  --cc-syntax-number: #6790A5 !important;
+  --cc-syntax-type: #57958C !important;
+  --cc-syntax-operator: #8F8A7B !important;
+  --cc-syntax-comment: #898475 !important;
 }
 
 .electron-light {
   /* Light — the chart room by day */
 
   /* Surfaces — the six-step ground ramp */
-  --color-background-surface: #F0E7D5;
-  --color-token-main-surface-primary: #F9F0DD;
-  --color-token-bg-secondary: #E7DECC;
-  --color-background-elevated-primary: #FFF6E4;
-  --color-background-elevated-secondary: #F9F0DD;
-  --color-token-bg-tertiary: #DFD7C5;
-  --color-token-diff-surface: #F6EDDB;
+  --color-background-surface: #F0E7D5 !important;
+  --color-token-main-surface-primary: #F9F0DD !important;
+  --color-token-bg-secondary: #E7DECC !important;
+  --color-background-elevated-primary: #FFF6E4 !important;
+  --color-background-elevated-secondary: #F9F0DD !important;
+  --color-token-bg-tertiary: #DFD7C5 !important;
+  --color-token-diff-surface: #F6EDDB !important;
 
   /* Text — four tiers of ink */
-  --color-text-primary: #182336;
-  --color-text-foreground: #182336;
-  --color-token-foreground: #182336;
-  --color-text-secondary: #34425C;
-  --color-text-foreground-secondary: #34425C;
-  --color-text-tertiary: #4D5D7B;
-  --color-text-quaternary: #7081A0;
-  --color-text-on-accent: #FDF7E8;
+  --color-text-primary: #182336 !important;
+  --color-text-foreground: #182336 !important;
+  --color-token-foreground: #182336 !important;
+  --color-text-secondary: #34425C !important;
+  --color-text-foreground-secondary: #34425C !important;
+  --color-text-tertiary: #4D5D7B !important;
+  --color-text-quaternary: #7081A0 !important;
+  --color-text-on-accent: #FDF7E8 !important;
 
   /* Status ink */
-  --color-text-success: #2E6443;
-  --color-text-warning: #92440A;
-  --color-text-error: #9B3A37;
+  --color-text-success: #2E6443 !important;
+  --color-text-warning: #92440A !important;
+  --color-text-error: #9B3A37 !important;
 
   /* Borders */
-  --color-border-light: #E7DECC;
-  --color-border: #D9D0BE;
-  --color-border-heavy: #72819D;
-  --color-border-focus: #896D15;
+  --color-border-light: #E7DECC !important;
+  --color-border: #D9D0BE !important;
+  --color-border-heavy: #72819D !important;
+  --color-border-focus: #896D15 !important;
 
   /* Brass — the single accent */
-  --color-background-button-primary: #896D15;
-  --color-background-button-primary-hover: #7A600C;
-  --color-background-button-primary-active: #6C5402;
-  --color-background-button-secondary: #E7DECC;
+  --color-background-button-primary: #896D15 !important;
+  --color-background-button-primary-hover: #7A600C !important;
+  --color-background-button-primary-active: #6C5402 !important;
+  --color-background-button-secondary: #E7DECC !important;
 
   /* Icons */
-  --color-icon-primary: #182336;
-  --color-icon-secondary: #4F5D79;
-  --color-icon-tertiary: #7081A0;
+  --color-icon-primary: #182336 !important;
+  --color-icon-secondary: #4F5D79 !important;
+  --color-icon-tertiary: #7081A0 !important;
 
   /* Status & diff surfaces */
-  --color-background-status-success: #CAE6D3;
-  --color-background-danger-active: #F8D4D1;
-  --color-editor-added: #CEEAD7;
-  --color-editor-deleted: #FCD8D5;
+  --color-background-status-success: #CAE6D3 !important;
+  --color-background-status-warning: #F4D6C6 !important;
+  --color-background-status-error: #F8D4D1 !important;
+  --color-background-danger-active: #F8D4D1 !important;
+  --color-editor-added: #CEEAD7 !important;
+  --color-editor-deleted: #FCD8D5 !important;
+
+  /* Chrome surfaces the app paints separately */
+  --color-background-surface-under: #EBE2D0 !important;
+  --color-background-panel: #FFF6E4 !important;
+  --color-background-editor-opaque: #F6EDDB !important;
+  --color-background-elevated-primary-opaque: #FFF6E4 !important;
+  --color-background-elevated-secondary-opaque: #F9F0DD !important;
+  --color-background-control: #DFD7C5 !important;
+  --color-background-control-opaque: #DFD7C5 !important;
+
+  /* Application menu bar */
+  --color-background-application-menu: #E7DECC !important;
+  --color-foreground-application-menu: #34425C !important;
+  --color-border-application-menu-separator: #D9D0BE !important;
+
+  /* Accent — brass, and the two decorative hues that collapse into it (D-0001-11) */
+  --color-text-accent: #6F5708 !important;
+  --color-icon-accent: #6F5708 !important;
+  --color-accent-blue: #6F5708 !important;
+  --color-accent-purple: #6F5708 !important;
+  --color-background-accent: #EADFC2 !important;
+  --color-background-accent-hover: #E6DCBF !important;
+  --color-background-accent-active: #E3D8BB !important;
+
+  /* Status hues — kept DISTINCT on purpose (D-0001-11) */
+  --color-accent-green: #2E6443 !important;
+  --color-accent-red: #9B3A37 !important;
+  --color-accent-orange: #92440A !important;
+  --color-accent-yellow: #92440A !important;
+  --color-icon-success: #2E6443 !important;
+  --color-icon-warning: #92440A !important;
+  --color-icon-error: #9B3A37 !important;
+  --color-border-error: #9B3A37 !important;
+  --color-border-warning: #92440A !important;
+  --color-decoration-added: #2E6443 !important;
+  --color-decoration-deleted: #9B3A37 !important;
+  --color-decoration-modified: #92440A !important;
+  --color-decoration-unchanged: #7081A0 !important;
+
+  /* Interaction states — list rows and secondary buttons */
+  --color-background-button-secondary-hover: #E7DECC !important;
+  --color-background-button-secondary-active: #E3DBC9 !important;
+  --color-background-button-tertiary: #E7DECC !important;
+  --color-background-button-tertiary-hover: #E7DECC !important;
+  --color-background-button-tertiary-active: #E3DBC9 !important;
+
+  /* Button and tertiary ink */
+  --color-text-button-primary: #FDF7E8 !important;
+  --color-text-button-secondary: #34425C !important;
+  --color-text-button-tertiary: #4D5D7B !important;
+  --color-text-foreground-tertiary: #4D5D7B !important;
 
   /* Aliased spellings of the same values */
-  --color-token-border-default: #D9D0BE;
-  --color-token-border-light: #E7DECC;
-  --color-token-border-heavy: #72819D;
+  --color-token-border-default: #D9D0BE !important;
+  --color-token-border-light: #E7DECC !important;
+  --color-token-border-heavy: #72819D !important;
+
+  /* Terminal — the 16 ANSI slots, under Codex's VS Code spellings */
+  --vscode-terminal-ansiBlack: #7081A0 !important;
+  --vscode-terminal-ansiBrightBlack: #4D5D7B !important;
+  --vscode-terminal-ansiRed: #9B3A37 !important;
+  --vscode-terminal-ansiBrightRed: #9B3A37 !important;
+  --vscode-terminal-ansiGreen: #2E6443 !important;
+  --vscode-terminal-ansiBrightGreen: #2E6443 !important;
+  --vscode-terminal-ansiYellow: #92440A !important;
+  --vscode-terminal-ansiBrightYellow: #92440A !important;
+  --vscode-terminal-ansiBlue: #40677C !important;
+  --vscode-terminal-ansiBrightBlue: #40677C !important;
+  --vscode-terminal-ansiMagenta: #9D493A !important;
+  --vscode-terminal-ansiBrightMagenta: #9D493A !important;
+  --vscode-terminal-ansiCyan: #2E6C65 !important;
+  --vscode-terminal-ansiBrightCyan: #2E6C65 !important;
+  --vscode-terminal-ansiWhite: #34425C !important;
+  --vscode-terminal-ansiBrightWhite: #182336 !important;
 
   /* Syntax palette — consumed by the editor layer (see syntax.json) */
-  --cc-syntax-variable: #182336;
-  --cc-syntax-keyword: #9D493A;
-  --cc-syntax-string: #426C44;
-  --cc-syntax-function: #825B10;
-  --cc-syntax-number: #40677C;
-  --cc-syntax-type: #2E6C65;
-  --cc-syntax-operator: #686255;
-  --cc-syntax-comment: #6D675A;
+  --cc-syntax-variable: #182336 !important;
+  --cc-syntax-keyword: #9D493A !important;
+  --cc-syntax-string: #426C44 !important;
+  --cc-syntax-function: #825B10 !important;
+  --cc-syntax-number: #40677C !important;
+  --cc-syntax-type: #2E6C65 !important;
+  --cc-syntax-operator: #686255 !important;
+  --cc-syntax-comment: #6D675A !important;
 }
 
 /*
@@ -163,14 +328,14 @@
  */
 .electron-dark,
 .electron-light {
-  --radius-sm: 3px;
-  --radius-md: 5px;
-  --radius-lg: 7px;
-  --radius-xl: 9px;
-  --radius-2xl: 12px;
-  --radius-3xl: 16px;
-  --radius-4xl: 20px;
-  --radius-full: 9999px;
+  --radius-sm: 3px !important;
+  --radius-md: 5px !important;
+  --radius-lg: 7px !important;
+  --radius-xl: 9px !important;
+  --radius-2xl: 12px !important;
+  --radius-3xl: 16px !important;
+  --radius-4xl: 20px !important;
+  --radius-full: 9999px !important;
 }
 
 /*
@@ -181,11 +346,16 @@
  * texts live in assets/fonts/; the packaging build inlines them as data URIs, so
  * the shipped theme never references a remote resource.
  *
- * LANDMARK — 'pre, code, kbd, samp'. Codex sets an explicit monospace family on
- * code, so inheritance alone cannot reach it. These are semantic HTML elements
- * rather than utility-class combinations, which makes this the most durable
- * structural hook available. If it stops matching, code renders in the stock
- * monospace stack and nothing breaks.
+ * LANDMARK — 'pre, code, kbd, samp'. The theme's ONLY remaining structural
+ * selector, and it is semantic HTML rather than a class, so it cannot be
+ * invalidated by a CSS-module rebuild the way a hashed class can.
+ *
+ * STATUS: unverified, not disproven. It matches nothing on Codex's empty state —
+ * which contains no code, so that is expected rather than evidence of absence
+ * (docs/research/phase3-inventory-findings.md §4.3). It must be re-probed on a
+ * screen containing a code block. If it never matches, code renders in the stock
+ * monospace stack and nothing breaks; the code SURFACE is themed regardless,
+ * through --color-background-editor-opaque, which needs no selector.
  */
 .electron-dark,
 .electron-light {
@@ -214,13 +384,27 @@
  * The accent is always read through var(--color-background-button-primary) so a
  * palette regeneration recolours this layer automatically.
  *
- * LANDMARKS. Four of the rules below target Tier-2 named hooks from
- * docs/specs/customizable-ui-inventory.md. They are hand-written semantic
- * classes rather than hashed utility combos, which makes them the most durable
- * structural hooks the app offers — but NONE has yet been observed in a running
- * Codex, because Gate 0 has not run. Each degrades to the stock look if absent:
- * an unmatched selector paints nothing. If a hook is renamed upstream the theme
- * loses a flourish; it never breaks and never half-styles.
+ * NO STRUCTURAL SELECTORS — re-derived 2026-08-01 against the running app.
+ *
+ * This layer originally targeted four named classes from
+ * docs/specs/customizable-ui-inventory.md §Tier 2. Gate 0 found that ALL FOUR
+ * match nothing in the shipped build, so the treatment the owner approved was
+ * inert. The rebuilt inventory
+ * (docs/research/phase3-inventory-findings.md §4) explains why, and why simply
+ * finding new classes would have been the wrong fix: Codex uses CSS Modules with
+ * BUILD-HASHED class names (_ApplicationMenuTopBar_zbk1f_3), so any such
+ * selector works in testing and breaks on the next Codex release.
+ *
+ * The replacement is better than what it replaces. Codex reads a set of custom
+ * properties it never defines — sanctioned, named tint holes left open for a
+ * host to fill. The title bar's own rule is
+ *   --header-tint: var(--codex-titlebar-tint, transparent);
+ *   background-color: var(--header-tint);
+ * so setting one custom property tints it, with no selector at all. Unset hooks
+ * fall back to their own defaults, so an upstream rename degrades to stock
+ * exactly as an unmatched selector did.
+ *
+ * DO NOT reintroduce a CSS-module class as a landmark here.
  */
 
 /* Selection — no landmark required, so this is the layer's most durable rule. */
@@ -238,32 +422,30 @@
   scrollbar-color: color-mix(in oklab, var(--color-background-button-primary) 45%, transparent) transparent;
 }
 
-/* LANDMARK — .app-header-tint (Tier 2). A brass hairline along the header's
- * lower edge, replacing the stock border rather than adding to it. */
-.electron-dark .app-header-tint,
-.electron-light .app-header-tint {
-  background: var(--color-background-elevated-secondary);
-  border-bottom-color: transparent;
-  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--color-background-button-primary) 34%, transparent);
+/* HOOK — --codex-titlebar-tint. The app's own title-bar tint variable, read 3×
+ * and never defined by Codex, which leaves it for a host to fill. This is the
+ * measured, supported replacement for the dead .app-header-tint landmark: the
+ * title bar's rule is `--header-tint: var(--codex-titlebar-tint, transparent)`,
+ * so one custom property tints it with no selector to go stale. */
+.electron-dark,
+.electron-light {
+  --codex-titlebar-tint: var(--color-background-application-menu) !important;
 }
 
-/* LANDMARK — .popupContent (Tier 2). Depth plus a lit top edge, so a floating
- * panel separates from what is behind it. Shadows appear only here, where a
- * floating element genuinely needs to detach. */
-.electron-dark .popupContent,
-.electron-light .popupContent {
-  background: var(--color-background-elevated-secondary);
-  border: 1px solid var(--color-border-heavy);
-  box-shadow:
-    0 18px 40px -12px rgb(0 0 0 / 0.7),
-    inset 0 1px 0 color-mix(in oklab, var(--color-background-button-primary) 20%, transparent);
+/* HOOKS — the composer tray. Two more variables Codex reads and never defines
+ * (`background` and `border`/`border-color` on the tray above the composer).
+ * The composer was one of the three regions Gate 0 saw stay stock. */
+.electron-dark,
+.electron-light {
+  --composer-top-tray-background: var(--color-background-elevated-primary) !important;
+  --composer-top-tray-border: 1px solid var(--color-border) !important;
 }
 
-/* LANDMARK — .app-shell-main-content-top-fade (Tier 2). The scroll fade has to
- * resolve to OUR ground or it reveals the stock colour as content scrolls under it. */
-.electron-dark .app-shell-main-content-top-fade,
-.electron-light .app-shell-main-content-top-fade {
-  background: linear-gradient(to bottom, var(--color-background-surface), transparent);
+/* HOOK — --app-shell-tab-background. Read for a background-color and a gradient
+ * stop on the shell tabs. */
+.electron-dark,
+.electron-light {
+  --app-shell-tab-background: var(--color-background-surface-under) !important;
 }
 
 /*
