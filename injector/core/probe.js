@@ -628,6 +628,76 @@ function buildProbeScript(options) {
     paintTrace('empty-state heading', '.heading-xl'),
   ];
 
+  // ---------------------------------------------------------------------
+  // CONTROL CENSUS — every interactive control, with what it actually paints.
+  //
+  // The "character pass" needs hooks for: the ACTIVE sidebar row, the
+  // empty-state cards, and the composer send control. None of those can be
+  // named from the stylesheet, because the state that distinguishes an active
+  // row from an inactive one is applied on the ELEMENT (an attribute, or a
+  // utility class), not in a rule we can grep for. Reporting every control with
+  // its attributes and its painted colours lets the active one be found by
+  // DIFFING it against its siblings, rather than by guessing a selector — which
+  // is how three dead landmarks got declared before Gate 0.
+  //
+  // Build-hashed CSS-module classes are reported too, but tagged, so nothing
+  // here can be mistaken for a usable landmark (see §4 of the findings).
+  // ---------------------------------------------------------------------
+  const HASHED = /^_.*_[a-z0-9]{5,6}_\\d+$/;
+  function controlCensus() {
+    const out = [];
+    const els = document.querySelectorAll('button, a[href], [role=button], [role=tab], .sidebar-item');
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      const cs = getComputedStyle(el);
+      const classes = Array.from(el.classList);
+      out.push({
+        tag: el.tagName.toLowerCase(),
+        rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+        text: (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 48) || null,
+        authoredClasses: classes.filter((c) => !HASHED.test(c)),
+        hashedClasses: classes.filter((c) => HASHED.test(c)),
+        dataAttrs: dataAttrs(el),
+        ariaCurrent: el.getAttribute('aria-current'),
+        ariaSelected: el.getAttribute('aria-selected'),
+        backgroundColor: cs.backgroundColor,
+        borderColor: cs.borderTopColor,
+        borderWidth: cs.borderTopWidth,
+        color: cs.color,
+        hasSvg: !!el.querySelector('svg'),
+      });
+      if (out.length >= 120) break;
+    }
+    return out;
+  }
+  const controls = controlCensus();
+
+  // Code surfaces, described rather than merely counted. Plan 0001 item 6 needs
+  // to know what a code block actually IS in this app before anything
+  // structural is written for it — the tag, whether our mono face reached it,
+  // and what surface it sits on.
+  function codeSurfaceDetail() {
+    const out = [];
+    const els = document.querySelectorAll('pre, code, kbd, samp, .cm-editor, [class*="markdown"]');
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      out.push({
+        tag: el.tagName.toLowerCase(),
+        authoredClasses: Array.from(el.classList).filter((c) => !HASHED.test(c)),
+        hashedClasses: Array.from(el.classList).filter((c) => HASHED.test(c)),
+        rect: { w: Math.round(r.width), h: Math.round(r.height) },
+        fontFamily: cs.fontFamily,
+        backgroundColor: cs.backgroundColor,
+        color: cs.color,
+      });
+      if (out.length >= 30) break;
+    }
+    return out;
+  }
+  const codeSurfaceDetails = codeSurfaceDetail();
+
   // The window-type guards themselves, read rather than inferred. Codex gates a
   // large amount of its own styling on these, so a wrong assumption here makes
   // every downstream attribution wrong.
@@ -724,6 +794,8 @@ function buildProbeScript(options) {
     regions,
     paintTraces,
     windowGuards,
+    controls,
+    codeSurfaceDetails,
     icons,
     codeSurfaces,
     declaredLandmarks,
@@ -790,6 +862,11 @@ async function runProbe(webContents, log, outDir, tag) {
   log(`    window guards: ${JSON.stringify(report.windowGuards.windowTypeMatches)} ` +
       `.app-theme=${report.windowGuards.appThemeElements} ` +
       `htmlAttrs=${JSON.stringify(report.windowGuards.documentElementAttrs)}`);
+  log(`    controls: ${report.controls.length} interactive; ` +
+      `code surfaces described: ${report.codeSurfaceDetails.length}`);
+  for (const c of report.codeSurfaceDetails.slice(0, 6)) {
+    log(`      <${c.tag}> ${c.rect.w}x${c.rect.h} font=${c.fontFamily.slice(0, 40)} bg=${c.backgroundColor}`);
+  }
   for (const t of report.paintTraces) {
     if (!t.found) { log(`    paint-trace ${t.label}: NOT PRESENT on this screen`); continue; }
     const f = t.firstPaintedAncestor;
