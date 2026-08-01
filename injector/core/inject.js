@@ -119,8 +119,10 @@ function buildLandmarkProbeScript() {
  * every run rather than trusted.
  */
 async function reportRootEnvironment(webContents) {
+  // async because the font check must await document.fonts.load();
+  // executeJavaScript resolves a returned promise.
   const script = `
-    (() => {
+    (async () => {
       const root = document.documentElement;
       const cs = getComputedStyle(root);
       // Two kinds of token, on purpose.
@@ -158,8 +160,39 @@ async function reportRootEnvironment(webContents) {
           (kid ? ' childFill=' + getComputedStyle(kid).fill : ''));
       }
 
+      // A font-family declaration that names an unavailable face fails SILENTLY:
+      // the computed style still reads back the name we asked for, and the app
+      // renders the fallback. That is exactly how "Fraunces renders throughout"
+      // was recorded at Gate 0 while the app was actually showing Georgia. So
+      // the check is document.fonts.check(), which answers whether the face is
+      // loadable, never the computed font-family.
+      // load() BEFORE check(). An @font-face the page has not painted with yet is
+      // never fetched, so check() alone reports "not available" for a face that
+      // is perfectly fine — Monaspace Xenon reads false on the empty state purely
+      // because no code is on screen. load() forces the fetch and rejects if the
+      // src is actually broken, which is the failure we care about.
+      const fonts = [];
+      for (const family of ['Literata', 'Fraunces', 'Monaspace Xenon']) {
+        let state;
+        try {
+          const faces = await document.fonts.load('14px "' + family + '"');
+          state = faces.length
+            ? (document.fonts.check('14px "' + family + '"') ? 'YES' : 'loaded-but-check-false')
+            : 'NO FACE MATCHED';
+        } catch (err) {
+          state = 'LOAD FAILED: ' + err.message;
+        }
+        fonts.push(family + '=' + state);
+      }
+      const heading = document.querySelector('.heading-xl, .heading-lg, .heading-2xl');
+      const headingFont = heading ? getComputedStyle(heading).fontFamily : '(no heading on screen)';
+      const bodyFont = document.body ? getComputedStyle(document.body).fontFamily : '(no body)';
+
       return {
         painted,
+        fonts,
+        headingFont,
+        bodyFont,
         rootClass: root.className || '(none)',
         bodyClass: document.body ? (document.body.className || '(none)') : '(no body)',
         styleTagPresent: !!document.getElementById('codexterity-theme'),
@@ -179,6 +212,9 @@ async function reportRootEnvironment(webContents) {
       log(`  ${name}: ${value}`);
     }
     for (const row of env.painted || []) log(`  painted ${row}`);
+    if (env.fonts) log(`  fonts loadable: ${env.fonts.join('  ')}`);
+    if (env.bodyFont) log(`  body font-family:    ${env.bodyFont}`);
+    if (env.headingFont) log(`  heading font-family: ${env.headingFont}`);
   } catch (err) {
     log(`  root environment probe FAILED: ${err.message}`);
   }

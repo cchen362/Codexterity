@@ -25,7 +25,7 @@ One line each. Once the governed code exists, its `D-` marker is authoritative a
 | **D-0001-10** | **Layer 2 "character pass" is approved and shipped.** Chrome-only decoration: brass selection, thin brass scrollbars, a brass hairline on `.app-header-tint`, depth + lit edge on `.popupContent`, and the scroll fade resolved to our ground. Scoped to chrome so D-0001-6 and the contrast proof are untouched. | [`tools/palette/emit-theme.mjs`](../tools/palette/emit-theme.mjs) (marker in the Layer 2 block) |
 | **D-0001-11** | **Accent policy for Codex's five stock hues.** The two DECORATIVE accents (`--color-accent-blue` = link/mention, `--color-accent-purple` = discovery) collapse into brass, per the design floor's one-accent rule. The three SEMANTIC status hues (`--color-accent-green` / `-red` / `-orange`) stay DISTINCT and are re-derived into this theme's palette instead — an error that looks identical to a success is a readability failure, and readability outranks aesthetics. Decided by the owner 2026-08-01 from the measured accent trace. **Do not "finish the job" by collapsing the status hues too.** | [`tools/palette/palette-engine.mjs`](../tools/palette/palette-engine.mjs) (marker on `deriveChrome`) · [findings §3](research/phase3-inventory-findings.md) |
 | **D-0001-12** | **Every token declaration in `theme.css` is `!important`, and must be.** Codex writes 67 custom properties as an inline style on `<html>` shortly after boot; 47 collide with this theme's. Inline beats any non-important author rule, so without this the theme applies at `dom-ready` and is silently reverted — measured. This is the author-origin cost of D-0001-1's amendment (a user-origin sheet would win without it, but `insertCSS` is broken here). Safe in scope: these are property *definitions*, so nothing is forced on the properties that read them. | [`tools/palette/emit-theme.mjs`](../tools/palette/emit-theme.mjs) (marker in the generated header) · [findings §1.1](research/phase3-inventory-findings.md) |
-| **D-0001-7** | **Captain's Cabin ground, palette and typography are locked.** Ground = deep navy `#0E141F`; light mode = parchment with navy ink; accent = antique brass. Type = Fraunces (display/UI) + Monaspace Xenon (mono), both SIL OFL 1.1 and redistributable. Values are *derived* in OKLCH by `tools/palette/`, never hand-picked. | [`themes/captains-cabin/theme.css`](../themes/captains-cabin/theme.css) · [`tools/palette/palette-engine.mjs`](../tools/palette/palette-engine.mjs) |
+| **D-0001-7** | **Captain's Cabin ground, palette and typography are locked.** Ground = deep navy `#0E141F`; light mode = parchment with navy ink; accent = antique brass. **Type (typography half re-closed 2026-08-01): Fraunces = DISPLAY only, Literata = UI/body, Monaspace Xenon = code** — all three SIL OFL 1.1, all three embedded as data URIs. Values are *derived* in OKLCH by `tools/palette/`, never hand-picked. | [`themes/captains-cabin/theme.css`](../themes/captains-cabin/theme.css) · [`tools/palette/palette-engine.mjs`](../tools/palette/palette-engine.mjs) |
 
 ### D-0001-1 — amendment, 2026-08-01: the working primary API
 
@@ -66,7 +66,34 @@ Anchor: [`injector/core/inject.js`](../injector/core/inject.js) (`applyThemeViaS
 
 ## Open — reopened by the owner, not yet settled
 
-### D-0001-7 (typography half) — REOPENED 2026-08-01
+_Nothing open._ D-0001-7's typography half was reopened and re-closed on 2026-08-01; the
+history is kept below because the reasoning is worth not repeating.
+
+### D-0001-7 (typography half) — REOPENED and RE-CLOSED 2026-08-01
+
+**RESOLUTION (CLOSED).** The owner judged the rendered comparison
+([`docs/mockups/0003-typography-comparison.html`](mockups/0003-typography-comparison.html))
+and chose **Literata at 14px** for UI and body, with **IBM Plex Sans** named as the runner-up
+should Literata ever need replacing. **Fraunces stays as the display face** (Codex's ten
+authored `.heading-*` classes); **Monaspace Xenon** is unchanged for code. Shipped in
+`tools/palette/emit-theme.mjs`; the diagnosis below — that the fix was a split, not a
+replacement — held.
+
+**Two things this surfaced, both worth keeping:**
+
+1. **The app had never rendered Fraunces at all.** `theme.css` named it with no `@font-face`,
+   and it is not installed on either machine, so the app was showing the CSS fallback,
+   Georgia. The eye strain that reopened this decision was therefore Georgia at 13–14px. All
+   three faces are now **embedded as data URIs** — this is a correctness requirement, not a
+   packaging step, and it is why `theme.css` is ~300 KB.
+2. **A `font-family` naming an unavailable face fails silently** — the computed value still
+   reports the name you asked for, which is exactly how Gate 0 recorded a false confirmation.
+   Verify with `document.fonts.load()` *then* `document.fonts.check()`. Both are now permanent
+   in `injector/core/inject.js`.
+
+The original reasoning, kept because it is the argument that produced the right answer:
+
+---
 
 **The ground/palette half of D-0001-7 stands and is not in question.** Only the type
 half is reopened, by the owner, after seeing Fraunces render in the real app at Gate 0:
@@ -95,7 +122,8 @@ screen, same sizes, several candidates — then ask. Any candidate must clear th
 floor (no Inter/Roboto/Arial/Open Sans/Lato/system-ui) and must be OFL or otherwise
 redistributable inside a `.ccskin`.
 
-**Not settled. Do not ship a font change until the owner approves one from a render.**
+~~**Not settled. Do not ship a font change until the owner approves one from a render.**~~
+Settled 2026-08-01 by exactly that route — see the resolution at the top of this entry.
 
 ## Decisions with no code home
 

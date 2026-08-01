@@ -1,6 +1,6 @@
 // Emits themes/captains-cabin/theme.css and syntax.json from the derivation engine,
 // so the shipped values are exactly the ones the owner approved from the mockup.
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, statSync } from 'node:fs';
 import { buildDark, buildLight, buildSyntax, GROUNDS, ratio } from './palette-engine.mjs';
 import { run, runSyntax } from './audit.mjs';
 
@@ -98,6 +98,63 @@ const ALIAS = {
   'token-border-heavy': 'border-heavy',
 };
 
+// ── Fonts ────────────────────────────────────────────────────────────────────
+//
+// D-0001-7 (typography half, CLOSED 2026-08-01): Fraunces for DISPLAY, Literata
+// for UI/body, Monaspace Xenon for code. The owner chose Literata at 14px from
+// the rendered comparison in docs/mockups/0003-typography-comparison.html.
+//
+// THE FONTS ARE EMBEDDED, and that is not a packaging nicety — it is the fix for
+// a bug this change exists to correct. Until now theme.css named 'Fraunces' with
+// no @font-face, and Fraunces is not installed on either dev machine, so the app
+// silently rendered the CSS fallback: Georgia. Gate 0 recorded "Fraunces renders
+// throughout the app — CONFIRMED (by inheritance from the theme class)"; what was
+// actually confirmed was that the *declaration* inherits, never that the face
+// loaded. A font-family that names an unavailable face fails silently and looks
+// like success, so any future font change must be verified with
+// document.fonts.check(), not by reading a computed font-family.
+//
+// Axis ranges below are read from the files with fontTools, not assumed:
+//   Fraunces  opsz 9-144, wght 100-900, SOFT 0-100, WONK 0-1
+//   Literata  wght 400-900
+//   Monaspace Xenon  static 400
+const FONT_DIR = OUT + 'assets/fonts/';
+const face = (family, file, extra) => {
+  const b64 = readFileSync(FONT_DIR + file).toString('base64');
+  return `@font-face {
+  font-family: '${family}';
+  src: url(data:font/woff2;base64,${b64}) format('woff2');
+${extra}
+  /* swap, never block: the theme is injected after first paint, so blocking
+     would hide text that Codex has already rendered legibly. */
+  font-display: swap;
+}`;
+};
+
+const fontFaces = [
+  face('Literata', 'literata-latin-variable.woff2', '  font-weight: 400 900;\n  font-style: normal;'),
+  face('Fraunces', 'fraunces-latin-variable.woff2', '  font-weight: 100 900;\n  font-style: normal;'),
+  face('Monaspace Xenon', 'monaspace-xenon-latin-400.woff2', '  font-weight: 400;\n  font-style: normal;'),
+].join('\n\n');
+
+const fontBytes = ['literata-latin-variable.woff2', 'fraunces-latin-variable.woff2',
+  'monaspace-xenon-latin-400.woff2'].reduce((n, f) => n + statSync(FONT_DIR + f).size, 0);
+
+// Codex reads its font families through tokens, exactly as it does colour, so
+// the split is expressed token-first (D-0001-2) rather than by chasing elements.
+// The root font-family below is the catch-all for rules that hardcode a stack.
+const FONT_TOKENS = {
+  'font-sans': "'Literata', Georgia, serif",
+  'font-sans-default': "'Literata', Georgia, serif",
+  'font-serif': "'Literata', Georgia, serif",
+  'font-openai-sans': "'Literata', Georgia, serif",
+  'default-font-family': "'Literata', Georgia, serif",
+  'font-mono': "'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  'font-mono-default': "'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  'default-mono-font-family': "'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  'vscode-editor-font-family': "'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+};
+
 // Every token declaration is marked !important, and that is a measured
 // requirement rather than a specificity shortcut. See the D-0001-12 note in the
 // generated file header for the full reasoning.
@@ -115,6 +172,8 @@ const block = (sel, p, syn, label) => {
   for (const [slot, hex] of Object.entries(ansi(p, syn))) {
     lines.push(decl(`--vscode-terminal-ansi${slot}`, hex));
   }
+  lines.push('', '  /* Font families — Codex reads these as tokens, like colour (D-0001-7) */');
+  for (const [name, stack] of Object.entries(FONT_TOKENS)) lines.push(decl(`--${name}`, stack));
   lines.push('', '  /* Syntax palette — consumed by the editor layer (see syntax.json) */');
   for (const [role, hex] of Object.entries(syn)) {
     if (role === '_surface') continue;
@@ -175,6 +234,12 @@ const css = `/*
  * Do not reintroduce surface textures without redoing the contrast proof.
  */
 
+/*
+ * The three faces, embedded. See the Typography section below for the roles and
+ * for why embedding is a correctness requirement rather than a packaging step.
+ */
+${fontFaces}
+
 ${block('electron-dark', dark, synDark, 'Dark — the night watch')}
 
 ${block('electron-light', light, synLight, 'Light — the chart room by day')}
@@ -197,14 +262,21 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
 /*
  * Typography.
  *
- * Fraunces (display + UI) and Monaspace Xenon (monospace), both SIL OFL 1.1 and
- * therefore redistributable inside the .ccskin. The woff2 files and their licence
- * texts live in assets/fonts/; the packaging build inlines them as data URIs, so
- * the shipped theme never references a remote resource.
+ * D-0001-7 (typography half) CLOSED 2026-08-01. Three faces, three jobs:
+ * Fraunces for DISPLAY, Literata for UI and body, Monaspace Xenon for code. All
+ * three SIL OFL 1.1 and redistributable inside the .ccskin, and all three are
+ * embedded above as data URIs — the theme references no remote resource and
+ * depends on nothing being installed on the user's machine.
  *
- * LANDMARK — 'pre, code, kbd, samp'. The theme's ONLY remaining structural
- * selector, and it is semantic HTML rather than a class, so it cannot be
- * invalidated by a CSS-module rebuild the way a hashed class can.
+ * The split replaces Fraunces doing double duty. The owner reopened the decision
+ * after long sessions in the real app and then chose Literata at 14px from a
+ * rendered comparison of seven candidates
+ * (docs/mockups/0003-typography-comparison.html). Fraunces keeps the headings,
+ * where its stroke contrast is an asset rather than a tax on the eyes.
+ *
+ * 'pre, code, kbd, samp' below is one of only two structural selector groups the
+ * theme uses (the other is the .heading-* set). Both are semantic or authored
+ * names rather than CSS-module hashes, and both degrade to a legible fallback.
  *
  * STATUS: unverified, not disproven. It matches nothing on Codex's empty state —
  * which contains no code, so that is expected rather than evidence of absence
@@ -213,10 +285,34 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
  * monospace stack and nothing breaks; the code SURFACE is themed regardless,
  * through --color-background-editor-opaque, which needs no selector.
  */
+/* UI and body — Literata. Inherited from the theme class, which covers the rules
+ * that hardcode a font stack rather than reading --font-sans. */
 .electron-dark,
 .electron-light {
-  font-family: 'Fraunces', Georgia, serif;
-  font-variation-settings: 'SOFT' 30, 'WONK' 0, 'opsz' 14;
+  font-family: 'Literata', Georgia, serif !important;
+  font-variation-settings: normal;
+}
+
+/* DISPLAY — Fraunces, on Codex's ten authored heading classes.
+ *
+ * These are global, semantic, hand-written class names, not build-hashed CSS
+ * module names, which makes them the same grade of hook as 'pre, code, kbd,
+ * samp' and the only structural selectors this theme permits itself. All ten
+ * were read out of the shipped stylesheet; .heading-xl was additionally observed
+ * in the live DOM. If Codex renames them, headings fall back to Literata and
+ * nothing breaks — the page stays entirely legible, which is the whole test.
+ *
+ * No 'opsz' is pinned here. Fraunces carries an optical-size axis (9-144) and
+ * font-optical-sizing lets the browser drive it from the rendered size, which is
+ * what a display face is for. The old rule pinned 'opsz' 14 because Fraunces was
+ * doing double duty as the UI face; that constraint is gone with the split. */
+.electron-dark :is(.heading-2xl, .heading-3xl, .heading-4xl, .heading-xl, .heading-lg,
+                   .heading-base, .heading-sm, .heading-xs, .heading-dialog, .heading-subsection),
+.electron-light :is(.heading-2xl, .heading-3xl, .heading-4xl, .heading-xl, .heading-lg,
+                    .heading-base, .heading-sm, .heading-xs, .heading-dialog, .heading-subsection) {
+  font-family: 'Fraunces', Georgia, serif !important;
+  font-optical-sizing: auto;
+  font-variation-settings: 'SOFT' 30, 'WONK' 0;
 }
 
 .electron-dark :is(pre, code, kbd, samp),

@@ -95,11 +95,34 @@ Two real differences from `insertCSS`, both recorded in the code:
 | `--color-text-primary` resolves to `#F4EAD4` | CONFIRMED |
 | `--color-background-button-primary` resolves to `#C0A454` | CONFIRMED |
 | `--radius-lg` resolves to `7px` | CONFIRMED |
-| Fraunces renders throughout the app | CONFIRMED (by inheritance from the theme class) |
+| ~~Fraunces renders throughout the app~~ | **WRONG — corrected 2026-08-01.** See the note below. |
 | Codex stays fully functional after a failed injection | CONFIRMED — degrade-to-stock works |
 | No Codex file modified; no auth/credential file touched; no port opened | CONFIRMED |
 
 ---
+
+### 3.1 Correction — the app was never showing Fraunces
+
+The row above claimed Fraunces rendered "by inheritance from the theme class". **It did
+not.** `theme.css` declared `font-family: 'Fraunces', Georgia, serif` and contained **no
+`@font-face`**, and Fraunces is not installed on this machine (checked in
+`C:\Windows\Fonts`, the per-user font directory, and both font registry keys). The app was
+rendering the fallback: **Georgia**.
+
+**How the error was made:** a computed `font-family` was read back, it said `Fraunces`, and
+that was taken as proof. A `font-family` naming an unavailable face fails *silently* — the
+computed value still reports the name that was asked for. The only reliable check is
+`document.fonts.check()`, and it must be preceded by `document.fonts.load()`, because an
+`@font-face` the page has not painted with yet is never fetched and reports as unavailable
+even when it is perfectly fine. Both halves of that are now permanent in
+`reportRootEnvironment`.
+
+**What it does and does not change.** The owner reopened D-0001-7's typography half after
+eye strain in the real app — so the face they were reacting to was Georgia at 13–14px, not
+Fraunces. It does **not** invalidate the resolution: the replacement was chosen from
+`docs/mockups/0003-typography-comparison.html`, where every candidate was embedded as a data
+URI and verified to render in its own face. The decision was made on valid evidence; only
+the diagnosis of the original complaint was misattributed.
 
 ## 4. What is broken — the actual Phase 3 work
 
