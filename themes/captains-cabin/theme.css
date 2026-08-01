@@ -598,6 +598,61 @@
 }
 
 /*
+ * LANDMARK — the ACTIVE sidebar row, marked with a brass left edge.
+ *
+ * D-0001-14 — the one piece of the Phase 2 sidebar mockup that theming can
+ * actually deliver.
+ *
+ * WHAT THIS IS NOT. docs/mockups/0001-captains-cabin-palette-approval.html
+ * drew a brass "New task" primary button, brass-bordered task cards and a
+ * brass-railed list. Codex has none of those elements — it has plain nav rows —
+ * and a theming engine recolours what the app renders; it cannot restructure
+ * it (D-0001-3 forbids touching Codex's files at all). That mockup is a PALETTE
+ * STUDY, not a target. This rule is the reachable part of its intent: the one
+ * brass mark that says "you are here".
+ *
+ * THE HOOKS, both measured in the running app on a screen with an open
+ * conversation (28 sidebar rows, exactly one active):
+ *
+ *   [data-app-action-sidebar-thread-active="true"]   Codex's own app-action
+ *                                                    contract name — authored
+ *                                                    and semantic, NOT a
+ *                                                    CSS-module build hash
+ *   [aria-current="page"]                            the web standard
+ *
+ * BOTH are matched, deliberately. They are independent: if Codex renames its
+ * data attribute the ARIA state still carries the indicator, and vice versa.
+ * A single hook here would be one rename away from silent removal, which is
+ * exactly how the four pre-Gate-0 landmarks died. If BOTH stop matching, the
+ * active row keeps Codex's own hover-wash highlight and nothing breaks — the
+ * row is still visibly the active one, just without the brass.
+ *
+ * The rows are position:relative and overflow-hidden already (measured), so an
+ * absolutely-positioned ::before needs no layout change from us.
+ *
+ * ACCENT DISCIPLINE. This is a 2px rule on ONE row, not a fill. The design
+ * floor's "one accent, used sparingly, never as a background fill" holds: the
+ * row's own surface stays --color-background-button-secondary-hover, which the
+ * palette already solves and which every ink tier is already audited against.
+ * No contrast figure changes, because no text sits on the brass.
+ */
+.electron-dark .sidebar-item[data-app-action-sidebar-thread-active="true"]::before,
+.electron-dark .sidebar-item[aria-current="page"]::before,
+.electron-light .sidebar-item[data-app-action-sidebar-thread-active="true"]::before,
+.electron-light .sidebar-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 50%;
+  height: 16px;
+  width: 2px;
+  border-radius: 1px;
+  transform: translateY(-50%);
+  background: var(--color-background-button-primary);
+  pointer-events: none;
+}
+
+/*
  * The empty-state hero (D-0001-9). See the note in emit-theme.mjs for why this
  * hook, and why an image here does not void the flat-surface contrast proof.
  *

@@ -667,7 +667,7 @@ function buildProbeScript(options) {
         color: cs.color,
         hasSvg: !!el.querySelector('svg'),
       });
-      if (out.length >= 120) break;
+      if (out.length >= 400) break;
     }
     return out;
   }

@@ -221,6 +221,34 @@ async function reportRootEnvironment(webContents) {
         ? getComputedStyle(titleBar).backgroundColor
         : '(title bar element not found)';
 
+      // The ACTIVE-ROW BRASS INDICATOR (D-0001-14). A ::before cannot be
+      // inspected from outside the app, and screen-sampling it only proves
+      // absence, never why. Report the three things that can each independently
+      // make it invisible, separately, so a null result names its own cause:
+      // whether either hook MATCHES, whether the pseudo-element GENERATES a box
+      // (content), and what it actually COMPUTES.
+      const activeRow = document.querySelector(
+        '.sidebar-item[data-app-action-sidebar-thread-active="true"], .sidebar-item[aria-current="page"]');
+      let indicator;
+      if (!activeRow) {
+        const anyRow = document.querySelectorAll('.sidebar-item').length;
+        const anyActive = document.querySelectorAll('[data-app-action-sidebar-thread-active="true"]').length;
+        const anyCurrent = document.querySelectorAll('[aria-current="page"]').length;
+        indicator = 'NO MATCH — .sidebar-item=' + anyRow +
+                    '  [thread-active=true]=' + anyActive + '  [aria-current=page]=' + anyCurrent +
+                    (anyActive || anyCurrent ? '  (state exists but NOT on the .sidebar-item element)' : '');
+      } else {
+        const b = getComputedStyle(activeRow, '::before');
+        const own = getComputedStyle(activeRow);
+        indicator = 'matched; ::before content=' + b.content +
+                    ' w=' + b.width + ' h=' + b.height +
+                    ' bg=' + b.backgroundColor +
+                    ' position=' + b.position +
+                    ' | row position=' + own.position +
+                    ' overflow=' + own.overflow +
+                    ' zIndex=' + own.zIndex;
+      }
+
       const heading = document.querySelector('.heading-xl, .heading-lg, .heading-2xl');
       const headingFont = heading ? getComputedStyle(heading).fontFamily : '(no heading on screen)';
       const bodyFont = document.body ? getComputedStyle(document.body).fontFamily : '(no body)';
@@ -231,6 +259,7 @@ async function reportRootEnvironment(webContents) {
         code,
         hero,
         tint,
+        indicator,
         headingFont,
         bodyFont,
         rootClass: root.className || '(none)',
@@ -256,6 +285,7 @@ async function reportRootEnvironment(webContents) {
     if (env.code) log(`  code surfaces: ${env.code.join('  ')}`);
     if (env.hero) log(`  hero: ${env.hero}`);
     if (env.tint) log(`  title-bar tint computes: ${env.tint}`);
+    if (env.indicator) log(`  active-row indicator: ${env.indicator}`);
     if (env.bodyFont) log(`  body font-family:    ${env.bodyFont}`);
     if (env.headingFont) log(`  heading font-family: ${env.headingFont}`);
   } catch (err) {
