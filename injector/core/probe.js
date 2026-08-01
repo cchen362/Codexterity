@@ -552,6 +552,96 @@ function buildProbeScript(options) {
     return { label, point: [Math.round(x), Math.round(y)], chain };
   }
 
+  // ---------------------------------------------------------------------
+  // PAINT TRACE — which ancestor actually paints a region.
+  //
+  // WHY THIS EXISTS. chainAt() walks at most 12 ancestors from a point, and
+  // for the sidebar the <aside class="app-shell-left-panel"> IS the 12th, so
+  // <body> and <html> were never measured. That gap produced a wrong answer,
+  // twice: the sidebar's own computed background-color is transparent, and the
+  // stylesheet rule that would paint it
+  //   [data-codex-window-type=electron]:not(...) .app-shell-left-panel
+  // does NOT match this window, so the four-stage token chain it carries is
+  // irrelevant to the pixel. A resolved token is not a painted pixel, and a
+  // MATCHING RULE IS NOT A MATCHED RULE unless its ancestor guard holds.
+  //
+  // This walks to the document root without a cap and reports the first
+  // ancestor with a non-transparent background — the element that actually
+  // supplies the colour a user sees. It also reports every data-* attribute up
+  // the chain, because the guards that decide whether Codex's own rules apply
+  // are attribute-based, and guessing the window type is what went wrong.
+  // ---------------------------------------------------------------------
+  function dataAttrs(el) {
+    const out = {};
+    for (const a of Array.from(el.attributes || [])) {
+      if (a.name.startsWith('data-') || a.name === 'style') {
+        out[a.name] = a.name === 'style' ? '(' + a.value.length + ' bytes)' : a.value;
+      }
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+
+  // A background-color paints something unless it is fully transparent.
+  // rgba(...,0) and the keyword 'transparent' are the only fully-clear forms
+  // getComputedStyle returns; anything else contributes colour, including a
+  // partial alpha, which is why the alpha is reported rather than thresholded.
+  function alphaOf(bg) {
+    const m = /^rgba?\\(([-\\d.]+),\\s*([-\\d.]+),\\s*([-\\d.]+)(?:,\\s*([-\\d.]+))?/.exec(bg || '');
+    if (!m) return bg === 'transparent' ? 0 : null;
+    return m[4] === undefined ? 1 : Number(m[4]);
+  }
+
+  function paintTrace(label, selector) {
+    let el = null;
+    try { el = document.querySelector(selector); } catch (err) { return { label, selector, error: String(err) }; }
+    if (!el) return { label, selector, found: false };
+    const layers = [];
+    let firstPainted = null;
+    let cur = el;
+    while (cur) {
+      const cs = getComputedStyle(cur);
+      const bg = cs.backgroundColor;
+      const a = alphaOf(bg);
+      const layer = {
+        tag: cur.tagName.toLowerCase(),
+        id: cur.id || null,
+        classes: Array.from(cur.classList).slice(0, 10),
+        dataAttrs: dataAttrs(cur),
+        backgroundColor: bg,
+        alpha: a,
+        backgroundImage: cs.backgroundImage === 'none' ? null : cs.backgroundImage.slice(0, 200),
+        opacity: cs.opacity,
+      };
+      layers.push(layer);
+      if (firstPainted === null && a !== null && a > 0) {
+        firstPainted = { depth: layers.length - 1, tag: layer.tag, classes: layer.classes, backgroundColor: bg, alpha: a };
+      }
+      cur = cur.parentElement;
+    }
+    return { label, selector, found: true, firstPaintedAncestor: firstPainted, layers };
+  }
+
+  const paintTraces = [
+    paintTrace('sidebar panel', '.app-shell-left-panel'),
+    paintTrace('sidebar row', '.sidebar-item'),
+    paintTrace('composer input', '.ProseMirror'),
+    paintTrace('empty-state heading', '.heading-xl'),
+  ];
+
+  // The window-type guards themselves, read rather than inferred. Codex gates a
+  // large amount of its own styling on these, so a wrong assumption here makes
+  // every downstream attribution wrong.
+  const windowGuards = {
+    documentElementAttrs: dataAttrs(document.documentElement) || {},
+    bodyAttrs: document.body ? (dataAttrs(document.body) || {}) : null,
+    windowTypeMatches: {},
+  };
+  for (const t of ['electron', 'browser', 'chrome-extension']) {
+    windowGuards.windowTypeMatches['[data-codex-window-type=' + t + ']'] =
+      document.querySelectorAll('[data-codex-window-type=' + t + ']').length;
+  }
+  windowGuards.appThemeElements = document.querySelectorAll('.app-theme').length;
+
   const W = window.innerWidth, H = window.innerHeight;
   const regions = [
     chainAt('title-bar / menu-bar (top-left)', 40, 8),
@@ -632,6 +722,8 @@ function buildProbeScript(options) {
     colours,
     topClasses,
     regions,
+    paintTraces,
+    windowGuards,
     icons,
     codeSurfaces,
     declaredLandmarks,
@@ -695,6 +787,17 @@ async function runProbe(webContents, log, outDir, tag) {
   log(`    root inline style: ${report.tokenSources.inlineStyleBytes} bytes, ` +
       `${report.tokenSources.inlineTokenCount} custom properties set inline on <html>`);
   log(`    chromatic colours painted: ${report.colours.length} distinct`);
+  log(`    window guards: ${JSON.stringify(report.windowGuards.windowTypeMatches)} ` +
+      `.app-theme=${report.windowGuards.appThemeElements} ` +
+      `htmlAttrs=${JSON.stringify(report.windowGuards.documentElementAttrs)}`);
+  for (const t of report.paintTraces) {
+    if (!t.found) { log(`    paint-trace ${t.label}: NOT PRESENT on this screen`); continue; }
+    const f = t.firstPaintedAncestor;
+    log(`    paint-trace ${t.label}: ${t.layers.length} ancestors; ` +
+        (f ? `painted by <${f.tag}${f.classes.length ? '.' + f.classes[0] : ''}> ` +
+             `${f.backgroundColor} (alpha ${f.alpha}) at depth ${f.depth}`
+           : 'NOTHING in the ancestor chain paints — the window backdrop shows through'));
+  }
   return report;
 }
 

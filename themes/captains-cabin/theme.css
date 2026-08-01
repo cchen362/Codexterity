@@ -536,6 +536,68 @@
 }
 
 /*
+ * LANDMARK — .app-shell-left-panel. THE SIDEBAR HAS NO BACKGROUND OF ITS OWN.
+ *
+ * D-0001-13 — the theme must PAINT the sidebar; no token override can.
+ *
+ * Measured 2026-08-02 in the running app, in confirmed light mode
+ * (rootClass=electron-light), walking the ancestor chain to <html>: EVERY
+ * ancestor of the sidebar is background-color rgba(0,0,0,0), alpha 0. Nothing
+ * in the document paints it. Codex's own rule that would is
+ *
+ *   [data-codex-window-type=electron]:not([data-codex-window-chrome=application-menu])
+ *     .app-shell-left-panel { background: ... }
+ *
+ * and <html> here carries data-codex-window-chrome="application-menu", so the
+ * :not() excludes this window exactly. On Windows the main window owns the
+ * application menu (File/Edit/View/Help), so Codex deliberately declines to
+ * paint that panel and lets the OS window material — Windows 11 Mica/acrylic —
+ * show through.
+ *
+ * WHAT THE OWNER SAW. A "pale mint-green sidebar" in light mode. It is the
+ * DESKTOP WALLPAPER, composited through the transparent panel. Sampled from the
+ * screen: #E6F9F6 at the top, #B7C5C6 lower down, #EAF7F3 at the bottom — the
+ * panel is not one colour at all, which is conclusive. A token produces a
+ * uniform fill; only an image varies down its length. Nothing in this theme's
+ * palette is anywhere near hue 170, and the same run measured every genuinely
+ * themed surface as correct (main content #F9F0DD, title bar #E7DECC,
+ * composer #E1D9C6).
+ *
+ * WHY THIS IS A CONTRAST FIX BEFORE IT IS AN AESTHETIC ONE. D-0001-6 computes
+ * every figure this theme claims against FLAT colour. Sidebar text is
+ * --color-text-primary, and behind it was an arbitrary user wallpaper, so its
+ * contrast was not merely unproven — it was unprovable, and it changes when the
+ * user changes their desktop. Readability outranks aesthetics, so an opaque
+ * surface is required here, not preferred.
+ *
+ * WHY A SELECTOR, WHEN D-0001-2 SAYS TOKEN-FIRST. Token-first presupposes a
+ * declaration that READS a token. There is no background declaration anywhere in
+ * this chain, so there is nothing for a token to feed; this is the "declared,
+ * verified landmark" case D-0001-2 provides for. 'app-shell-left-panel' is an
+ * authored, semantic, non-hashed global class — the grade of hook
+ * docs/research/phase3-inventory-findings.md §4.2 sanctions, NOT a CSS-module
+ * build hash. If Codex renames it, the panel returns to the stock translucent
+ * look: the pre-fix appearance, not breakage.
+ *
+ * WHY !important HERE, on a real property rather than a token definition.
+ * Codex's own rule above scores (0,3,0) — two attribute selectors plus a class —
+ * where '.electron-light .app-shell-left-panel' scores (0,2,0). On THIS window
+ * that rule does not match, so nothing competes. On a window WITHOUT the
+ * application-menu chrome it does match and would outrank us, and the macOS
+ * build is the obvious such case. This is not verified on macOS (no access), so
+ * the declaration is made unconditionally rather than assuming a platform
+ * difference that has not been measured. Cross-platform verification remains
+ * outstanding per docs/ENGINEERING.md.
+ *
+ * The value is --color-background-surface-under, which palette-engine.mjs
+ * derives for exactly this job ("the sidebar sits a step BELOW the ground").
+ */
+.electron-dark .app-shell-left-panel,
+.electron-light .app-shell-left-panel {
+  background: var(--color-background-surface-under) !important;
+}
+
+/*
  * The empty-state hero (D-0001-9). See the note in emit-theme.mjs for why this
  * hook, and why an image here does not void the flat-surface contrast proof.
  *

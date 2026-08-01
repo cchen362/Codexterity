@@ -195,6 +195,56 @@ sidebar, composer and menu bar. Those three are painted by
 `--color-background-surface-under`, `--color-background-elevated-primary-opaque` and
 `--color-background-application-menu` — none of which the theme names.
 
+### 2.1 CORRECTION, 2026-08-02 — the sidebar is not painted by a token at all
+
+**The sidebar entry in the table above is wrong, and the impact ranking that produced it is
+the reason it went unnoticed for a day.** `--color-background-surface-under` does have 182
+downstream `var()` reads, but **none of them paints `.app-shell-left-panel` on Windows.**
+
+Measured in the running app, in confirmed light mode (`rootClass=electron-light`), by walking
+the sidebar's ancestor chain **to `<html>` without a cap**:
+
+```
+<aside.app-shell-left-panel>  rgba(0,0,0,0)  alpha 0
+<div.relative.isolate>        rgba(0,0,0,0)  alpha 0
+<div.relative.flex>           rgba(0,0,0,0)  alpha 0
+<div#root>                    rgba(0,0,0,0)  alpha 0
+<body>                        rgba(0,0,0,0)  alpha 0
+<html.electron-light>         rgba(0,0,0,0)  alpha 0
+```
+
+**Nothing in the document paints the sidebar.** Codex's own rule that would is
+
+```css
+[data-codex-window-type=electron]:not([data-codex-window-chrome=application-menu])
+  .app-shell-left-panel { background: var(--color-token-editor-background) }
+```
+
+and `<html>` here carries `data-codex-window-chrome="application-menu"` — the `:not()`
+excludes this window exactly. On Windows the main window owns the application menu
+(File/Edit/View/Help), so Codex **deliberately** declines to paint that panel and lets the OS
+window material (Windows 11 Mica/acrylic) show through. What the user sees there is their
+**desktop wallpaper**. Sampled from the screen before the fix: `#E6F9F6` at the top,
+`#B7C5C6` lower, `#EAF7F3` at the bottom — *the panel is not one colour*, which is conclusive.
+A token yields a uniform fill; only an image varies down its length.
+
+Note also that the chain the sidebar rule *would* have used is
+`--color-token-editor-background` → `--vscode-editor-background` →
+**`--color-background-editor-opaque`** — not `--color-background-surface-under`. And Codex's
+light-mode value for it is *translucent despite the name*
+(`color-mix(in oklab, var(--gray-100) 40%, transparent)`).
+
+Fixed under **D-0001-13** with a real declaration on the authored `.app-shell-left-panel`
+landmark. **Two lessons, both already on this project's list and both re-learned the hard way:**
+
+1. **A chain that resolves in the stylesheet is not a chain that applies to an element.** The
+   four-stage trace above was followed correctly and was still irrelevant, because the rule
+   carrying it is gated on an ancestor attribute. *Check that the rule MATCHES* — the probe
+   now reports `paintTraces`, which walks to the root and names the first ancestor that
+   actually paints, and `windowGuards`, which reads the attributes those gates test.
+2. **Impact ranking measures reads, not paints.** A token can be read 182 times and paint
+   nothing on the screen in front of you.
+
 ---
 
 ## 3. The multi-accent violation, resolved to its source
