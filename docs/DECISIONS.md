@@ -27,7 +27,7 @@ One line each. Once the governed code exists, its `D-` marker is authoritative a
 | **D-0001-12** | **Every token declaration in `theme.css` is `!important`, and must be.** Codex writes 67 custom properties as an inline style on `<html>` shortly after boot; 47 collide with this theme's. Inline beats any non-important author rule, so without this the theme applies at `dom-ready` and is silently reverted — measured. This is the author-origin cost of D-0001-1's amendment (a user-origin sheet would win without it, but `insertCSS` is broken here). Safe in scope: these are property *definitions*, so nothing is forced on the properties that read them. | [`tools/palette/emit-theme.mjs`](../tools/palette/emit-theme.mjs) (marker in the generated header) · [findings §1.1](research/phase3-inventory-findings.md) |
 | **D-0001-13** | **The theme PAINTS the sidebar; no token override can.** Measured 2026-08-02 in the running app in confirmed light mode: every ancestor of `.app-shell-left-panel` up to `<html>` is `rgba(0,0,0,0)`. Codex's own sidebar rule is gated `:not([data-codex-window-chrome=application-menu])`, and the Windows main window carries exactly that attribute — so Codex deliberately leaves the panel transparent and lets Windows 11 Mica show through. The owner's "pale mint-green sidebar" was **the desktop wallpaper** (sampled `#E6F9F6` / `#B7C5C6` / `#EAF7F3` down its length — not one colour, so not a token). Fixed with a real `background` declaration on the authored `.app-shell-left-panel` landmark. This is a **contrast** fix: D-0001-6 computes every figure against flat colour, and sidebar text sat over an arbitrary user wallpaper, making its contrast not merely unproven but unprovable. **Do not "restore" the translucent look** — it voids the contrast proof. | [`tools/palette/emit-theme.mjs`](../tools/palette/emit-theme.mjs) (marker on the landmark block) · [findings §2.1](research/phase3-inventory-findings.md) |
 | **D-0001-14** | **Active sidebar row carries a brass left-edge mark, hooked on TWO independent selectors.** `[data-app-action-sidebar-thread-active="true"]` (Codex's own authored app-action contract name) **and** `[aria-current="page"]` (the web standard), both measured on a real conversation screen (28 rows, exactly one active). Both are matched deliberately: they fail independently, so renaming either leaves the indicator working, and if both go the row keeps Codex's own highlight — a single hook would be one rename from silent removal, which is how the four pre-Gate-0 landmarks died. This is the *only* part of the Phase 2 sidebar mockup theming can deliver; that mockup drew a brass primary button, brass-bordered cards and a brass-railed list, **none of which Codex has**. It is a palette study, not a target — **do not re-attempt to reproduce it.** Verified matched, computed AND painted (32 px at x=8–9). | [`tools/palette/emit-theme.mjs`](../tools/palette/emit-theme.mjs) (marker on the block) |
-| **D-0001-7** | **Captain's Cabin ground, palette and typography are locked.** Ground = deep navy `#0E141F`; light mode = parchment with navy ink; accent = antique brass. **Type (typography half re-closed 2026-08-01): Fraunces = DISPLAY only, Literata = UI/body, Monaspace Xenon = code** — all three SIL OFL 1.1, all three embedded as data URIs. Values are *derived* in OKLCH by `tools/palette/`, never hand-picked. | [`themes/captains-cabin/theme.css`](../themes/captains-cabin/theme.css) · [`tools/palette/palette-engine.mjs`](../tools/palette/palette-engine.mjs) |
+| **D-0001-7** | **Captain's Cabin ground, palette and typography are locked.** Ground = deep navy `#0E141F`; light mode = parchment with navy ink; accent = antique brass. **Type (typography half re-closed 2026-08-01; CODE FACE re-closed again 2026-08-02): Fraunces = DISPLAY only, Literata = UI/body, Monaspace NEON = code** — all three SIL OFL 1.1, all three embedded as data URIs. **Monaspace Xenon was the code face until 2026-08-02 and is superseded** — see the code-face note below. Values are *derived* in OKLCH by `tools/palette/`, never hand-picked. | [`themes/captains-cabin/theme.css`](../themes/captains-cabin/theme.css) · [`tools/palette/palette-engine.mjs`](../tools/palette/palette-engine.mjs) |
 
 ### D-0001-1 — amendment, 2026-08-01: the working primary API
 
@@ -70,6 +70,37 @@ Anchor: [`injector/core/inject.js`](../injector/core/inject.js) (`applyThemeViaS
 
 _Nothing open._ D-0001-7's typography half was reopened and re-closed on 2026-08-01; the
 history is kept below because the reasoning is worth not repeating.
+
+### D-0001-7 (code face) — REOPENED and RE-CLOSED 2026-08-02: Xenon → Neon
+
+**RESOLUTION (CLOSED). The code face is Monaspace NEON.** The owner judged it in the
+running app — *"the Neon reads so MUCH better"* — and it is verified rendering, not
+falling back: `code=1 font="Monaspace Neon"` on a real `<code>` element, in both modes.
+
+**Why Xenon failed, and it was not a bug.** Xenon rendered correctly the whole time; the
+settled check confirmed the face was loadable and applied. The problem was the face itself:
+**Xenon is the slab-serif member of the Monaspace family**, so with Fraunces (display) and
+Literata (UI/body) the app was serif at *every* level. Code normally signals "literal text,
+not prose" partly through texture, and a slab-serif mono inside serif body copy erases that
+signal. The owner's report — *"the text/font inside the code block reads a little weird"* —
+was that, not a rendering fault.
+
+**Why no comparison render this time**, unlike the Literata decision. The Monaspace family
+shares **identical metrics across all five faces**, so Xenon → Neon is a font-file swap with
+zero layout consequence — same advance width, same line breaks, same column alignment. The
+owner declined a mockup on those grounds and judged it directly in the app, which is the
+better instrument anyway. *This is not a precedent for skipping renders on faces with
+different metrics.*
+
+**Rejected on the way, and why — do not re-propose:**
+- **IBM Plex Sans / Work Sans for code.** Both are PROPORTIONAL. Code needs a fixed advance
+  width or indentation, file trees, diffs and commit-hash columns all break. Not aesthetics,
+  function. (**IBM Plex Mono** is the faithful form of that request and remains a legitimate
+  future candidate; Work Sans has no mono sibling.)
+- **Codex's own stock mono.** Measured unthemed as `ui-monospace, SFMono-Regular, SF Mono,
+  Menlo, Consolas, Liberation Mono, monospace` — which resolves to **Consolas on Windows and
+  SF Mono on macOS**, i.e. a different face on each of the two target platforms, and Consolas
+  is Microsoft-licensed so it can never ship inside a `.ccskin`.
 
 ### D-0001-7 (typography half) — REOPENED and RE-CLOSED 2026-08-01
 

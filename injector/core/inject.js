@@ -168,11 +168,11 @@ async function reportRootEnvironment(webContents) {
       // loadable, never the computed font-family.
       // load() BEFORE check(). An @font-face the page has not painted with yet is
       // never fetched, so check() alone reports "not available" for a face that
-      // is perfectly fine — Monaspace Xenon reads false on the empty state purely
+      // is perfectly fine — Monaspace Neon reads false on the empty state purely
       // because no code is on screen. load() forces the fetch and rejects if the
       // src is actually broken, which is the failure we care about.
       const fonts = [];
-      for (const family of ['Literata', 'Fraunces', 'Monaspace Xenon']) {
+      for (const family of ['Literata', 'Fraunces', 'Monaspace Neon']) {
         let state;
         try {
           const faces = await document.fonts.load('14px "' + family + '"');

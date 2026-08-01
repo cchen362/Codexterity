@@ -138,7 +138,7 @@ const ALIAS = {
 // ── Fonts ────────────────────────────────────────────────────────────────────
 //
 // D-0001-7 (typography half, CLOSED 2026-08-01): Fraunces for DISPLAY, Literata
-// for UI/body, Monaspace Xenon for code. The owner chose Literata at 14px from
+// for UI/body, Monaspace Neon for code. The owner chose Literata at 14px from
 // the rendered comparison in docs/mockups/0003-typography-comparison.html.
 //
 // THE FONTS ARE EMBEDDED, and that is not a packaging nicety — it is the fix for
@@ -154,7 +154,7 @@ const ALIAS = {
 // Axis ranges below are read from the files with fontTools, not assumed:
 //   Fraunces  opsz 9-144, wght 100-900, SOFT 0-100, WONK 0-1
 //   Literata  wght 400-900
-//   Monaspace Xenon  static 400
+//   Monaspace Neon  static 400
 const FONT_DIR = OUT + 'assets/fonts/';
 const face = (family, file, extra) => {
   const b64 = readFileSync(FONT_DIR + file).toString('base64');
@@ -171,11 +171,11 @@ ${extra}
 const fontFaces = [
   face('Literata', 'literata-latin-variable.woff2', '  font-weight: 400 900;\n  font-style: normal;'),
   face('Fraunces', 'fraunces-latin-variable.woff2', '  font-weight: 100 900;\n  font-style: normal;'),
-  face('Monaspace Xenon', 'monaspace-xenon-latin-400.woff2', '  font-weight: 400;\n  font-style: normal;'),
+  face('Monaspace Neon', 'monaspace-neon-latin-400.woff2', '  font-weight: 400;\n  font-style: normal;'),
 ].join('\n\n');
 
 const fontBytes = ['literata-latin-variable.woff2', 'fraunces-latin-variable.woff2',
-  'monaspace-xenon-latin-400.woff2'].reduce((n, f) => n + statSync(FONT_DIR + f).size, 0);
+  'monaspace-neon-latin-400.woff2'].reduce((n, f) => n + statSync(FONT_DIR + f).size, 0);
 
 // Codex reads its font families through tokens, exactly as it does colour, so
 // the split is expressed token-first (D-0001-2) rather than by chasing elements.
@@ -186,10 +186,10 @@ const FONT_TOKENS = {
   'font-serif': "'Literata', Georgia, serif",
   'font-openai-sans': "'Literata', Georgia, serif",
   'default-font-family': "'Literata', Georgia, serif",
-  'font-mono': "'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-  'font-mono-default': "'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-  'default-mono-font-family': "'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-  'vscode-editor-font-family': "'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  'font-mono': "'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  'font-mono-default': "'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  'default-mono-font-family': "'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  'vscode-editor-font-family': "'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
 };
 
 // Every token declaration is marked !important, and that is a measured
@@ -300,7 +300,7 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
  * Typography.
  *
  * D-0001-7 (typography half) CLOSED 2026-08-01. Three faces, three jobs:
- * Fraunces for DISPLAY, Literata for UI and body, Monaspace Xenon for code. All
+ * Fraunces for DISPLAY, Literata for UI and body, Monaspace Neon for code. All
  * three SIL OFL 1.1 and redistributable inside the .ccskin, and all three are
  * embedded above as data URIs — the theme references no remote resource and
  * depends on nothing being installed on the user's machine.
@@ -354,7 +354,7 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
 
 .electron-dark :is(pre, code, kbd, samp),
 .electron-light :is(pre, code, kbd, samp) {
-  font-family: 'Monaspace Xenon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-variation-settings: normal;
 }
 
