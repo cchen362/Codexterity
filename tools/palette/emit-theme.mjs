@@ -90,6 +90,43 @@ const ansi = (p, syn) => ({
   White: p['text-secondary'],         BrightWhite: p['text-primary'],
 });
 
+// ── The empty-state hero (D-0001-9) ──────────────────────────────────────────
+//
+// Approved 2026-08-01, shipped as a file the same day — and never referenced by
+// anything until now, so it has never actually been on screen. This wires it in.
+//
+// WHERE IT ATTACHES. Codex offers no class named for the empty state, and its
+// CSS-module classes are build-hashed and unusable as landmarks. The hook used
+// here is `[container-name:home-main-content]` — a Tailwind arbitrary-property
+// class whose name IS its declaration (`container-name: home-main-content`), so
+// it is authored and semantic rather than a build artefact. It is further gated
+// on `:has(.heading-xl)`, the empty state's own centred heading, so the image
+// cannot paint behind a loaded conversation. If either stops matching, the
+// empty state falls back to flat ground — the pre-hero look, not breakage.
+//
+// FULL BLEED, which is what was approved. D-0001-8 rejected a full-bleed
+// atmospheric background behind THE WHOLE APP and narrowed it to *empty states
+// only*; asset-manifest.md describes the hero as sitting "behind the
+// new-session screen ... under a scrim". A first attempt shipped it as a
+// top-anchored band with no scrim at all, which read as an awkward banner with
+// a hard horizontal seam. The scrim is a CSS layer we apply, not something
+// baked into the image — that is what "under a scrim" meant.
+//
+// WHY THIS DOES NOT VOID THE CONTRAST PROOF (D-0001-6). D-0001-6 forbids
+// luminance variation BEHIND TEXT; it does not forbid imagery. The scrim's
+// stops are SOLVED, not chosen by eye: for every horizontal band of the image,
+// the brightest pixel in that band is blended with the ground at that band's
+// scrim alpha, and the result is checked against --color-text-primary. Over the
+// whole region where text can sit (the heading and everything below it) the
+// worst case is 5.99:1 against a 4.5:1 requirement. The measurement is
+// deliberately pessimistic: it samples the brightest pixel across the image's
+// full width, while `cover` on a tall panel crops to the centre.
+//
+// If the hero is ever regraded or replaced, RE-SOLVE the scrim — do not assume
+// these stops still hold. The scrim and the image are one proof, not two.
+const heroB64 = readFileSync(OUT + 'assets/hero-empty-state.webp').toString('base64');
+const heroBytes = statSync(OUT + 'assets/hero-empty-state.webp').size;
+
 // Codex exposes --color-token-* aliases alongside the --color-* names; both are
 // set so a utility reading either resolves to the same value.
 const ALIAS = {
@@ -398,6 +435,36 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
 .electron-dark,
 .electron-light {
   --app-shell-tab-background: var(--color-background-surface-under) !important;
+}
+
+/*
+ * The empty-state hero (D-0001-9). See the note in emit-theme.mjs for why this
+ * hook, and why an image here does not void the flat-surface contrast proof.
+ *
+ * Dark mode only: the hero is a night scene — a chart table under an oil lamp —
+ * and has no meaning on a parchment ground. Light mode keeps the flat empty
+ * state, which is a complete and correct look on its own.
+ */
+.electron-dark .\\[container-name\\:home-main-content\\]:has(.heading-xl) {
+  /* FULL BLEED, under a computed scrim — two layers, scrim first (on top).
+     The image fills the panel; the scrim is what makes text over it provable. */
+  background-image:
+    linear-gradient(to bottom,
+      color-mix(in srgb, var(--color-background-surface) 0%, transparent) 0%,
+      color-mix(in srgb, var(--color-background-surface) 5%, transparent) 40%,
+      color-mix(in srgb, var(--color-background-surface) 25%, transparent) 55%,
+      color-mix(in srgb, var(--color-background-surface) 62%, transparent) 70%,
+      color-mix(in srgb, var(--color-background-surface) 92%, transparent) 86%,
+      var(--color-background-surface) 100%),
+    url(data:image/webp;base64,${heroB64});
+  background-size: cover, cover;
+  /* 'center', not 'top': on a tall panel cover scales by height, so nothing is
+     cropped vertically and this only centres horizontally. On a SHORT panel it
+     crops top and bottom evenly, which drops the lamp — the brightest part of
+     the frame — instead of holding it behind the heading. 'top center' would do
+     the opposite and put the worst pixels where the text is. */
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
 }
 
 /*

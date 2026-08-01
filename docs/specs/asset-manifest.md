@@ -56,7 +56,16 @@ It is a chart-table composition (Prompt A of [`asset-generation-prompts.md`](ass
 
 The only alteration made to the generated file is a highlight rolloff: the lamp core, which clipped at luminance 0.935 (effectively blown white in a deliberately low-key image), was compressed to 0.530. Hue and warmth were left untouched. Full reasoning in [D-0001-9](../DECISIONS.md).
 
-**Nothing has confirmed how this renders in a running Codex — Gate 0 has not happened.** Every claim above traces to the standalone mockup, not to the app.
+**WIRED IN AND CONFIRMED IN THE RUNNING APP, 2026-08-01.** Until that date the file was approved, committed and referenced by nothing — it had never been on screen. It now paints full-bleed behind the new-session screen, verified in Codex (the injector reports `hero: PAINTING` on every launch, and reports the container as absent rather than silently doing nothing when it cannot attach).
+
+### How it attaches, and the scrim solve
+
+- **Hook:** `[container-name:home-main-content]`, gated on `:has(.heading-xl)`. That class is a Tailwind arbitrary property whose name *is* its declaration, so it is authored rather than a build hash; the `:has()` gate keeps the image off a loaded conversation. If either stops matching, the empty state falls back to flat ground.
+- **Full bleed**, `background-size: cover`, `background-position: center`. Centre rather than top: on a tall panel `cover` scales by height so nothing is cropped vertically, and on a short panel centring drops the lamp — the brightest part of the frame — instead of parking it behind the heading.
+- **The scrim is a CSS layer, not baked into the image.** Its stops are *solved*, the same way palette values are: for every horizontal band of the image, the brightest pixel in that band is blended with `--color-background-surface` at that band's scrim alpha and checked against `--color-text-primary`. Across the whole region where text can sit, the worst case is **5.99:1** against a 4.5:1 requirement. The measurement is deliberately pessimistic — it samples the brightest pixel across the image's full width, while `cover` crops to the centre on a tall panel.
+- **A first attempt shipped it top-anchored at `100% auto` with no scrim**, which read as a banner with a hard horizontal seam and was rejected on sight. Recorded so it is not re-attempted: "under a scrim" means a scrim we apply, and D-0001-8 narrowed full-bleed imagery *to empty states*, it did not forbid it there.
+
+**If the hero is ever regraded or replaced, re-solve the scrim.** The image and the scrim are one contrast proof, not two.
 
 ### Compass-rose crest
 

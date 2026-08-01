@@ -197,6 +197,30 @@ async function reportRootEnvironment(webContents) {
         code.push(tag + '=' + n + (el ? ' font=' + getComputedStyle(el).fontFamily.split(',')[0] : ''));
       }
 
+      // The hero and the character pass are the two pieces of approved design
+      // that were shipped-but-invisible: the hero was never referenced by any
+      // rule, and the character pass spent weeks bound to landmarks that matched
+      // nothing. Both now report whether they ACTUALLY PAINT, because "the token
+      // resolves" and "the file exists" have each already been mistaken for
+      // "the user can see it" once in this project.
+      const heroHost = document.querySelector('[container-name\\\\:home-main-content]') ||
+                       document.querySelector('.\\\\[container-name\\\\:home-main-content\\\\]');
+      let hero;
+      if (!heroHost) {
+        hero = 'container ABSENT (not the home screen?)';
+      } else {
+        const img = getComputedStyle(heroHost).backgroundImage;
+        hero = (img && img !== 'none' ? 'PAINTING (' + img.slice(0, 24) + '…)' : 'container present, NO background-image') +
+               '  emptyStateHeading=' + (heroHost.querySelector('.heading-xl') ? 'yes' : 'no');
+      }
+
+      // Character pass: the title bar reads --codex-titlebar-tint through
+      // --header-tint. Report the colour it actually computes, not our token.
+      const titleBar = document.querySelector('[class*="ApplicationMenuTopBar"]');
+      const tint = titleBar
+        ? getComputedStyle(titleBar).backgroundColor
+        : '(title bar element not found)';
+
       const heading = document.querySelector('.heading-xl, .heading-lg, .heading-2xl');
       const headingFont = heading ? getComputedStyle(heading).fontFamily : '(no heading on screen)';
       const bodyFont = document.body ? getComputedStyle(document.body).fontFamily : '(no body)';
@@ -205,6 +229,8 @@ async function reportRootEnvironment(webContents) {
         painted,
         fonts,
         code,
+        hero,
+        tint,
         headingFont,
         bodyFont,
         rootClass: root.className || '(none)',
@@ -228,6 +254,8 @@ async function reportRootEnvironment(webContents) {
     for (const row of env.painted || []) log(`  painted ${row}`);
     if (env.fonts) log(`  fonts loadable: ${env.fonts.join('  ')}`);
     if (env.code) log(`  code surfaces: ${env.code.join('  ')}`);
+    if (env.hero) log(`  hero: ${env.hero}`);
+    if (env.tint) log(`  title-bar tint computes: ${env.tint}`);
     if (env.bodyFont) log(`  body font-family:    ${env.bodyFont}`);
     if (env.headingFont) log(`  heading font-family: ${env.headingFont}`);
   } catch (err) {
