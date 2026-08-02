@@ -445,6 +445,23 @@ it. `cdx` is the CLI name (D-0001-5).
   idiot-proof (it looks like the app you already launch, just themed) but makes a themed and a
   stock Codex indistinguishable if both are pinned.
 
+  **What M3 already made pointable, so M4 does not redesign it:** the shortcut's target is the
+  **argument-free `cdx`** (`node injector/cli.js`, exposed as the `cdx` bin) — it reads the
+  active theme from `~/.codexterity/state.json` (D-0001-24), so the command line never changes
+  and `cdx apply` / `cdx restore` swap what it launches. The installer's job is to place that
+  shortcut and run `cdx apply captains-cabin` once, not to invent a launch path.
+
+  **One thing M4 must solve, observed during M3's verification runs and not yet addressed:**
+  `launcher/windows/launch.ps1` **streams Codex's stdout/stderr and blocks on `WaitForExit()`**
+  for the entire session. That is exactly right for development, where the log is the instrument.
+  It is wrong for a double-clicked shortcut: `powershell.exe -File …` leaves a **console window
+  open alongside Codex for as long as the app runs**, which fails the "hassle-free, idiot-proof"
+  bar on sight. Do not fix this by deleting the streaming — the log is how every launch in this
+  project has been verified, and `CDX_DEBUG_LOG_PATH` is the standing ground truth. The shape of
+  the answer is a **windowless invocation for the shortcut path** (e.g. `-WindowStyle Hidden`, a
+  `.vbs`/`conhost`-free wrapper, or having the shortcut not wait) while the developer path keeps
+  the console. Decide it deliberately; it is a real fork in the UX, not a flag to guess at.
+
 ### After Phase 4 — documented, not yet scheduled
 
 Recorded 2026-08-03 at the owner's request so the reasoning is not re-derived. **Nothing here is
