@@ -662,8 +662,26 @@ way, and do not "fix" it before measuring which element the editor tokens reach.
 > `rgba(0,0,0,0) 0px 0px 0px 0px` — ring colour set, ring **width zero and transparent**.
 > That is the shape of a card whose hairline resolves but never paints.
 >
-> **Resolve with the control experiment, not with more themed runs:** `CDX_PROBE=1` suppresses
-> injection. Sample the home screen with and without the theme and compare.
+> **RESOLVED 2026-08-02 by the probe — THE THEME IS EXONERATED, and so is Codex.** With injection
+> suppressed the cards were *also* absent, and the stock DOM shows why:
+>
+> ```
+> {"tag":"button","rect":{"w":654,"h":40},
+>  "text":"Verify the live Netlify release matches the completed Wave 10 in",
+>  "authoredClasses":["group/home-suggestion-list-item", …]}
+> ```
+>
+> **The four cards and the home-suggestion list are mutually exclusive.** Codex shows a
+> personalised suggestion when it has one and falls back to the four generic cards when it
+> does not. Both owner screenshots are stock; they differ by whether a suggestion existed,
+> not by the theme. That `654x40` is also the unexplained "largest button" in run 1's log,
+> so every observation now reconciles.
+>
+> **Nothing to fix, and nothing was ever broken.** Two wrong conclusions were reached on the
+> way — "Codex removed the cards" (from two themed runs agreeing) and then "the theme
+> suppresses the cards" (from a stock screenshot that differed in a second variable). Both
+> came from comparing two states that differed in more than one way. The probe settled it in
+> one run because it changes exactly one variable.
 
 ### 8.5.1 (retracted text, kept for the record) — what run 2 measured
 
@@ -792,11 +810,39 @@ measured, and they are legible. Two defects come with that, both of the same fam
    **not** from `--color-token-diff-surface` or `--color-background-editor-opaque` (`#F6EDDB` /
    `#111722`), which this theme defines for exactly this job. Those two tokens are inert here.
 
-Both are the **reads-vs-paints trap again** — the fifth and sixth instances — and neither is
-fixable by guessing. What is needed is the rule that actually sets the panel's `font-family` and
-`background`, which is a probe question (`CDX_PROBE=1`, `CDX_PROBE_DUMP_CSS=1`), not a theme edit.
-**Do not add a landmark for either before that rule is measured** — four pre-Gate-0 landmarks died
-exactly that way.
+**Both resolved by the probe corpus the same day, and neither needed a landmark.**
+
+**(1) The code face — D-0001-18, a NEW failure mode.** The corpus shows Codex setting the token on
+**`<body>`**:
+
+```css
+:is([data-codex-window-type=browser],[…=chrome-extension],[…=electron]) body {
+  --vscode-editor-font-family: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, …;
+}
+```
+
+We declare it on `.electron-dark` / `.electron-light`, which are on `<html>`. **Custom properties
+inherit, so a value set on a closer ancestor governs every descendant regardless of specificity —
+and `!important` on the root cannot win it, because it is not a specificity contest.** This is
+D-0001-12's problem one level down: that decision handled Codex writing tokens *inline on `<html>`*,
+and nobody asked whether it also wrote any on `<body>`.
+
+A sweep of the corpus finds Codex sets **17** custom properties on body, of which **2** collide with
+this theme. The second, `--color-background-elevated-primary`, is **benign** — it re-points our token
+to our own `--color-background-elevated-primary-opaque`, which the emitter always gives the identical
+value, and its rule is gated on `.electron-opaque`, which this window does not carry. Recorded so it
+does not have to be re-derived as safe.
+
+Fixed with a `.electron-dark body, .electron-light body` block. **Verified by reproducing the
+conflict in a browser** rather than by reasoning: before `ui-monospace`, after `Monaspace Neon`, plus
+a control confirming that `!important` on `<html>` still loses. Still needs confirming in the running
+app.
+
+**(2) The diff surface is NOT a defect.** The panel paints `--color-background-surface`, which is
+*this theme's own token* and is why it measured `#F0E7D5` / `#0E141F`. It simply does not consume
+`--color-token-diff-surface` or `--color-background-editor-opaque`, which are therefore **inert here
+rather than broken**. Contrast is 12.83:1 / 15.43:1. **Nothing to fix — do not write a selector to
+force the diff tokens onto it.**
 
 `pre=0 code=0` held throughout, confirming §8.6's standing note that the diff view contains no such
 elements; the surface was found by its mono rendering instead, which is why it was found at all.

@@ -428,6 +428,39 @@
   font-variation-settings: normal;
 }
 
+/* D-0001-18 — RE-DECLARED ON <body>, AND IT HAS TO BE.
+ *
+ * Codex sets this same token on BODY, measured in the probe corpus:
+ *
+ *   :is([data-codex-window-type=browser],[…=chrome-extension],[…=electron]) body {
+ *     --vscode-editor-font-family: ui-monospace, "SFMono-Regular", …, monospace;
+ *   }
+ *
+ * Our block above declares it on .electron-dark / .electron-light, which are on
+ * <html>. Custom properties INHERIT, so a value set on body wins for body and
+ * everything under it no matter what html says — this is not a specificity
+ * contest, and !important on the html declaration cannot win it. Measured
+ * consequence: the diff and terminal panels rendered in ui-monospace, i.e.
+ * Consolas on Windows, so D-0001-7's code face was absent from the one surface
+ * most made of code while every colour around it was correctly themed.
+ *
+ * Same shape as D-0001-12, one level down: that one handled Codex writing tokens
+ * inline on <html>, and nobody checked whether it also wrote any on <body>. A
+ * corpus sweep says it sets 17 custom properties there and exactly two collide
+ * with this theme. The other, --color-background-elevated-primary, is benign —
+ * it re-points our token to our own --color-background-elevated-primary-opaque,
+ * which this emitter always gives the same value, and its rule is gated on
+ * .electron-opaque which this window does not carry. It is listed here so the
+ * next person does not have to re-derive that it is safe.
+ *
+ * Matching Codex's own selector shape (both land on body at equal specificity)
+ * means later-wins would already carry it; the !important makes it independent
+ * of sheet order. */
+.electron-dark body,
+.electron-light body {
+  --vscode-editor-font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+}
+
 /* DISPLAY — Fraunces, on Codex's ten authored heading classes.
  *
  * These are global, semantic, hand-written class names, not build-hashed CSS

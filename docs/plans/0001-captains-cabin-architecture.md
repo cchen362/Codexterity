@@ -29,7 +29,23 @@ These replace the entry-state list above. Each is a consequence of an observatio
 
 8. ~~**Light mode: the mint-green sidebar.**~~ **DONE — D-0001-13.** Not a palette bug. Every ancestor of `.app-shell-left-panel` up to `<html>` computes `rgba(0,0,0,0)`; Codex's own sidebar rule is gated `:not([data-codex-window-chrome=application-menu])` and the Windows main window carries exactly that attribute, so Codex deliberately leaves the panel transparent and Windows 11 Mica shows the **desktop wallpaper** through it. Sampled before the fix: `#E6F9F6` / `#B7C5C6` / `#EAF7F3` down its length — not one colour, so not a token. Fixed by painting the authored `.app-shell-left-panel` landmark from `--color-background-surface-under`. A **contrast** fix: sidebar text sat over an arbitrary wallpaper, so its contrast was unprovable. Verified `#EBE2D0` uniform. Findings §2.1 corrects the inventory's mis-attribution.
 9. ~~**Brass active-row indicator.**~~ **DONE — D-0001-14.** Verified matched, computed and painted.
-20. **OPEN — does the theme SUPPRESS the four empty-state cards?** Runs 1 and 2 concluded Codex had
+22. **The code face now reaches diffs and terminals — D-0001-18.** The probe corpus showed Codex
+    setting `--vscode-editor-font-family` **on `<body>`**, while this theme sets it on
+    `.electron-dark`/`.electron-light` (i.e. on `<html>`). Custom properties **inherit**, so the
+    closer ancestor wins for every descendant and **`!important` on the root cannot take it** — not a
+    specificity contest. That is why diffs and terminals rendered in Consolas while every colour
+    around them was correct. Fixed with a `body`-scoped block; verified by reproducing the conflict
+    in a browser (before `ui-monospace`, after `Monaspace Neon`, control proving `!important` on
+    `<html>` loses). **D-0001-12 one level down.** A corpus sweep found 17 body-set properties, 2
+    colliding, the other benign. **Still to confirm in the running app.**
+
+20. ~~**OPEN — does the theme SUPPRESS the four empty-state cards?**~~ **RESOLVED — nothing was ever
+    broken.** With injection suppressed the cards were *also* absent, and the stock DOM shows a
+    `group/home-suggestion-list-item` in their place: **the four cards and the home-suggestion list
+    are mutually exclusive.** Codex shows a personalised suggestion when it has one, the four generic
+    cards when it does not. Both owner screenshots are stock and differ by that, not by the theme.
+    Two wrong conclusions were reached before this — "Codex removed them", then "the theme suppresses
+    them" — both from comparing states that differed in more than one variable. Original text: Runs 1 and 2 concluded Codex had
     removed them; **that conclusion is retracted.** An owner screenshot of **stock** Codex shows all
     four on the same screen, so they exist and do not appear under the theme. Two themed runs
     agreeing with each other was never a control. Our CSS cannot remove DOM nodes (custom properties
