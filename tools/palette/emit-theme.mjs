@@ -1,11 +1,16 @@
-// Emits themes/captains-cabin/theme.css and syntax.json from the derivation engine,
-// so the shipped values are exactly the ones the owner approved from the mockup.
+// Emits themes/captains-cabin/theme.css, syntax.json and manifest.json from the
+// derivation engine, so the shipped values are exactly the ones the owner
+// approved from the mockup.
 import { writeFileSync, readFileSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { buildDark, buildLight, buildSyntax, GROUNDS, ratio } from './palette-engine.mjs';
 import { run, runSyntax } from './audit.mjs';
 
 const GROUND = 'navy';
-const OUT = 'C:/Users/cchen362/Desktop/CodexSkin_Pirate/themes/captains-cabin/';
+// Resolved from this file's own location, never from a machine-specific absolute
+// path: the emitter has to run on the packaging machine and on a collaborator's
+// checkout, and a hardcoded C:\ path makes it silently a Windows-only tool.
+const OUT = fileURLToPath(new URL('../../themes/captains-cabin/', import.meta.url)).replace(/\\/g, '/');
 const dark = buildDark(GROUNDS[GROUND].ground);
 const light = buildLight(GROUNDS[GROUND].ground);
 const synDark = buildSyntax(dark, 'dark');
@@ -168,14 +173,29 @@ ${extra}
 }`;
 };
 
-const fontFaces = [
-  face('Literata', 'literata-latin-variable.woff2', '  font-weight: 400 900;\n  font-style: normal;'),
-  face('Fraunces', 'fraunces-latin-variable.woff2', '  font-weight: 100 900;\n  font-style: normal;'),
-  face('Monaspace Neon', 'monaspace-neon-latin-400.woff2', '  font-weight: 400;\n  font-style: normal;'),
-].join('\n\n');
+// One list, three consumers: the @font-face blocks, the size accounting in the
+// generated header, and manifest.json's assets[]. assets/fonts/ also holds five
+// faces this theme does NOT use -- the losing candidates from the typography
+// comparison (docs/mockups/0003-typography-comparison.html) plus the superseded
+// Monaspace Xenon. They stay in the repo as the record of that decision and must
+// never reach a .ccskin, which is precisely why the package's asset list is
+// derived from here rather than from a directory listing.
+//
+// The OFL text ships with each face. SIL OFL 1.1 requires the licence to
+// accompany the font, and the font travels inside theme.css as a data URI, so
+// the licence has to travel in the package alongside it. Not optional.
+const FONTS = [
+  { family: 'Literata', file: 'literata-latin-variable.woff2', licence: 'Literata-OFL.txt',
+    extra: '  font-weight: 400 900;\n  font-style: normal;' },
+  { family: 'Fraunces', file: 'fraunces-latin-variable.woff2', licence: 'Fraunces-OFL.txt',
+    extra: '  font-weight: 100 900;\n  font-style: normal;' },
+  { family: 'Monaspace Neon', file: 'monaspace-neon-latin-400.woff2', licence: 'Monaspace-OFL.txt',
+    extra: '  font-weight: 400;\n  font-style: normal;' },
+];
 
-const fontBytes = ['literata-latin-variable.woff2', 'fraunces-latin-variable.woff2',
-  'monaspace-neon-latin-400.woff2'].reduce((n, f) => n + statSync(FONT_DIR + f).size, 0);
+const fontFaces = FONTS.map((f) => face(f.family, f.file, f.extra)).join('\n\n');
+
+const fontBytes = FONTS.reduce((n, f) => n + statSync(FONT_DIR + f.file).size, 0);
 
 // Codex reads its font families through tokens, exactly as it does colour, so
 // the split is expressed token-first (D-0001-2) rather than by chasing elements.
@@ -698,6 +718,123 @@ const syntax = {
 };
 writeFileSync(OUT + 'syntax.json', JSON.stringify(syntax, null, 2).replace(/\r?\n/g, '\n') + '\n');
 
-console.log('theme.css + syntax.json written for ground', GROUNDS[GROUND].ground);
+// ── manifest.json ────────────────────────────────────────────────────────────
+//
+// D-0001-21 -- manifest.json is GENERATED here, never hand-written.
+//
+// D-0001-4 gives the manifest two jobs that are facts about the emitted CSS
+// rather than package metadata: the list of structural landmarks the theme
+// depends on, and the list of assets whose bytes it embeds. A hand-maintained
+// copy of either drifts the moment someone edits a rule here and forgets the
+// manifest -- and drift in THIS file is uniquely nasty, because a stale landmark
+// list makes the injector's verification report a landmark healthy when the rule
+// that needed it is gone. That is the same silent-success failure that killed the
+// four pre-Gate-0 landmarks (docs/research/gate0-findings.md).
+//
+// So the emitter, which is the only thing that knows what it just wrote, writes
+// the manifest too -- and every landmark carries a `probe`, an exact substring of
+// the generated stylesheet, asserted below. If a rule is renamed or removed
+// without updating this list, the build FAILS rather than shipping a manifest
+// that describes a stylesheet that no longer exists.
+//
+// `selector` is what the manifest publishes for the injector to verify against
+// the live DOM; `probe` exists only for the build-time drift check. They are
+// different strings on purpose: the CSS writes each selector twice (once per
+// root theme class) and wraps some in :is(), so no single form serves both.
+const LANDMARKS = [
+  {
+    name: 'sidebar-panel',
+    selector: '.app-shell-left-panel',
+    probe: '.electron-light .app-shell-left-panel',
+    governedBy: 'D-0001-13',
+    // The only REQUIRED landmark in the theme, and it is a contrast guarantee,
+    // not an aesthetic one: Codex leaves this panel transparent on Windows, so
+    // without this rule sidebar text sits over the user's desktop wallpaper and
+    // its contrast is not merely unproven but unprovable.
+    required: true,
+  },
+  {
+    name: 'sidebar-active-row',
+    selector: '.sidebar-item[data-app-action-sidebar-thread-active="true"], .sidebar-item[aria-current="page"]',
+    probe: '.sidebar-item[aria-current="page"]::before',
+    governedBy: 'D-0001-14',
+    required: false,
+  },
+  {
+    name: 'terminal',
+    selector: '.xterm, .xterm-rows, .xterm-char-measure-element',
+    probe: '.electron-light .xterm-char-measure-element',
+    governedBy: 'D-0001-19',
+    required: false,
+  },
+  {
+    name: 'heading-display',
+    selector: '.heading-2xl, .heading-3xl, .heading-4xl, .heading-xl, .heading-lg, ' +
+      '.heading-base, .heading-sm, .heading-xs, .heading-dialog, .heading-subsection',
+    probe: '.heading-dialog, .heading-subsection)',
+    governedBy: 'D-0001-7',
+    required: false,
+  },
+  {
+    name: 'code-surfaces',
+    selector: 'pre, code, kbd, samp',
+    probe: ':is(pre, code, kbd, samp)',
+    governedBy: 'D-0001-7',
+    required: false,
+  },
+  {
+    name: 'home-hero',
+    selector: '.\\[container-name\\:home-main-content\\]:has(.heading-xl)',
+    probe: ':has(.heading-xl)',
+    governedBy: 'D-0001-9',
+    required: false,
+  },
+];
+
+for (const l of LANDMARKS) {
+  if (!css.includes(l.probe)) {
+    throw new Error(
+      `manifest landmark '${l.name}' probe ${JSON.stringify(l.probe)} is not in the ` +
+      'emitted stylesheet. Either the rule was renamed or removed and this list is ' +
+      'stale, or the probe is wrong. Fix the list -- do not weaken the probe.'
+    );
+  }
+}
+
+const asset = (p) => ({ path: p, bytes: statSync(OUT + p).size });
+
+const manifest = {
+  formatVersion: 1,
+  id: 'captains-cabin',
+  name: "Captain's Cabin",
+  version: syntax.version,
+  author: 'cchen362',
+  license: 'MIT',
+  description:
+    "A captain's chart room at night — deep navy ground, antique brass accent, " +
+    'parchment light mode carrying navy ink.',
+  // Deliberately OUR OWN app id, not a per-OS identity. The Windows MSIX package
+  // is 'OpenAI.Codex' and the macOS bundle identifier is a still-open unknown
+  // (D-0001-16); resolving the installed app is the launcher's job, per the layer
+  // rule in docs/ENGINEERING.md. A theme should not carry a platform's name.
+  targetApp: 'openai-codex-desktop',
+  // NOT semver. Codex's real version is 26.727.6591.0 -- four components, and the
+  // leading one is a year. min is inclusive, max exclusive, compared
+  // component-wise. min is '26' rather than the verified build because
+  // token-first styling is version-tolerant by design (Plan 0001 §10) and we have
+  // no evidence it breaks on an earlier 26.x; claiming a floor we never tested
+  // would be as false as claiming a ceiling we did.
+  targetVersionRange: { min: '26', max: '27' },
+  verifiedAgainst: '26.727.6591.0',
+  files: { css: 'theme.css', syntax: 'syntax.json' },
+  landmarks: LANDMARKS.map(({ probe, ...rest }) => rest),
+  assets: [
+    asset('assets/hero-empty-state.webp'),
+    ...FONTS.flatMap((f) => [asset('assets/fonts/' + f.file), asset('assets/fonts/' + f.licence)]),
+  ],
+};
+writeFileSync(OUT + 'manifest.json', JSON.stringify(manifest, null, 2).replace(/\r?\n/g, '\n') + '\n');
+
+console.log('theme.css + syntax.json + manifest.json written for ground', GROUNDS[GROUND].ground);
 console.log('dark surface', dark['background-surface'], '| brass', dark['background-button-primary']);
 console.log('light surface', light['background-surface'], '| ink', light['text-primary']);

@@ -1,0 +1,87 @@
+{
+  "formatVersion": 1,
+  "id": "captains-cabin",
+  "name": "Captain's Cabin",
+  "version": "0.1.0",
+  "author": "cchen362",
+  "license": "MIT",
+  "description": "A captain's chart room at night — deep navy ground, antique brass accent, parchment light mode carrying navy ink.",
+  "targetApp": "openai-codex-desktop",
+  "targetVersionRange": {
+    "min": "26",
+    "max": "27"
+  },
+  "verifiedAgainst": "26.727.6591.0",
+  "files": {
+    "css": "theme.css",
+    "syntax": "syntax.json"
+  },
+  "landmarks": [
+    {
+      "name": "sidebar-panel",
+      "selector": ".app-shell-left-panel",
+      "governedBy": "D-0001-13",
+      "required": true
+    },
+    {
+      "name": "sidebar-active-row",
+      "selector": ".sidebar-item[data-app-action-sidebar-thread-active=\"true\"], .sidebar-item[aria-current=\"page\"]",
+      "governedBy": "D-0001-14",
+      "required": false
+    },
+    {
+      "name": "terminal",
+      "selector": ".xterm, .xterm-rows, .xterm-char-measure-element",
+      "governedBy": "D-0001-19",
+      "required": false
+    },
+    {
+      "name": "heading-display",
+      "selector": ".heading-2xl, .heading-3xl, .heading-4xl, .heading-xl, .heading-lg, .heading-base, .heading-sm, .heading-xs, .heading-dialog, .heading-subsection",
+      "governedBy": "D-0001-7",
+      "required": false
+    },
+    {
+      "name": "code-surfaces",
+      "selector": "pre, code, kbd, samp",
+      "governedBy": "D-0001-7",
+      "required": false
+    },
+    {
+      "name": "home-hero",
+      "selector": ".\\[container-name\\:home-main-content\\]:has(.heading-xl)",
+      "governedBy": "D-0001-9",
+      "required": false
+    }
+  ],
+  "assets": [
+    {
+      "path": "assets/hero-empty-state.webp",
+      "bytes": 124134
+    },
+    {
+      "path": "assets/fonts/literata-latin-variable.woff2",
+      "bytes": 38996
+    },
+    {
+      "path": "assets/fonts/Literata-OFL.txt",
+      "bytes": 4389
+    },
+    {
+      "path": "assets/fonts/fraunces-latin-variable.woff2",
+      "bytes": 121016
+    },
+    {
+      "path": "assets/fonts/Fraunces-OFL.txt",
+      "bytes": 4391
+    },
+    {
+      "path": "assets/fonts/monaspace-neon-latin-400.woff2",
+      "bytes": 44476
+    },
+    {
+      "path": "assets/fonts/Monaspace-OFL.txt",
+      "bytes": 4479
+    }
+  ]
+}

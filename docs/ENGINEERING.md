@@ -19,7 +19,7 @@ When documents disagree, use this order:
 5. Completed implementation plans for decision history and feature-specific detail.
 6. Open implementation plans for intended future behavior only.
 
-Do not describe planned work as shipped. Always read a plan's status header before treating it as fact. **As of this writing no product code exists yet** — the project is at the end of Phase 1 (research + architecture). Phases 2–7 are planned, not built.
+Do not describe planned work as shipped. Always read a plan's status header before treating it as fact. **Phases 1–3 are COMPLETE and the theme is owner-verified in the running app; Phase 4 (packaging) is in progress** — M1 (theme loader + safe-CSS validation) has landed. Phases 5–7 are planned, not built.
 
 ## Settled Decisions — how they are marked
 
@@ -110,7 +110,15 @@ Directory roles are visible from the tree (see Plan 0001 §folder-structure). Th
 
 ## Verification Expectations
 
-**No automated test harness exists yet** (it lands with the injector in Phase 4). Do not claim a test command that isn't in the repo. When the harness exists, record the real commands here per the detected `package.json` scripts.
+**The repo has a test harness as of Phase 4 M1**, and it covers the theme loader only — nothing else in the repo is under test. `node:test` and `node:assert/strict`, no dependencies:
+
+```bash
+npm test
+```
+
+Note the script is `node --test "tests/**/*.test.js"`, an explicit glob, not `node --test tests/`. That is not a style choice: on Node v22.14.0 (this machine) a bare directory argument is resolved as a *module to run* and fails with `Cannot find module '...\tests'` before the runner starts. The glob and the bare `node --test` both work; the glob is used because it states the harness's scope instead of inferring it from the working directory.
+
+**What a green run does and does not establish.** It establishes the loader's own contract: manifest validation, the safe-CSS allowlist, zip parsing, the size cap. It establishes nothing about how the theme looks, and M1 is the only Phase 4 milestone a unit test can honestly close.
 
 The binding verification rule for this project, per the owner's standing practice (*"tests passing ≠ done"*):
 
