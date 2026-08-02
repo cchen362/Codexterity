@@ -331,6 +331,46 @@ it. `cdx` is the CLI name (D-0001-5).
   a clean apply/restore round-trip leaving nothing residual.** `restore` must return Codex to
   the stock look with the injector detached — that is D-0001-3's user-facing promise, and it is
   verified by launching the app, not by a green test.
+
+  **Three things settled by the owner 2026-08-03, before M3 was handed off, so M3 does not have
+  to guess at them.** The governing requirement the owner stated, which decides the other two:
+  *"the way to start the customized Codex should be hassle free and usable/idiot-proof… not some
+  technical hobbyist way of applying a theme."*
+
+  - **Starting themed Codex must not require typing anything, ever, after first setup.** Injection
+    is process-scoped by construction (`NODE_OPTIONS` is read at process start, D-0001-1), so the
+    theme can only be applied *as Codex starts* — an already-running Codex cannot be repainted.
+    That makes "start Codex with the theme" an unavoidable step, and the decision is about who
+    performs it. **A terminal command typed per launch is explicitly rejected.** Instead:
+    `cdx apply <theme>` runs **once** and persists the choice; thereafter an ordinary desktop /
+    Start-menu shortcut launches Codex themed on a double-click. `cdx restore` clears the choice
+    and returns to stock Codex.
+
+    **The load-bearing consequence for M3: there must be a single, argument-free launch entry
+    point** — a bare `cdx` (or `cdx launch`) that starts Codex with whatever theme is currently
+    active, reading it from persisted state rather than from an argument. A shortcut can only
+    point at a fixed command line, so a launch path that requires naming a theme each time makes
+    the idiot-proof requirement unbuildable. **M4's installer creates the shortcut; M3's job is to
+    make it pointable.** Do not design a CLI that assumes a human is present.
+
+  - **The injector loads the `.ccskin` through `loadTheme()`; it does not read loose CSS.**
+    Today `injector/core/inject.js` takes `CDX_THEME_CSS_PATH` and `fs.readFileSync`s a raw
+    stylesheet — M1 and M2 built the validating loader and **nothing consumes it yet**. Replace
+    that contract with a package path resolved through `loadTheme()`, which accepts a **directory
+    or a `.ccskin`** (detected by `statSync`, never by extension), so the development theme
+    directory and the shipped package travel one code path. This makes manifest validation and
+    the safe-CSS scan **unskippable** before a byte reaches Codex, which is the whole reason they
+    exist — a validator nothing calls is documentation.
+
+  - **`manifest.json`'s `landmarks[]` is the single source of truth; `inject.js`'s hardcoded
+    `DECLARED_LANDMARKS` is deleted.** There are currently two disagreeing lists: a Gate-0-era
+    constant of 4 selectors in `inject.js`, and the manifest's 6, each carrying a build-time
+    `probe` asserted against the emitted stylesheet (D-0001-21). The hardcoded list can rot
+    silently — which is exactly how the four pre-Gate-0 landmarks died — while the generated one
+    **fails the build** if a rule is renamed. Runtime verification must therefore be driven by
+    manifest data rather than a constant compiled into the engine. This also removes a
+    theme-specific fact from the theme-agnostic injector core, which the layer rule in
+    `docs/ENGINEERING.md` requires anyway.
 - **M4 — installers.** Windows first (portable folder + `install.ps1`, or a signed exe if a cert
   exists) and verified on this machine. Then the macOS `.dmg`/wrapper `.app`, **built, documented
   as unverified, and handed over** — see the D-0001-16 amendment before touching it.
