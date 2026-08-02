@@ -278,35 +278,72 @@ async function reportRootEnvironment(webContents) {
       // negative branch therefore reports whether the home screen is even
       // present, how many buttons were considered, and whether a draft is
       // suppressing them.
-      const allButtons = Array.from(document.querySelectorAll('button'));
-      const cards = allButtons.filter((b) => {
-        const r = b.getBoundingClientRect();
-        const bySize = r.width > 120 && r.width < 320 && r.height > 70 && r.height < 180;
-        const byClass = typeof b.className === 'string' && b.className.split(/\\s+/).indexOf('min-h-26') >= 0;
-        return bySize || byClass;
-      });
+      // FOUND BY WHAT IT PAINTS, NOT BY ITS TAG. This census was 'button'-only
+      // until 2026-08-02, when it reported a confident NOT FOUND on a light
+      // home screen with an empty composer -- i.e. neither documented cause
+      // applied -- while the largest buttons on screen were 654x40 and 315x30.
+      // A card-sized <button> would have out-ranked those by area, so there was
+      // none, and a tag-scoped census cannot tell "no cards" from "the cards
+      // are not buttons". findings §8.5 already recorded this exact lesson for
+      // the PROBE's control census and rebuilt it geometrically; the lesson was
+      // never carried across to this check. It is now.
+      //
+      // The thing being measured is a HAIRLINE, so the census keys on painting
+      // one: a ring (box-shadow, which is what Electron substitutes for the
+      // zeroed border) or a real border, at card-ish geometry. Bounds are
+      // deliberately generous -- a maximized window widens the cards, and the
+      // old 320px ceiling was itself a way to miss them.
+      //
+      // Declared here rather than beside its other use further down: both
+      // scans share it, and a const is in its temporal dead zone until the
+      // line that declares it runs.
+      const SCAN_BUDGET = 4000;
+      const cardScan = [];
+      let cardScanned = 0;
+      for (const el of document.querySelectorAll('*')) {
+        if (++cardScanned > SCAN_BUDGET) break;
+        const r = el.getBoundingClientRect();
+        if (r.width < 100 || r.width > 700 || r.height < 40 || r.height > 300) continue;
+        const ecs = getComputedStyle(el);
+        const ring = ecs.boxShadow && ecs.boxShadow !== 'none';
+        const bordered = parseFloat(ecs.borderTopWidth) > 0 || parseFloat(ecs.borderLeftWidth) > 0;
+        const byClass = typeof el.className === 'string' && el.className.split(/\\s+/).indexOf('min-h-26') >= 0;
+        if (!ring && !bordered && !byClass) continue;
+        cardScan.push({ el, r, cs: ecs });
+      }
+      // Cards are siblings and contain no other ringed box, so keeping only
+      // candidates that contain no other candidate drops the wrappers.
+      const cards = cardScan.filter((c) => !cardScan.some((o) => o !== c && c.el.contains(o.el)));
       let cardHairline;
       if (!cards.length) {
         const onHome = !!document.querySelector('.heading-xl');
         const composerText = (document.querySelector('.ProseMirror') || {}).textContent || '';
-        const biggest = allButtons
-          .map((b) => b.getBoundingClientRect())
+        // Report the biggest elements of ANY tag now, not the biggest buttons:
+        // the previous phrasing invited "no cards" to be read as a theming
+        // result when it was a census that could not see them.
+        const biggest = Array.from(document.querySelectorAll('*'))
+          .slice(0, SCAN_BUDGET)
+          .map((e) => e.getBoundingClientRect())
+          .filter((r) => r.width > 80 && r.height > 30)
           .sort((a, b) => (b.width * b.height) - (a.width * a.height))
           .slice(0, 3)
           .map((r) => Math.round(r.width) + 'x' + Math.round(r.height))
           .join(', ');
         cardHairline = 'NOT FOUND — homeScreen=' + (onHome ? 'yes' : 'no') +
-          '  buttons=' + allButtons.length + ' (largest: ' + (biggest || 'none') + ')' +
+          '  ringedOrBorderedCandidates=' + cardScan.length +
+          '  (largest elements of any tag: ' + (biggest || 'none') + ')' +
           '  composerDraft=' + JSON.stringify(composerText.slice(0, 24)) +
           (onHome && composerText.trim()
             ? '  => a non-empty composer HIDES the cards, and Codex persists the draft across restarts. Clear the composer and re-sample; this is not a theming failure.'
-            : onHome ? '  => on the home screen with an empty composer and still no cards: investigate.'
+            : onHome ? '  => on the home screen with an empty composer and STILL no element painting a hairline at card geometry. The census is no longer tag-scoped, so this is now evidence about the screen rather than about the query.'
                      : '  => not the home screen; cards exist only there.');
       } else {
-        const cs = getComputedStyle(cards[0]);
-        cardHairline = cards.length + ' card(s); ring-color=' + (cs.getPropertyValue('--tw-ring-color').trim() || '(unset)') +
-          '  border-width=' + cs.borderTopWidth + ' (0px expected on Electron)' +
-          '  bg=' + cs.backgroundColor;
+        cardHairline = cards.length + ' card(s) <' + cards[0].el.tagName.toLowerCase() + '> ' +
+          Math.round(cards[0].r.width) + 'x' + Math.round(cards[0].r.height) +
+          '; ring-color=' + (cards[0].cs.getPropertyValue('--tw-ring-color').trim() || '(unset)') +
+          '  boxShadow=' + (cards[0].cs.boxShadow || 'none').slice(0, 60) +
+          '  border-width=' + cards[0].cs.borderTopWidth + ' (0px expected on Electron)' +
+          '  bg=' + cards[0].cs.backgroundColor;
       }
 
       // THE COMPOSER'S FILLED CIRCULAR CONTROL. D-0001-15 — no landmark here
@@ -555,7 +592,6 @@ async function reportRootEnvironment(webContents) {
       // app it is diagnosing is not an acceptable trade, so the scan stops after
       // a fixed budget and says so rather than running to completion.
       const monoRegions = [];
-      const SCAN_BUDGET = 4000;
       let scanned = 0;
       let scanTruncated = false;
       for (const el of document.querySelectorAll('div, section, main, table, pre, code')) {

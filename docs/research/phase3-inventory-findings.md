@@ -666,8 +666,24 @@ Recorded so no one reads section 8 as "Phase 3 is finished":
   causes (wrong screen, persisted draft) applies. Both hooks missed: the geometric one (nothing in
   120–320 x 70–180) and the authored-class one (`min-h-26`). In dark the same check measured
   **4 cards** at that size. The `315x30` items are the right width and the wrong height, which
-  looks like the same content rendered as compact rows rather than cards. Cause unknown —
-  candidates are window width, a Codex update, or a genuinely different light empty state.
-  **Do not treat D-0001-15's dark figures as covering light until this is explained.**
+  looks like the same content rendered as compact rows rather than cards.
+
+  **ROOT CAUSE FOUND IN THE INSTRUMENT, 2026-08-02 — the census was tag-scoped.** It matched
+  `document.querySelectorAll('button')` only. §8.5 records this exact lesson being learned for the
+  *probe's* control census, which was rebuilt as a geometric+visual query specifically because it
+  "cannot miss a card whatever its tag" — **the lesson was never carried across to the settled
+  check.** Two independent ways it could miss: the cards not being `<button>`, and a maximized
+  window pushing them past the hard `width < 320` ceiling. The owner has since confirmed the window
+  *was* maximized. Note the miss was still not fully explained by width alone — a card-sized
+  `<button>` would have out-ranked the reported `654x40` by area and did not appear.
+
+  Rebuilt to key on **what the element paints** — a ring (box-shadow) or a border at generous card
+  geometry — plus the `min-h-26` authored class as the second independent hook, and the full
+  `boxShadow` is now reported rather than only `--tw-ring-color`. Regression-tested against a
+  synthetic screen with **zero** `<button>` elements and 322px-wide `<div>` cards painting a ring:
+  old census `NOT FOUND`, new census `4 card(s) <div> 322x104 boxShadow=rgb(114,129,157) 0 0 0
+  0.5px border-width=0px` — `#72819D`, which is light-mode `--color-border-heavy`, the token
+  D-0001-15 names. **The light-mode card measurement is therefore still owed**, but the next run
+  can produce it. Until then, do not treat D-0001-15's dark figures as covering light.
 - **Light mode** for everything in section 8. Every figure above is dark-mode measured; the light
   values are computed only. Appearance mode is set inside Codex, so this needs the owner.
