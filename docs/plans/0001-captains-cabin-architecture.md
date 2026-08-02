@@ -1,6 +1,6 @@
 # Plan 0001 — Captain's Cabin: Architecture & Roadmap
 
-**Status:** **Phase 4 (Packaging) IN PROGRESS — M1 (theme-loader + safe-CSS validation) COMPLETE 2026-08-02**, with the repo's first test harness (`npm test`, zero dependencies, 73/73) and three new decisions, D-0001-20/21/22; see the Phase 4 milestone list below. M2 (the `.ccskin` packer) is next. Phase 1 (Research & Architecture) **COMPLETE**. **Phase 3 (CSS & Theme Dev) COMPLETE 2026-08-02** — every surface measured in the running app in both modes; see the Phase 3 close-out below and D-0001-19. **Phase 4 (packaging) is IN PROGRESS — M1 done, M2 next.** Phase 2 (Palette, Type & Assets) **COMPLETE** — ground, palette and syntax palette locked and emitted. The hero artwork and the Layer 2 character pass both shipped 2026-08-01 (D-0001-9, D-0001-10). **Gate 0 RAN 2026-08-01 — see [`docs/research/gate0-findings.md`](../research/gate0-findings.md), which is now the authority on how this theme behaves in the real app.** Injection works and needs no debug port; the theme applies only **partially**, because the Tier-2 landmark inventory and the token-consumption model were both built by static analysis and do not match the shipped build. **Phase 3 was larger than this plan assumed** — that gap is now closed; the paragraph is kept for the history of how it was found.
+**Status:** **Phase 4 (Packaging) IN PROGRESS — M1 (theme-loader + safe-CSS validation) COMPLETE 2026-08-02 and M2 (the `.ccskin` packer + the real package) COMPLETE 2026-08-03.** The test harness (`npm test`, zero dependencies) is at **95/95**, and the decisions from these two milestones are D-0001-20/21/22 (M1) and **D-0001-23** (M2); see the Phase 4 milestone list below. M3 (the `cdx` CLI) is next, and it is where the "verified in the running app" gate returns. Phase 1 (Research & Architecture) **COMPLETE**. **Phase 3 (CSS & Theme Dev) COMPLETE 2026-08-02** — every surface measured in the running app in both modes; see the Phase 3 close-out below and D-0001-19. **Phase 4 (packaging) is IN PROGRESS — M1 done, M2 next.** Phase 2 (Palette, Type & Assets) **COMPLETE** — ground, palette and syntax palette locked and emitted. The hero artwork and the Layer 2 character pass both shipped 2026-08-01 (D-0001-9, D-0001-10). **Gate 0 RAN 2026-08-01 — see [`docs/research/gate0-findings.md`](../research/gate0-findings.md), which is now the authority on how this theme behaves in the real app.** Injection works and needs no debug port; the theme applies only **partially**, because the Tier-2 landmark inventory and the token-consumption model were both built by static analysis and do not match the shipped build. **Phase 3 was larger than this plan assumed** — that gap is now closed; the paragraph is kept for the history of how it was found.
 **Inventory rebuilt 2026-08-01 — see [`docs/research/phase3-inventory-findings.md`](../research/phase3-inventory-findings.md), now the authority on Codex's token architecture and landmarks.** The styling strategy (D-0001-2) is confirmed correct against the running app; the theme's *token list* was the thing that was wrong, and the work is now enumerated rather than unknown.
 
 **PHASE 3 IS COMPLETE as of 2026-08-02 (items 16–22 below, plus D-0001-19).** Every surface this plan set out to settle has now been *measured in the running app*, in **both modes**: menus, empty state, composer, sidebar, code blocks, and finally diffs and terminals. Contrast passes everywhere it was checked (diff/terminal 12.83:1 light, 15.43:1 dark). Three questions that looked like defects turned out to need **no code at all** — the translucent menu (§8.4), the empty-state controls (D-0001-15), and the missing empty-state cards (a Codex content rule, not a theme effect). Two real bugs were found and fixed: **D-0001-17** (the light hover was perceptually invisible; owner-verified fixed) and **D-0001-18** (Codex sets `--vscode-editor-font-family` on `<body>`, so a value on `<html>` could never govern it — **the token fix is verified, but see the correction below: it did not fix the terminal panel, which never reads that token**).
@@ -279,12 +279,33 @@ it. `cdx` is the CLI name (D-0001-5).
 
   Not claimed: this is the only Phase 4 milestone a unit test can honestly close, and a green
   run says nothing about how the theme looks.
-- **M2 — `.ccskin` packer + the real package.** Zip `manifest.json` + `theme.css` + `syntax.json`
-  + assets into `captains-cabin.ccskin`, and produce it for the actual theme. `theme.css` is
-  **generated** (`tools/palette/emit-theme.mjs`), so the packer consumes the emitter's output and
-  never edits it. Round-trip check: pack → load → validate → byte-compare.
+- **M2 — `.ccskin` packer + the real package.** ✅ **DONE 2026-08-03.** `injector/theme-loader/zip-write.js`
+  (the writer half of D-0001-20) and `tools/pack-ccskin.js` (the packer) shipped, and the real
+  package builds: **`dist/captains-cabin.ccskin`, 681,124 bytes**, 10 entries, against the 32 MiB
+  cap. The suite went **73 → 95**, zero skips, still zero dependencies. `node tools/palette/audit.mjs`
+  is **272/272** and `theme.css`/`syntax.json` are byte-unchanged — this milestone packaged the
+  theme without touching a token.
 
-  Four things settled when M1 closed, so M2 does not have to guess at them:
+  What it verifies, in the order the failures matter: the packer **refuses to pack a theme that
+  does not `loadTheme()` cleanly** (build time, not install time) and then **re-loads the archive
+  it just wrote** before returning, so a `.ccskin` its own loader cannot read never reaches disk.
+  The round-trip tests pack the real theme and byte-compare `css`, `syntax` and every asset buffer
+  against the directory-sourced load; packing twice produces identical bytes; and the raw entry
+  list is compared against the **complete** expected set, because `loadTheme()` only looks up
+  manifest-declared paths and therefore cannot see a stowaway entry of any other name.
+
+  **One decision came out of it — D-0001-23** (reproducibility is by construction, and 32-bit
+  size/offset fields are range-checked rather than masked with `>>> 0`, which silently truncates
+  where `writeUInt32LE` would have thrown).
+
+  **Verified against an independent parser**, not only our own reader: .NET
+  `System.IO.Compression.ZipFile` opens the package, lists all 10 entries at their correct sizes,
+  reports every mtime as the DOS epoch, and inflates `theme.css`. Three entries (the WebP and two
+  WOFF2 faces) come out **stored** rather than deflated, so the real package exercises that branch
+  of the reader too. **Not claimed: nothing in M2 is wired into the injector and nothing is
+  user-visible, so no Codex launch was required or performed.** That gate returns at M3.
+
+  Four things settled when M1 closed, so M2 did not have to guess at them:
 
   - **What goes in the package is `manifest.json`'s `assets[]`, and nothing else.** Do **not**
     zip the `themes/captains-cabin/` directory wholesale. `assets/fonts/` holds five faces this

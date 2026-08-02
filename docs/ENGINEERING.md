@@ -110,7 +110,7 @@ Directory roles are visible from the tree (see Plan 0001 §folder-structure). Th
 
 ## Verification Expectations
 
-**The repo has a test harness as of Phase 4 M1**, and it covers the theme loader only — nothing else in the repo is under test. `node:test` and `node:assert/strict`, no dependencies:
+**The repo has a test harness as of Phase 4 M1**, and it covers the theme loader, the `.ccskin` writer, and the packer — nothing else in the repo is under test. `node:test` and `node:assert/strict`, no dependencies:
 
 ```bash
 npm test
@@ -118,7 +118,9 @@ npm test
 
 Note the script is `node --test "tests/**/*.test.js"`, an explicit glob, not `node --test tests/`. That is not a style choice: on Node v22.14.0 (this machine) a bare directory argument is resolved as a *module to run* and fails with `Cannot find module '...\tests'` before the runner starts. The glob and the bare `node --test` both work; the glob is used because it states the harness's scope instead of inferring it from the working directory.
 
-**What a green run does and does not establish.** It establishes the loader's own contract: manifest validation, the safe-CSS allowlist, zip parsing, the size cap. It establishes nothing about how the theme looks, and M1 is the only Phase 4 milestone a unit test can honestly close.
+**What a green run does and does not establish.** It establishes the loader's own contract (manifest validation, the safe-CSS allowlist, zip parsing, the size cap) and, since M2, the packer's (round-trip fidelity, byte-reproducibility, and that only manifest-declared files reach a package). It establishes nothing about how the theme looks. **M1 and M2 are the only Phase 4 milestones a unit test can honestly close** — both are build-time machinery with no user-visible surface. From M3 on, `apply`/`restore` must be proven in the running app.
+
+**Building the package.** `node tools/pack-ccskin.js` writes `dist/<id>.ccskin`. It is reproducible build output — `dist/` and `*.ccskin` are gitignored deliberately, so **never commit the binary and never "fix" the gitignore**. Regenerating `theme.css` first (`node tools/palette/emit-theme.mjs`) is what changes a package's bytes; the packer only ever copies the emitter's output verbatim.
 
 The binding verification rule for this project, per the owner's standing practice (*"tests passing ≠ done"*):
 

@@ -20,6 +20,9 @@
  *   - ZIP_MALFORMED     the .ccskin container itself is not a well-formed,
  *                       supported zip (bad EOCD, Zip64, unsupported
  *                       compression method, unsafe entry name, CRC mismatch)
+ *   - PACKAGE_INVALID   the packer (tools/pack-ccskin.js) was handed entries
+ *                       that cannot form a valid package (unsafe or
+ *                       duplicate entry name, too many entries)
  */
 class ThemeLoadError extends Error {
   constructor(code, message) {
