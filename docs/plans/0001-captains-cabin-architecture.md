@@ -389,6 +389,55 @@ it. `cdx` is the CLI name (D-0001-5).
   exists) and verified on this machine. Then the macOS `.dmg`/wrapper `.app`, **built, documented
   as unverified, and handed over** — see the D-0001-16 amendment before touching it.
 
+  **The shortcut's icon and name are decided in M4, from a render** (owner, 2026-08-03) — the same
+  way every other visual call on this project was made. Produce candidates and ask; do not pick in
+  prose. The open question the candidates must answer: reusing Codex's own icon is the most
+  idiot-proof (it looks like the app you already launch, just themed) but makes a themed and a
+  stock Codex indistinguishable if both are pinned.
+
+### After Phase 4 — documented, not yet scheduled
+
+Recorded 2026-08-03 at the owner's request so the reasoning is not re-derived. **Nothing here is
+committed to a milestone, and nothing in Phases 1–4 may block on it.**
+
+- **Live re-theming, and driving it from inside Codex.** The owner saw this pattern elsewhere
+  (changing a skin by asking Codex in chat) and wants it *after* Captain's Cabin ships. **It is
+  feasible on what already exists** — see the M3 entry: the injector's attachment is launch-bound
+  but its painting is not, so re-running `applyTheme` with different CSS repaints a live window.
+  What is missing is only a change signal the injector listens for, plus a small skill installed
+  into Codex so its agent can send one. **Deferred deliberately** because Captain's Cabin is the
+  only theme, so there is nothing to switch to; M3 keeps the door open at zero cost (the mutable
+  theme slot).
+
+  **One collision to respect:** the specific capability in the example that prompted this — a
+  user-swappable **full-bleed background image** — is CLOSED, by D-0001-8 (rejected on sight from
+  a render) and D-0001-6 (surfaces are flat token colour). That is a *contrast* ruling: every
+  figure this theme claims is computed against a flat colour, so imagery behind text makes the
+  governing value the worst pixel rather than the average. **The interaction pattern is adoptable;
+  the full-bleed image is not.** Imagery stays confined to empty states, where no dense text sits
+  over it (D-0001-9).
+
+- **A second theme — what it actually costs.** Measured against the shipped code, 2026-08-03,
+  because the owner asked whether a new theme is "just changing the hex codes". **Mostly yes:**
+  `injector/` is entirely theme-agnostic (adding a theme adds a folder), and
+  `tools/palette/palette-engine.mjs` derives a whole palette from **one ground hex** —
+  `buildDark(groundHex)` / `buildLight(groundHex)` step every surface as an OKLCH offset and
+  *solve* every contrast-critical ink by binary search against its AA target. It is already
+  exercised on two grounds (navy shipped, oak finalist): that is what `272 = 68 × 4` counts.
+
+  **The exception:** [`tools/palette/emit-theme.mjs`](../../tools/palette/emit-theme.mjs) is
+  hardcoded to one output theme (`:13`, `themes/captains-cabin/`) and to three font families with
+  their embedded data URIs. It is *one theme's* emitter, not a theme emitter. A second theme means
+  generalising it to take a recipe (ground, fonts, id/name) — a bounded refactor of one file, plus
+  the per-theme font work (subset to woff2, embed, ship the licence text, which OFL requires).
+  The accent hue is likewise a constant (`ROLE.brass`, C 0.105 / H 90); the *policy* that there is
+  exactly one accent is design-floor law and carries to every theme.
+
+  **A caution that is specific, not vague:** the surface ramp steps ~0.082 L from the ground, so a
+  ground very close to pure black or pure white (a plausible choice for a high-contrast fashion
+  aesthetic) leaves less headroom for the six-step ramp. This fails loudly rather than silently —
+  `audit.mjs` will not reach 272/272 — so it is a check to expect, not a risk to pre-solve.
+
 **Do not re-derive anything Phase 3 settled.** The theme is finished and owner-verified; Phase 4
 packages it and must not change a single token value. `node tools/palette/audit.mjs` must stay
 **272/272**.
