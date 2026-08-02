@@ -461,6 +461,52 @@
   --vscode-editor-font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
 }
 
+/* D-0001-19 — THE TERMINAL IS xterm.js, AND NO TOKEN CAN REACH IT.
+ *
+ * Measured in the running app 2026-08-02, three identical samples:
+ *
+ *   475x1280  font=ui-monospace  fontOrigin=<div> (the region itself)
+ *   class="xterm-rows"  inline=none
+ *   --vscode-editor-font-family='Monaspace Neon'
+ *   --default-mono-font-family='Monaspace Neon'
+ *
+ * Read that carefully: BOTH mono custom properties already resolve to our face
+ * AT THAT ELEMENT, and it paints ui-monospace (Consolas on Windows) anyway.
+ * xterm.js takes fontFamily from a JavaScript options object and writes a
+ * literal stack into a stylesheet it generates at runtime, so it never reads
+ * either variable. D-0001-18 captured the token at every level and could not
+ * have reached this surface -- a captured token is not a consumed token.
+ *
+ * This is therefore a LANDMARK by necessity, not by preference (D-0001-2), and
+ * it was written only after the governing rule was measured -- the mistake that
+ * killed the four pre-Gate-0 landmarks was writing them first.
+ *
+ * The hook is safe as landmarks go: .xterm-rows and .xterm-char-measure-element
+ * are xterm.js's own public, documented class names, not Codex build hashes.
+ * If xterm is ever swapped out the rule stops matching and the terminal returns
+ * to its stock face -- degradation, not breakage.
+ *
+ * .xterm-char-measure-element IS LOAD-BEARING AND MUST NOT BE DROPPED. xterm's
+ * DOM renderer sizes its cell grid by measuring that element. Style the rows
+ * without it and xterm measures Consolas while painting Monaspace, which
+ * desynchronises the grid: misplaced cursor, offset selection, drifting
+ * columns. Monaspace and Consolas are NOT metric-compatible, so this is a real
+ * failure mode. Styling both keeps measurement and painting on one face. Our
+ * sheet lands at dom-ready, before any terminal is opened, so xterm's first
+ * measurement already sees our face.
+ *
+ * VERIFY BY LOOKING AT A LIVE TERMINAL -- type a command, move the cursor,
+ * drag a selection. Correct glyphs with a misaligned cursor is the signature of
+ * a measurement/paint split, and no contrast figure will show it. */
+.electron-dark .xterm,
+.electron-light .xterm,
+.electron-dark .xterm-rows,
+.electron-light .xterm-rows,
+.electron-dark .xterm-char-measure-element,
+.electron-light .xterm-char-measure-element {
+  font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+}
+
 /* DISPLAY — Fraunces, on Codex's ten authored heading classes.
  *
  * These are global, semantic, hand-written class names, not build-hashed CSS

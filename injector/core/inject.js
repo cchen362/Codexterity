@@ -735,6 +735,29 @@ async function reportRootEnvironment(webContents) {
                 'This is a finding about the QUERY, not about the screen.'
               : 'nothing on screen renders in a mono face at all (' + monoTally + '). No diff/terminal/code view was open at this sample — an unrun measurement, not a negative result.'];
 
+      // D-0001-19 — the terminal is xterm.js, which sizes its cell grid by
+      // MEASURING .xterm-char-measure-element and paints glyphs into .xterm-rows.
+      // Those two must carry the SAME face or the grid desynchronises: correct
+      // glyphs, misplaced cursor and selection. That misalignment is invisible to
+      // any contrast or font check, so what is reported here is the PRECONDITION
+      // for coherence -- both faces, side by side, plus the measured cell box.
+      // A split is a defect even when both names look right individually.
+      const xtermRows = document.querySelector('.xterm-rows');
+      const xtermMeasure = document.querySelector('.xterm-char-measure-element');
+      let xterm = null;
+      if (xtermRows || xtermMeasure) {
+        const rowFam = xtermRows ? getComputedStyle(xtermRows).fontFamily.split(',')[0] : '(no .xterm-rows)';
+        const measFam = xtermMeasure ? getComputedStyle(xtermMeasure).fontFamily.split(',')[0] : '(no measure element)';
+        const mr = xtermMeasure ? xtermMeasure.getBoundingClientRect() : null;
+        xterm = 'rows=' + rowFam + '  measureElement=' + measFam +
+          (mr ? '  cell=' + mr.width.toFixed(2) + 'x' + mr.height.toFixed(2) : '') +
+          '  => ' + (xtermRows && xtermMeasure
+            ? (rowFam === measFam
+                ? 'COHERENT (measurement and paint agree)'
+                : 'SPLIT — grid will misalign; cursor/selection will not sit on the glyphs')
+            : 'INCOMPLETE — one of the two elements is not mounted, so coherence is UNTESTED, not confirmed');
+      }
+
       const heading = document.querySelector('.heading-xl, .heading-lg, .heading-2xl');
       const headingFont = heading ? getComputedStyle(heading).fontFamily : '(no heading on screen)';
       const bodyFont = document.body ? getComputedStyle(document.body).fontFamily : '(no body)';
@@ -750,6 +773,7 @@ async function reportRootEnvironment(webContents) {
         composerAction,
         floatingSurface,
         codeRegions,
+        xterm,
         monoVarHtml,
         monoVarBody,
         headingFont,
@@ -782,6 +806,7 @@ async function reportRootEnvironment(webContents) {
     if (env.composerAction) log(`  composer filled control: ${env.composerAction}`);
     if (env.floatingSurface) log(`  floating surface: ${env.floatingSurface}`);
     for (const row of env.codeRegions || []) log(`  code/diff/terminal region: ${row}`);
+    if (env.xterm) log(`  D-0001-19  xterm terminal: ${env.xterm}`);
     // D-0001-18 — the two levels are logged ADJACENTLY and unreduced, because
     // the whole diagnostic value is in comparing them to each other.
     if (env.monoVarHtml !== undefined) {

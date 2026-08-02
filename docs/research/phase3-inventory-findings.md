@@ -953,6 +953,47 @@ border-width=0px bg=rgb(249, 240, 221)` — `#72819D` is light-mode `--color-bor
 D-0001-15 names, so **D-0001-15 now holds in both modes** rather than dark only. The rebuilt census
 found them on the first attempt.
 
-**Still open, and it is all that stands between here and Phase 3's close:** the terminal panel's
-code face. The next run's `fontOrigin=` line answers it. **Do not add a landmark before that line
-is read** — that is how the four pre-Gate-0 landmarks died, and it is what D-0001-15 avoided twice.
+### 8.6.3 RUN 5–6, 2026-08-02 — the terminal is xterm.js. CLOSED (D-0001-19)
+
+`fontOrigin=` answered it in one line, three identical samples:
+
+```
+475x1280  font=ui-monospace  fontOrigin=<div> (the region itself)  class="xterm-rows"
+inline=none  --vscode-editor-font-family='Monaspace Neon'  --default-mono-font-family='Monaspace Neon'
+```
+
+**Both** mono custom properties already resolved to our face **at that element**, and it painted
+`ui-monospace` regardless. The ancestor-inheritance hypothesis was wrong — `fontOrigin` is the
+element itself. xterm.js takes `fontFamily` from a **JavaScript options object** and writes a
+literal stack into a stylesheet it generates at runtime; it reads neither variable. **No token
+work could ever have reached this surface.** That is the cleanest possible statement of §8.6.2's
+lesson: the token was captured at every level and the consumer was never in the cascade at all.
+
+**Fixed with a landmark, written only after the governing rule was measured** — the inverse of how
+the four pre-Gate-0 landmarks died. `.xterm`, `.xterm-rows` and `.xterm-char-measure-element`, the
+last **load-bearing**: xterm's DOM renderer sizes its grid by measuring that element, so styling
+the rows alone would measure Consolas and paint Monaspace, desynchronising the grid. The two faces
+are not metric-compatible, so this was a real failure mode, and the check added for it reports the
+**precondition** (both elements on one face) rather than a bare font name.
+
+**Verified in the running app, both instrument and eye:**
+
+```
+D-0001-19  xterm terminal: rows="Monaspace Neon"  measureElement="Monaspace Neon"
+           cell=238.09x14.00  => COHERENT (measurement and paint agree)
+code/diff/terminal region: 493x1288  font="Monaspace Neon"  ink=#182336
+           surface=#F0E7D5  contrast=12.83 PASS
+           class="terminal xterm xterm-dom-renderer-owner-1 focus"
+```
+
+`COHERENT` proves both elements *claim* one face; it cannot prove the painted advance width matches
+the measured cell. The owner settled that by printing 400 characters: **6 flush rows + a
+4-character remainder**, i.e. wrap column exactly 66 and 6x66+4 = 400. A metric mismatch breaks
+that identity — rows overflow or wrap ragged. Cursor and selection land on the glyphs.
+
+**`xterm-dom-renderer-owner-1` is why this was fixable at all.** Under xterm's canvas or WebGL
+renderer, glyphs are rasterized from the JS-configured font into a `<canvas>` and **no CSS rule
+could reach them**. If a future Codex switches renderers, this fix stops working — and it will
+fail visibly (stock face) rather than silently.
+
+**Phase 3's surfaces are now all measured.** Dialogs remain the only one never observed.
