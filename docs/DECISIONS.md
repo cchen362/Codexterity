@@ -180,6 +180,31 @@ Settled 2026-07-31 by the owner, each from a **rendered visual**, not from a des
 - **A full-bleed atmospheric background behind the whole app** (the "glass panels over artwork" look). Considered against a reference the owner supplied, and narrowed to *empty states only* before textures were cut altogether. Imagery is permitted only where no dense text sits over it.
 - **A serif-plus-sans pairing** (Alegreya + Alegreya Sans + Commit Mono) was offered as the safer, quieter option and not chosen. Fraunces carries both display and UI.
 
+### D-0001-16 — macOS verification is deferred behind Phase 4 packaging (CLOSED, 2026-08-02)
+
+**Ruling by the owner.** There is no Mac on this project. The one available machine
+belongs to a collaborator who is willing to install the finished thing and try it — and
+that is the *only* form macOS verification can take. A collaborator will not be asked to
+clone the repo, install Node, and run `launcher/macos/launch.sh` by hand.
+
+**Consequences, all deliberate:**
+
+- **`launcher/macos/launch.sh` ships unverified** and stays that way until Phase 4 produces
+  a `.ccskin` and an installer. Its header says so; do not soften that wording, and do not
+  mark it verified on the strength of a Windows run or a code review.
+- **macOS verification is downstream of Phase 4, not parallel to it.** This partly reverses
+  Phase 3's "settle the look first — packaging adds nothing visual" sequencing. That framing
+  still holds for Windows; it does not hold for the cross-platform gap.
+- **The three macOS unknowns stay open and stay loud** rather than being guessed at: the
+  bundle's real identity, the `EnableNodeOptionsEnvironmentVariable` fuse on the macOS
+  binary (Phase 1 decoded fuses out of the *Windows* `chrome.dll` only), and whether
+  D-0001-13 needs `!important` there (Codex's own sidebar rule scores (0,3,0) against our
+  (0,2,0) and probably *does* match on a window without application-menu chrome).
+  **Do not "pre-fix" any of them.**
+
+**Do not re-propose macOS verification as Phase 3 work, and do not ask the owner to obtain
+a Mac.** The next honest step is Phase 4, and the macOS answer arrives with it.
+
 ### Phase 2 outcome (reference, 2026-07-31)
 
 Captain's Cabin ships **no raster assets**. The theme is text plus two OFL fonts. This retires the 32 MiB package cap, the seamless-tiling pipeline, and the per-ground texture re-grade as concerns. An atmospheric hero for the empty state remains a documented *optional future* addition — nothing has been generated, and the theme is complete and correct without it.
