@@ -242,6 +242,33 @@ outside this project's control**, so no milestone, gate, or release may depend o
 **Consequence to internalise: macOS may never be verified, and that is an accepted outcome,
 not an outstanding task.** Do not carry it as open work or re-raise it as a blocker.
 
+### D-0001-26 — The diff pane's "second click does nothing" is CODEX'S BUG, not the theme's (CLOSED, 2026-08-03)
+
+**Observed by the owner** during M3's verification launch: with a diff open, clicking a
+*different* diff in the same conversation does not switch the pane — no response at all.
+
+**Controlled, not assumed.** Codex was then launched from its **normal Start-menu icon**, with
+no injector in the process at all, and **the bug reproduces identically**. One variable changed
+between the two runs (our code present or absent) and the behaviour did not, so the theme is
+excluded. **This is Codex's own bug and there is nothing for Codexterity to fix.**
+
+**Why the control was run rather than the theme being audited into the clear.** A grep first
+established that the theme has *no plausible mechanism*: its entire structural footprint is six
+rules (sidebar panel, the row `::before`, xterm, the home hero, chrome, type), it sets **no**
+`z-index`, `isolation`, `contain` or `overflow` anywhere, and its single `pointer-events` is
+`none` on a 2px marker — which can only make hit-testing more permissive, never block a click.
+That was **not treated as sufficient**. "No mechanism identified" is exactly the reasoning that
+produced two wrong conclusions about the missing empty-state cards (Plan 0001 item 20), and the
+lesson recorded there is that only a suppressed-injection or stock control settles it. It is
+cheap; run it.
+
+**Also relevant, and checked:** M3 changed **no CSS**. `theme.css` was byte-identical across
+the milestone (`git diff --stat` empty, `audit.mjs` 272/272), so this could never have been an
+M3 regression in either direction.
+
+**Do not re-investigate this as a theming defect, and do not add a landmark or a
+`pointer-events` rule to "fix" it.** If it ever needs chasing, it is an upstream Codex report.
+
 ### Phase 2 outcome (reference, 2026-07-31)
 
 Captain's Cabin ships **no raster assets**. The theme is text plus two OFL fonts. This retires the 32 MiB package cap, the seamless-tiling pipeline, and the per-ground texture re-grade as concerns. An atmospheric hero for the empty state remains a documented *optional future* addition — nothing has been generated, and the theme is complete and correct without it.
