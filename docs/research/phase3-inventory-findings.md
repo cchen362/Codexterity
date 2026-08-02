@@ -643,6 +643,69 @@ way (11.80:1), so this is **not a defect** — but it means the editor/diff toke
 may not be what paints the code surface the user actually sees. Unresolved; do not assume either
 way, and do not "fix" it before measuring which element the editor tokens reach.
 
+### 8.5.1 RUN 2, 2026-08-02 — the four empty-state cards no longer exist in Codex
+
+46 samples, both modes, full 300s schedule, zero probe failures. With the census rebuilt to find
+elements by what they paint (§8.6), the answer to the "missing cards" anomaly is **not** a query
+bug and **not** a light-mode difference:
+
+**Codex no longer renders four empty-state cards, in either mode.** Owner screenshots of both modes
+show a single suggestion line above the composer where the four cards used to be, and the census
+agrees: on the home screen, in *both* modes, `homeScreen=yes ringedOrBorderedCandidates=0`.
+
+What the census *does* find, and what it means:
+
+| Measured | Reading |
+|---|---|
+| `4 card(s) <div> 383x65 … boxShadow=rgb(114,129,157) 0 0 0 0.5px  bg=oklab(0.880676 … / 0.5)` (light) | the **replacement suggestion rows** — ringed with `#72819D` = light `--color-border-heavy` |
+| `4 card(s) <div> 383x65 … boxShadow=rgb(95,102,117) 0 0 0 0.5px  bg=oklab(0.272192 … / 0.5)` (dark) | same, ringed with `#5F6675` = dark `--color-border-heavy` |
+| `1 card(s) <div> 240x201  bg=#DFD7C5` / `bg=#222731` | a panel painting from `--color-background-control-opaque`, both modes |
+
+**Consequence for D-0001-15.** Its *reasoning* stands entirely — the hairline is a ring, not a
+border; it resolves to `--color-border-heavy`; this theme defines it; no landmark is needed, and a
+`border-color` rule would still paint nothing. What is now stale is only the **subject**: the
+element it was measured on is gone. The token conclusion transferred to the replacement rows
+without any change, which is the token-first strategy (D-0001-2) doing exactly what it was chosen
+for — *the UI was replaced and the theme followed it with no edit.* **Do not "fix" D-0001-15 by
+adding a selector for the new rows.**
+
+**A new translucent surface, and it is far more translucent than the menu.** Those rows are
+`oklab(… / 0.5)` — **50% opaque**, where §8.4's menu panel was 90%. §8.4.1's bound scales directly
+with `1 − alpha`, so the perturbation there is **five times larger** and the unconditional bound is
+correspondingly weaker. Their ink was not sampled this run. **This, not the menu, is now the
+strongest open case of the D-0001-6 flat-surface assumption not holding.**
+
+### 8.5.2 The light-mode sidebar hover is perceptually invisible — measured, root cause found
+
+Reported by the owner from the running app: hovering "New chat" in light mode produces a hover fill
+that is barely visible. Measured in OKLCH L, which is what the ramp is stepped in (contrast ratio is
+the wrong instrument for two near-identical surfaces — it compresses badly near 1.0):
+
+| Pair | Step | ΔL | |
+|---|---|---|---|
+| dark sidebar → hover | `#0B111C` → `#181E2A` | **0.0574** | legible |
+| light sidebar → hover | `#EBE2D0` → `#E7DECC` | **0.0122** | ~invisible |
+| light ground → hover | `#F0E7D5` → `#E7DECC` | 0.0273 | legible |
+
+**The dark hover step is 4.7× the light one, from the same formula.** `palette-engine.mjs` derives
+hover as `surf(step(0.55))` — a fraction of the ramp measured **from the ground**. In dark the
+sidebar sits *below* the ground and hover moves *above* it, so the two **diverge**; in light both
+the sidebar and hover move *down* from the ground, so they **converge** and most of the step is
+spent before hover applies. Uniform derivation, opposite result, decided purely by which side of the
+ground `--color-background-surface-under` falls on.
+
+**This reopens Plan 0001 item 10**, which dropped re-deriving the interaction steps on the grounds
+that "the ramp is not broken". That call was made from a *chain trace*, and the chain is genuinely
+healthy — hover resolves to a token this theme defines, with this theme's value. It resolves to a
+value that is invisible where it lands. **A resolved token is not a visible pixel** — the same
+lesson as §2.1 and §8.3, in its third form.
+
+**Headroom.** Deepening light hover darkens a surface under dark ink, so `Meta text on hovered row`
+(`--color-text-tertiary`) is the binding audit check. It caps the step at **ΔL ≈ 0.042** (`#DDD4C2`,
+4.51:1). Candidates rendered for the owner at ΔL 0.030 / 0.036 / 0.042. **Not implemented — the
+palette is locked (D-0001-7) and colour is an owner decision made from a render.** Any change goes
+through `palette-engine.mjs` and must re-emit and re-audit 264/264; `theme.css` is never hand-edited.
+
 ### 8.6 Still not seen under the theme
 
 Recorded so no one reads section 8 as "Phase 3 is finished":
@@ -657,9 +720,12 @@ Recorded so no one reads section 8 as "Phase 3 is finished":
   #301413` replacing Codex's 23%-alpha saturated wash), but never *measured* under the theme.
   Note the diff view uses **no `pre`/`code`/`kbd`/`samp` elements at all** — the settled check
   read `pre=0 code=0` on a screen full of visible code, so that check does not cover diffs.
-- **Dialogs and the terminal surface** — still never observed. The 2026-08-02 light run was
-  scheduled to 300s but the app closed at **+204s**, so the last five samples never fired and both
-  screens went unreached. Not a negative result — an unrun measurement.
+- **Dialogs and the terminal surface — STILL never observed, after two runs.** Run 1 closed at
+  +204s of a 300s schedule. Run 2 ran the full 300s in both modes and still reported
+  `pre=0 code=0` on **all 46 samples** with no mono-rendered block ≥200×60 anywhere, and **no
+  `[role=dialog]` at any sample** — Codex's settings surface is evidently not an ARIA dialog, and
+  no diff or terminal was open. Both remain **unrun measurements, not negative results.** A third
+  attempt should confirm the screens are actually open before relying on the timing.
 - **The four empty-state cards, in light — a NEW anomaly, unexplained.** The check reported
   `homeScreen=yes buttons=105 (largest: 654x40, 315x30, 315x30) composerDraft=""` — i.e. on the
   home screen, with an empty composer, and **still no cards**, so neither of the two documented
