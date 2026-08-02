@@ -337,11 +337,17 @@ it. `cdx` is the CLI name (D-0001-5).
   *"the way to start the customized Codex should be hassle free and usable/idiot-proof… not some
   technical hobbyist way of applying a theme."*
 
-  - **Starting themed Codex must not require typing anything, ever, after first setup.** Injection
-    is process-scoped by construction (`NODE_OPTIONS` is read at process start, D-0001-1), so the
-    theme can only be applied *as Codex starts* — an already-running Codex cannot be repainted.
-    That makes "start Codex with the theme" an unavoidable step, and the decision is about who
-    performs it. **A terminal command typed per launch is explicitly rejected.** Instead:
+  - **Starting themed Codex must not require typing anything, ever, after first setup.** What is
+    process-scoped is the injector's **attachment**, not its painting, and the distinction decides
+    what is and is not buildable here. `NODE_OPTIONS` is read at process start (D-0001-1), so
+    **Codex must be *started* through Codexterity for the injector to be present at all** — that
+    step is unavoidable and cannot be moved into the running app. **Repainting, by contrast, is
+    not launch-bound:** `applyThemeViaStyleTag` (`injector/core/inject.js:967`) finds-or-creates a
+    single `<style>` element with a stable id and replaces its `textContent`, and already re-runs
+    on every `dom-ready` / `did-navigate` / `did-navigate-in-page`. Handing it different CSS
+    repaints a live window with no relaunch. So the unavoidable step is *starting* Codex through
+    Codexterity — **not** *choosing* a theme, which a later milestone may do live.
+    **A terminal command typed per launch is explicitly rejected.** Instead:
     `cdx apply <theme>` runs **once** and persists the choice; thereafter an ordinary desktop /
     Start-menu shortcut launches Codex themed on a double-click. `cdx restore` clears the choice
     and returns to stock Codex.
@@ -352,6 +358,14 @@ it. `cdx` is the CLI name (D-0001-5).
     point at a fixed command line, so a launch path that requires naming a theme each time makes
     the idiot-proof requirement unbuildable. **M4's installer creates the shortcut; M3's job is to
     make it pointable.** Do not design a CLI that assumes a human is present.
+
+    **Do not foreclose live re-theming, but do not build it in M3 either.** Captain's Cabin is
+    the only theme that exists, so there is nothing to switch *to* and the feature would have no
+    user today. The cheap thing that keeps the door open: hold the loaded theme in a mutable
+    module-level slot rather than capturing it in a closure at `start()` (`inject.js:1059` binds
+    `css` as a local and passes it down through `attachToWindow`). A later milestone can then
+    repoint that slot and re-run `applyTheme` on open windows without re-architecting the
+    injector.
 
   - **The injector loads the `.ccskin` through `loadTheme()`; it does not read loose CSS.**
     Today `injector/core/inject.js` takes `CDX_THEME_CSS_PATH` and `fs.readFileSync`s a raw
