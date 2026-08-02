@@ -142,6 +142,24 @@ async function reportRootEnvironment(webContents) {
                      '--color-background-application-menu', '--color-token-side-bar-background'];
       const tokens = {};
       for (const t of probe) tokens[t] = cs.getPropertyValue(t).trim() || '(unset)';
+
+      // D-0001-18's OWN check, read at BOTH levels, because "the panel paints
+      // ui-monospace" has two causes that need opposite fixes and the font
+      // reading alone cannot tell them apart (measured 2026-08-02):
+      //
+      //   html=Neon  body=ui-monospace -> the body block LOST. Real regression.
+      //   html=Neon  body=Neon         -> the block WON and the panel does not
+      //                                   READ this variable. A reads-vs-paints
+      //                                   error, and the fix belongs elsewhere.
+      //
+      // Reported as raw values rather than a verdict: the whole point is that
+      // the two states are indistinguishable downstream, so collapsing them into
+      // one PASS/FAIL here would rebuild the ambiguity this exists to remove.
+      const MONO_VAR = '--vscode-editor-font-family';
+      const monoVarHtml = cs.getPropertyValue(MONO_VAR).trim() || '(unset)';
+      const monoVarBody = document.body
+        ? (getComputedStyle(document.body).getPropertyValue(MONO_VAR).trim() || '(unset)')
+        : '(no body)';
       // A resolved token is not a painted pixel. The empty-state card icons were
       // the visible symptom of the multi-accent violation, so the check that
       // closes it has to read what the ELEMENTS compute, not what the root
@@ -599,11 +617,38 @@ async function reportRootEnvironment(webContents) {
       // separate, unfiltered tally runs first and is reported either way.
       // Without it, "no diff" is indistinguishable from "the query cannot see
       // the diff" -- which is exactly the mistake the card census just made.
+      // WHERE the font-family actually comes from. font-family INHERITS, so an
+      // element computing ui-monospace may be stating nothing itself and simply
+      // carrying an ancestor's value. Checking el.style alone answers the wrong
+      // question -- measured 2026-08-02, where the terminal panel reported
+      // inlineFontFamily=none while still painting ui-monospace, and the ancestor
+      // was never looked at. Walk to the HIGHEST ancestor sharing the same
+      // computed value: that element is where the value enters the subtree, and
+      // it is the only element a fix could target.
+      function fontOrigin(el, fam) {
+        let origin = el;
+        let node = el.parentElement;
+        while (node && getComputedStyle(node).fontFamily === fam) {
+          origin = node;
+          node = node.parentElement;
+        }
+        const ocs = getComputedStyle(origin);
+        const inline = origin.style && origin.style.fontFamily;
+        return 'fontOrigin=<' + origin.tagName.toLowerCase() + '>' +
+          (origin === el ? ' (the region itself)' : ' (ancestor)') +
+          ' class="' + String(origin.className || '').slice(0, 60) + '"' +
+          ' inline=' + (inline ? '"' + inline.split(',')[0] + '" (INLINE — unreachable by CSS)' : 'none') +
+          // The variable AT THE ORIGIN, which is the one that would matter.
+          ' ' + MONO_VAR + '=' + (ocs.getPropertyValue(MONO_VAR).trim() || '(unset)').split(',')[0] +
+          ' --default-mono-font-family=' + (ocs.getPropertyValue('--default-mono-font-family').trim() || '(unset)').split(',')[0];
+      }
+
       const monoRegions = [];
       let scanned = 0;
       let scanTruncated = false;
       let monoAnySize = 0;
       let monoBiggest = null;
+      const monoFamilies = new Set();
       for (const el of document.querySelectorAll('*')) {
         if (++scanned > SCAN_BUDGET) { scanTruncated = true; break; }
         const ecs = getComputedStyle(el);
@@ -612,8 +657,27 @@ async function reportRootEnvironment(webContents) {
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
           monoAnySize++;
+          monoFamilies.add(fam.split(',')[0]);
+          // Carry the FACE, not just the geometry. D-0001-18 is a question about
+          // which font-family wins on <body>, and the size/tag filter below can
+          // reject every candidate on a screen that is visibly full of code --
+          // measured 2026-08-02, where a diff rendered as 40px-tall <span> rows.
+          // When that happens the tally is the only line that reports, so it has
+          // to carry the answer. The regex above matches Monaspace, Consolas and
+          // Menlo alike, so a bare count cannot tell the D-0001-18 pass case from
+          // the exact failure it predicts.
           if (!monoBiggest || r.width * r.height > monoBiggest.w * monoBiggest.h) {
-            monoBiggest = { w: r.width, h: r.height, tag: el.tagName.toLowerCase() };
+            const bsurface = effectiveBg(el);
+            const bink = paint(ecs.color, '#808080');
+            monoBiggest = {
+              w: r.width,
+              h: r.height,
+              tag: el.tagName.toLowerCase(),
+              font: fam.split(',')[0],
+              ink: hx(bink),
+              surface: bsurface ? hx(bsurface.colour) : null,
+              contrast: bsurface ? cr(bink, bsurface.colour) : null,
+            };
           }
         }
         if (r.width < 200 || r.height < 60) continue;
@@ -629,6 +693,12 @@ async function reportRootEnvironment(webContents) {
           el,
           line: Math.round(r.width) + 'x' + Math.round(r.height) +
             '  font=' + fam.split(',')[0] +
+            // The variable AS THIS ELEMENT SEES IT. If it reads Monaspace Neon
+            // while the element paints ui-monospace, the element's font-family
+            // does not come from this variable at all -- e.g. an inline style
+            // written by JS, which no stylesheet can reach.
+            '  ' + MONO_VAR + '=' + (ecs.getPropertyValue(MONO_VAR).trim() || '(unset)').split(',')[0] +
+            '  ' + fontOrigin(el, fam) +
             '  ink=' + hx(ink) +
             '  surface=' + (surface ? hx(surface.colour) + ' (from <' + surface.from.tagName.toLowerCase() + '>)' : 'NONE opaque up to <html>') +
             '  contrast=' + (surface ? cr(ink, surface.colour).toFixed(2) + (cr(ink, surface.colour) >= 4.5 ? ' PASS' : ' FAIL') : 'unprovable — nothing paints behind it'),
@@ -641,7 +711,20 @@ async function reportRootEnvironment(webContents) {
       // gets read as a measured negative.
       const monoTally = 'monoElements=' + monoAnySize +
         (monoBiggest ? ' biggest=<' + monoBiggest.tag + '> ' +
-          Math.round(monoBiggest.w) + 'x' + Math.round(monoBiggest.h) : '') +
+          Math.round(monoBiggest.w) + 'x' + Math.round(monoBiggest.h) +
+          ' font=' + monoBiggest.font +
+          ' ink=' + monoBiggest.ink +
+          ' surface=' + (monoBiggest.surface || 'NONE opaque up to <html>') +
+          (monoBiggest.contrast === null
+            ? ' contrast=unprovable'
+            : ' contrast=' + monoBiggest.contrast.toFixed(2) +
+              (monoBiggest.contrast >= 4.5 ? ' PASS' : ' FAIL'))
+          : '') +
+        // Every DISTINCT mono face on screen, because the detection regex above
+        // matches ours and Codex's stock stack alike. If Monaspace Neon and
+        // ui-monospace both appear, D-0001-18 has reached some surfaces and not
+        // others, which a single "biggest" sample would hide.
+        (monoFamilies.size ? '  faces={' + [...monoFamilies].join(' | ') + '}' : '') +
         '  scanned=' + scanned + (scanTruncated ? ' (TRUNCATED)' : '');
       const codeRegions = monoRegions.length
         ? monoRegions.map((m) => m.line)
@@ -667,6 +750,8 @@ async function reportRootEnvironment(webContents) {
         composerAction,
         floatingSurface,
         codeRegions,
+        monoVarHtml,
+        monoVarBody,
         headingFont,
         bodyFont,
         rootClass: root.className || '(none)',
@@ -697,6 +782,12 @@ async function reportRootEnvironment(webContents) {
     if (env.composerAction) log(`  composer filled control: ${env.composerAction}`);
     if (env.floatingSurface) log(`  floating surface: ${env.floatingSurface}`);
     for (const row of env.codeRegions || []) log(`  code/diff/terminal region: ${row}`);
+    // D-0001-18 — the two levels are logged ADJACENTLY and unreduced, because
+    // the whole diagnostic value is in comparing them to each other.
+    if (env.monoVarHtml !== undefined) {
+      log(`  D-0001-18  --vscode-editor-font-family on <html>: ${env.monoVarHtml}`);
+      log(`  D-0001-18  --vscode-editor-font-family on <body>: ${env.monoVarBody}`);
+    }
     if (env.bodyFont) log(`  body font-family:    ${env.bodyFont}`);
     if (env.headingFont) log(`  heading font-family: ${env.headingFont}`);
   } catch (err) {

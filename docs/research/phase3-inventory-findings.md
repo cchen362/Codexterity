@@ -881,3 +881,78 @@ elements; the surface was found by its mono rendering instead, which is why it w
   can produce it. Until then, do not treat D-0001-15's dark figures as covering light.
 - **Light mode** for everything in section 8. Every figure above is dark-mode measured; the light
   values are computed only. Appearance mode is set inside Codex, so this needs the owner.
+
+### 8.6.2 RUN 4, 2026-08-02 — D-0001-18's MECHANISM is verified, and its ATTRIBUTION is wrong
+
+Three launches, light mode throughout. The decision's CSS does exactly what it was written to do.
+The defect it was credited with fixing is a **different defect**, and it is still open.
+
+**What is now verified in the running app.** Read at both levels in the same sample:
+
+```
+D-0001-18  --vscode-editor-font-family on <html>: 'Monaspace Neon', ui-monospace, …
+D-0001-18  --vscode-editor-font-family on <body>: 'Monaspace Neon', ui-monospace, …
+```
+
+The `body`-scoped block **wins**. The inheritance analysis was correct, the browser reproduction was
+correct, and `!important` on `<html>` really was losing before. **D-0001-18 stands, verified.**
+
+**What is NOT true, and was recorded as though it were.** D-0001-18's entry states the measured
+consequence as *"the diff and terminal panels rendered in Consolas"*, and that capturing the token
+therefore fixes them. Measured now, on the same screen, they are **two different surfaces with two
+different answers**:
+
+| Surface | Computed face | Reads the token? |
+|---|---|---|
+| Diff | **`Monaspace Neon`** — and `faces={"Monaspace Neon"}`, i.e. the *only* mono face anywhere on screen | — |
+| 475x1280 side panel (terminal-class) | **`ui-monospace`** (Consolas on Windows) | **No.** Sees `'Monaspace Neon'` in the variable, `inline=none`, and computes `ui-monospace` anyway |
+
+So the panel never consumed that variable, and no amount of winning it can reach the panel.
+**The seventh instance of this project's signature error, and the most instructive: every link in
+the reasoning chain held, and the conclusion was still wrong.** §2.1's lesson is "a resolved token
+is not a painted pixel." This is its dual — **a token you successfully captured is not necessarily
+a token anyone reads.** Winning a cascade fight proves nothing about who was listening.
+
+**Codex's own stylesheet, read from the extracted bundle (read-only; no Codex file was touched).**
+The entire CSS bundle contains exactly **two** monospace declarations:
+
+```
+--vscode-editor-font-family: ui-monospace, "SFMono-Regular", …      ← the D-0001-18 token; we win it
+code,kbd,samp,pre { font-family: var(--default-mono-font-family, ui-monospace, …) }
+```
+
+Neither explains the panel: we win the first, and the second targets only `code/kbd/samp/pre`,
+which this theme already overrides with `!important` — and that sample measured
+`pre=0 code=0 kbd=0 samp=0`, so none exist on that screen. *(An earlier grep appeared to find a
+third, hardcoded stack. It was an artifact: `font-family:` is a substring of
+`--vscode-editor-font-family:`, so the same declaration was counted twice. A negative result must
+name its own query, and so must a positive one.)* **Caveat: the extracted bundle may lag the
+installed build, and a lazily-loaded chunk may not be in it.** This is evidence, not proof.
+
+**The remaining untested candidate, and why it was missed.** `font-family` **inherits**. The run-4
+check reported `inlineFontFamily=none` — but it only ever inspected *the element itself*, so an
+inline style on an **ancestor** produces exactly the observed reading and was never ruled out.
+
+**Instrument changes made this run** (`injector/core/inject.js`):
+
+- The unfiltered mono tally now carries **the face, ink, surface and contrast**, not just geometry.
+  Run 2 rejected a diff that *was* on screen because the region filter demands ≥200x60 and a
+  block-level tag, and the diff renders as 40px-tall `<span>` rows — so the only line that reported
+  had already discarded the answer. It also reports `faces={…}`, every **distinct** mono face on
+  screen, because the detection regex matches `Monaspace|monospace|Consolas|Menlo` alike and a bare
+  count cannot tell the pass case from the failure it predicts.
+- `--vscode-editor-font-family` is now read on **`<html>` and `<body>` adjacently and unreduced** —
+  the two states need opposite fixes and collapsing them to one PASS/FAIL rebuilds the ambiguity.
+- `fontOrigin=` walks to the **highest ancestor sharing the element's computed font-family** — where
+  the value enters the subtree, and the only element a fix could target — reporting its tag, class,
+  inline `font-family`, and both mono variables as *that* element sees them.
+
+**Also obtained this run, closing a debt from §8.6:** the **light-mode empty-state cards**, which
+§8.6 above records as still owed. Measured `3 card(s) <button> 172x104; ring-color=#72819D
+border-width=0px bg=rgb(249, 240, 221)` — `#72819D` is light-mode `--color-border-heavy`, the token
+D-0001-15 names, so **D-0001-15 now holds in both modes** rather than dark only. The rebuilt census
+found them on the first attempt.
+
+**Still open, and it is all that stands between here and Phase 3's close:** the terminal panel's
+code face. The next run's `fontOrigin=` line answers it. **Do not add a landmark before that line
+is read** — that is how the four pre-Gate-0 landmarks died, and it is what D-0001-15 avoided twice.
