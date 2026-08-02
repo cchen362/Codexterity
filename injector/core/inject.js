@@ -364,19 +364,233 @@ async function reportRootEnvironment(webContents) {
       // and D-0001-6 computes every contrast figure this theme claims against
       // flat colour. That is an open question, not a settled one — do not read
       // a themed-looking colour here as a passed contrast check.
+      //
+      // COMPOSITING IS MEASURED, NOT MODELLED. Chromium reports colours
+      // authored in oklab as oklab(), so any hand-rolled sRGB parse of a
+      // computed value is wrong before the contrast maths even starts. Painting
+      // to a 1x1 canvas and reading the pixel back delegates BOTH the colour
+      // conversion and the alpha compositing to the same engine that paints the
+      // real panel — so what is reported is what the compositor did, in the
+      // space it did it in, not our reconstruction of it.
+      const cnv = document.createElement('canvas');
+      cnv.width = 1; cnv.height = 1;
+      const cx = cnv.getContext('2d', { willReadFrequently: true });
+      // 'over' MUST be opaque: a semi-transparent fill onto a cleared canvas
+      // composites against transparent black, which is not what any pixel on
+      // screen does.
+      const paint = (css, over) => {
+        try {
+          cx.clearRect(0, 0, 1, 1);
+          cx.fillStyle = over || '#000000';
+          cx.fillRect(0, 0, 1, 1);
+          cx.fillStyle = css;
+          cx.fillRect(0, 0, 1, 1);
+          const d = cx.getImageData(0, 0, 1, 1).data;
+          return [d[0], d[1], d[2]];
+        } catch (err) { return null; }
+      };
+      const hx = (c) => c ? '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase() : '(unpaintable)';
+      const lum = (c) => {
+        const f = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+        return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+      };
+      const cr = (a, b) => {
+        if (!a || !b) return 0;
+        const x = lum(a), y = lum(b);
+        return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+      };
+
+      // Recover a colour's ALPHA and its opaque form from two paints, rather
+      // than parsing the string. Painting css over black gives a*P; over white
+      // gives a*P + (1-a)*255. The difference is (1-a)*255 in every channel, so
+      // alpha falls out of the measurement and the opaque colour is a*P / a.
+      // This is what makes "is the menu really /90" an observation instead of a
+      // quotation from a stylesheet we did not read.
+      const decompose = (css) => {
+        const B = paint(css, '#000000');
+        const W = paint(css, '#FFFFFF');
+        if (!B || !W) return null;
+        let a = 0;
+        for (let i = 0; i < 3; i++) a += 1 - (W[i] - B[i]) / 255;
+        a = Math.min(1, Math.max(0, a / 3));
+        const opaque = a > 0.004 ? B.map((v) => Math.min(255, Math.round(v / a))) : [0, 0, 0];
+        return { alpha: a, opaque, darkest: B, lightest: W };
+      };
+
+      // The first ancestor that actually paints. The transparent-ancestor walk
+      // is the lesson of D-0001-13: an element's own backgroundColor is very
+      // often rgba(0,0,0,0) and the colour on screen belongs to something
+      // further up — reading the element alone reports "unpainted" for a
+      // surface the user can plainly see.
+      const effectiveBg = (start) => {
+        for (let el = start; el; el = el.parentElement) {
+          const c = paint(getComputedStyle(el).backgroundColor, '#FF00FF');
+          if (c && !(c[0] === 255 && c[1] === 0 && c[2] === 255)) return { colour: c, from: el };
+        }
+        return null;
+      };
+
       const panel = document.querySelector('[role=menu], [role=dialog], [role=alertdialog], [role=listbox]');
       let floatingSurface;
       if (!panel) {
         floatingSurface = 'none open at this sample (a closed menu is unmounted, not hidden — not a finding)';
       } else {
         const cs = getComputedStyle(panel);
+        const rect = panel.getBoundingClientRect();
+
+        // WHICH INK TIERS ACTUALLY PAINT HERE. This is the measurement the
+        // translucency question reduces to. The theme's contrast-critical
+        // tokens are SOLVED to land exactly on 4.5:1 (tools/palette/audit.mjs
+        // binary-searches to target), so they carry ~0.1-0.36 of headroom and a
+        // translucent surface consumes more than that — while the label and
+        // secondary tiers have enough spare to survive ANY backdrop. So the
+        // panel is safe or unsafe entirely according to which tiers it carries,
+        // and listing them is the difference between a verdict and a guess.
+        // Only elements with their own visible text are counted; a wrapper
+        // inherits a colour it never paints.
+        const inks = new Map();
+        for (const el of panel.querySelectorAll('*')) {
+          let own = '';
+          for (const n of el.childNodes) if (n.nodeType === 3) own += n.nodeValue;
+          own = own.trim();
+          if (!own) continue;
+          const ecs = getComputedStyle(el);
+          if (ecs.visibility === 'hidden' || ecs.display === 'none') continue;
+          const key = ecs.color;
+          if (!inks.has(key)) inks.set(key, { sample: own.slice(0, 20), n: 0 });
+          inks.get(key).n++;
+        }
+
+        // WHAT IS BEHIND IT. elementsFromPoint returns topmost-first, so
+        // anything after the panel's own subtree is genuinely behind the panel
+        // at that point. Sampled on a 3x3 grid inset from the edges, because a
+        // panel commonly straddles two different surfaces and one centre probe
+        // would report whichever it happened to land on.
+        const behind = new Map();
+        for (const fx of [0.15, 0.5, 0.85]) {
+          for (const fy of [0.15, 0.5, 0.85]) {
+            const px = rect.left + rect.width * fx;
+            const py = rect.top + rect.height * fy;
+            let stack;
+            try { stack = document.elementsFromPoint(px, py); } catch (err) { continue; }
+            for (const el of stack) {
+              if (panel === el || panel.contains(el)) continue;
+              const bcs = getComputedStyle(el);
+              const bg = paint(bcs.backgroundColor, '#FF00FF');
+              // Skip fully transparent ancestors: painting them over magenta
+              // leaves magenta, which is how a no-op is detected without
+              // parsing the colour string ourselves.
+              if (!bg || (bg[0] === 255 && bg[1] === 0 && bg[2] === 255)) continue;
+              const key = hx(paint(bcs.backgroundColor, '#000000')) + '/' + hx(paint(bcs.backgroundColor, '#FFFFFF'));
+              if (!behind.has(key)) behind.set(key, { css: bcs.backgroundColor, n: 0 });
+              behind.get(key).n++;
+              break;
+            }
+          }
+        }
+
+        // THE VERDICT. Reported against three backdrops, in decreasing
+        // strength of claim:
+        //   flat   — the panel colour alone, i.e. what the theme's own audit
+        //            assumes and what D-0001-6 requires.
+        //   #000 / #FFF — the UNCONDITIONAL bound. The panel is 90% opaque, so
+        //            no backdrop that exists or could ever exist moves it
+        //            further than these two. A tier that clears AA against both
+        //            is closed PERMANENTLY, with no dependence on catching a
+        //            representative screen — which matters because a menu can
+        //            only be sampled if the user happens to have one open.
+        // The observed backdrops are reported too, but they are evidence about
+        // this screen; the bound is the part that generalises.
+        const surf = decompose(cs.backgroundColor);
+        const verdicts = [];
+        for (const [colour, info] of inks) {
+          const fg = paint(colour, '#808080');
+          const flat = surf ? cr(fg, surf.opaque) : 0;
+          const lo = surf ? cr(fg, surf.darkest) : 0;
+          const hi = surf ? cr(fg, surf.lightest) : 0;
+          const worst = Math.min(lo, hi);
+          verdicts.push(hx(fg) + ' x' + info.n + ' ' + JSON.stringify(info.sample) +
+            ' -> flat ' + flat.toFixed(2) +
+            '  over#000 ' + lo.toFixed(2) + '  over#FFF ' + hi.toFixed(2) +
+            '  WORST ' + worst.toFixed(2) + ' ' +
+            (worst >= 4.5
+              ? 'PASSES AA OVER ANY BACKDROP — closed, no landmark needed'
+              : 'below 4.5 in the worst case; judge against the observed backdrop above'));
+        }
+
         floatingSurface = '<' + panel.tagName.toLowerCase() + ' role=' + panel.getAttribute('role') + '> ' +
-          'bg=' + cs.backgroundColor +
-          '  backdropFilter=' + (cs.backdropFilter === 'none' ? 'none' : cs.backdropFilter) +
-          '  color=' + cs.color +
-          '  borderRadius=' + cs.borderTopLeftRadius +
-          '  NOTE: alpha<1 or a blur means text here is NOT on flat colour (D-0001-6)';
+          Math.round(rect.width) + 'x' + Math.round(rect.height) +
+          '  bg=' + cs.backgroundColor +
+          (surf ? '  measuredAlpha=' + surf.alpha.toFixed(3) + '  opaqueForm=' + hx(surf.opaque) : '  (bg unpaintable)') +
+          '  backdropFilter=' + cs.backdropFilter +
+          // The newline escapes below are DOUBLE-escaped, and must be. This
+          // file is a Node template literal whose VALUE is evaluated as
+          // JavaScript in the renderer: a singly-escaped newline resolves to a
+          // real line break in that value, splitting the string literal across
+          // two lines and throwing at executeJavaScript time. Same reason the
+          // regexes above are written with a doubled backslash. Note that a
+          // comment is not a refuge from this — one written the other way here
+          // broke the parse exactly as the code did.
+          '\\n      behind it: ' + (behind.size
+            ? Array.from(behind.values()).map((b) => b.css + ' x' + b.n).join('  |  ')
+            : '(nothing opaque found under the panel — it may sit over the window material)') +
+          '\\n      ink tiers painted on it (' + inks.size + '):' +
+          (verdicts.length ? '\\n        ' + verdicts.join('\\n        ') : ' (none — panel carries no text of its own)');
       }
+
+      // DIFF / EDITOR / TERMINAL SURFACES — never measured under the theme
+      // (findings §8.6). Deliberately NOT found by tag: the diff view contains
+      // no pre/code/kbd/samp element at all, so the code-surface line above
+      // reads pre=0 code=0 on a screen full of visible code and does not cover
+      // this. Found instead by the property that actually defines these
+      // regions — a sizeable block rendering in the theme's mono face — which
+      // no markup change can invalidate the way a class or tag can.
+      //
+      // This is an OBSERVATION, not a landmark: nothing here is styled from it.
+      //
+      // Bounded on purpose. This runs inside the user's live editor, not a test
+      // page: a conversation view can hold many thousands of divs, and an
+      // unbounded getComputedStyle sweep would stall the UI thread of the app we
+      // are supposed to leave fully functional. A diagnostic that degrades the
+      // app it is diagnosing is not an acceptable trade, so the scan stops after
+      // a fixed budget and says so rather than running to completion.
+      const monoRegions = [];
+      const SCAN_BUDGET = 4000;
+      let scanned = 0;
+      let scanTruncated = false;
+      for (const el of document.querySelectorAll('div, section, main, table, pre, code')) {
+        if (++scanned > SCAN_BUDGET) { scanTruncated = true; break; }
+        const r = el.getBoundingClientRect();
+        if (r.width < 200 || r.height < 60) continue;
+        const ecs = getComputedStyle(el);
+        const fam = ecs.fontFamily || '';
+        if (!/Monaspace|monospace|Consolas|Menlo/i.test(fam)) continue;
+        // Only the OUTERMOST such block, or every nested row reports itself.
+        if (monoRegions.some((m) => m.el.contains(el))) continue;
+        // The region's own background is usually transparent, so the surface
+        // the code actually sits on belongs to an ancestor. Walk to it rather
+        // than reporting rgba(0,0,0,0) as "the diff surface".
+        const surface = effectiveBg(el);
+        const ink = paint(ecs.color, '#808080');
+        monoRegions.push({
+          el,
+          line: Math.round(r.width) + 'x' + Math.round(r.height) +
+            '  font=' + fam.split(',')[0] +
+            '  ink=' + hx(ink) +
+            '  surface=' + (surface ? hx(surface.colour) + ' (from <' + surface.from.tagName.toLowerCase() + '>)' : 'NONE opaque up to <html>') +
+            '  contrast=' + (surface ? cr(ink, surface.colour).toFixed(2) + (cr(ink, surface.colour) >= 4.5 ? ' PASS' : ' FAIL') : 'unprovable — nothing paints behind it'),
+        });
+        if (monoRegions.length >= 4) break;
+      }
+      // A miss must name its own cause (findings §8.5). "None found" after a
+      // truncated scan is a different statement from "none found" after a
+      // complete one, and reporting them identically is how an absent surface
+      // gets read as a measured negative.
+      const codeRegions = monoRegions.length
+        ? monoRegions.map((m) => m.line)
+        : [scanTruncated
+            ? 'none found, but the scan hit its ' + SCAN_BUDGET + '-element budget — INCONCLUSIVE, not a negative result'
+            : 'no mono-rendered block >=200x60 anywhere on this screen (' + scanned + ' elements scanned; no diff/terminal/code view open — not a finding)'];
 
       const heading = document.querySelector('.heading-xl, .heading-lg, .heading-2xl');
       const headingFont = heading ? getComputedStyle(heading).fontFamily : '(no heading on screen)';
@@ -392,6 +606,7 @@ async function reportRootEnvironment(webContents) {
         cardHairline,
         composerAction,
         floatingSurface,
+        codeRegions,
         headingFont,
         bodyFont,
         rootClass: root.className || '(none)',
@@ -421,6 +636,7 @@ async function reportRootEnvironment(webContents) {
     if (env.cardHairline) log(`  empty-state card hairline: ${env.cardHairline}`);
     if (env.composerAction) log(`  composer filled control: ${env.composerAction}`);
     if (env.floatingSurface) log(`  floating surface: ${env.floatingSurface}`);
+    for (const row of env.codeRegions || []) log(`  code/diff/terminal region: ${row}`);
     if (env.bodyFont) log(`  body font-family:    ${env.bodyFont}`);
     if (env.headingFont) log(`  heading font-family: ${env.headingFont}`);
   } catch (err) {

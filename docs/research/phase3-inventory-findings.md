@@ -507,6 +507,60 @@ changing it needs a landmark, and writing one to solve an unquantified problem i
 this project dropped in item 10. What is needed first is a measurement of menu text over a
 worst-case backdrop.
 
+#### 8.4.1 The number exists now — computed 2026-08-02, and it narrows the question
+
+The panel is 90% opaque, so the backdrop can move the effective surface **at most 10% toward
+black or white**. That makes an *unconditional* bound available without enumerating anything:
+composite the panel over pure `#000` and pure `#FFF`, and a pair that clears AA against both is
+closed **permanently**, for every backdrop that exists or could ever exist. `blur(8px)` only pulls
+the backdrop toward its local mean, so compositing over an *unblurred* extreme over-states the
+perturbation — every figure below is conservative.
+
+Panel = `--color-background-control-opaque` (§8.3): `#222731` dark, `#DFD7C5` light.
+
+| Ink | Mode | flat | worst possible | verdict |
+|---|---|---|---|---|
+| `--color-text-foreground` (item label) | dark | 12.52 | **9.13** | passes over **every** backdrop |
+| `--color-text-secondary` | dark | 7.03 | **5.12** | passes over **every** backdrop |
+| `--color-text-tertiary` | dark | 4.61 | 3.36 | fails once the backdrop is lighter than `#353535` |
+| `--color-text-accent` | dark | 4.82 | 3.51 | fails once the backdrop is lighter than `#585858` |
+| `--color-text-error` / `-success` | dark | 4.80 | 3.50 | fails once the backdrop is lighter than `#535353` |
+| `--color-text-foreground` (item label) | light | 11.00 | **8.88** | passes over **every** backdrop |
+| `--color-text-secondary` | light | 7.05 | **5.69** | passes over **every** backdrop |
+| `--color-text-tertiary` | light | 4.63 | 3.74 | fails once the backdrop is darker than `#BCBCBC` |
+| `--color-text-accent` | light | 4.82 | 3.89 | fails once the backdrop is darker than `#949494` |
+| `--color-text-error` / `-success` | light | 4.80 | 3.88 | fails once the backdrop is darker than `~#909090` |
+
+**Two things this settles.**
+
+1. **The four at-risk tiers are at risk for a structural reason, not a palette one.**
+   `tools/palette/audit.mjs` *binary-searches* every contrast-critical token to land exactly on
+   its 4.5:1 target, so those tokens ship with **0.11–0.36 of headroom by construction**. Solving
+   to target and translucency are mathematically incompatible: any translucent surface consumes
+   more headroom than a solved token has. Widening them is **not** the fix — that re-derives an
+   owner-approved palette to solve a problem that may not occur, which is the instinct plan item
+   10 was correctly dropped for.
+2. **Every break-even is a MID-GREY, and the app's surfaces are nowhere near mid-grey** —
+   `#0B111C…#222731` in dark, `#DFD7C5…#FFF6E4` in light. So an ordinary menu over ordinary app
+   content is safe in both modes. The perturbation only bites where a panel overlaps a region of
+   **opposite polarity to the mode**: a dark diff or code block under a *light*-mode menu, a light
+   heading or the composer's filled disc under a *dark*-mode one.
+
+**What remains, and it is now one measurement, not a design question: which ink tiers actually
+paint on a menu panel.** If menus carry only label and secondary text, §8.4 closes with **no code
+at all** — the same shape of answer as D-0001-15. If they carry a brass "always allow", a
+destructive item in error ink, or tertiary hint text, the question becomes real and only then does
+a landmark deserve consideration.
+
+The settled check now answers exactly that: it censuses the ink tiers painted on any open panel,
+samples what is behind it on a 3×3 grid, and reports each tier's ratio against flat, `#000` and
+`#FFF`. Compositing is **measured, not modelled** — Chromium reports oklab-authored colours as
+`oklab()`, so the check paints to a 1×1 canvas and reads the pixel back, delegating both the
+colour conversion and the alpha compositing to the engine that paints the real panel. It also
+recovers the panel's alpha from two paints rather than trusting the stylesheet; on a synthetic
+panel it reads `measuredAlpha=0.902`, not `0.900`, because Chromium quantises 90% to `230/255` —
+which is why the measured figures above differ from a hand calculation in the second decimal.
+
 ### 8.5 Instrument changes that made the above possible
 
 - **The control census could not see the cards.** It matched `button, a[href], [role=button],
@@ -531,7 +585,12 @@ worst-case backdrop.
 
 Recorded so no one reads section 8 as "Phase 3 is finished":
 
-- **Diffs and terminals** — seen once by the owner in a screenshot and coherent (navy ground,
+- **Diffs and terminals** — the settled check now looks for them by the property that actually
+  defines them, **a sizeable block rendering in the theme's mono face**, and reports the ink, the
+  surface walked up to its first opaque ancestor, and the contrast between them. Found by
+  rendering rather than by tag or class deliberately: the diff view contains no `pre`/`code`
+  element to match and Codex's class names are build-hashed. Still an *observation* — nothing is
+  styled from it. Previously: seen once by the owner in a screenshot and coherent (navy ground,
   Monaspace Neon, this theme's `--color-editor-added: #092414` / `--color-editor-deleted:
   #301413` replacing Codex's 23%-alpha saturated wash), but never *measured* under the theme.
   Note the diff view uses **no `pre`/`code`/`kbd`/`samp` elements at all** — the settled check
