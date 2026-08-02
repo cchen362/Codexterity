@@ -38,7 +38,35 @@ These replace the entry-state list above. Each is a consequence of an observatio
 
     **BLOCKED, and the ordering is now settled (owner, 2026-08-02): macOS verification cannot happen until Phase 4 ships an installer.** The owner has no Mac. The only available machine belongs to a collaborator who is willing to install and try it — but a collaborator will not be asked to clone a repo, install Node and run a shell script by hand. That means **`launcher/macos/launch.sh` stays unverified until there is a `.ccskin` + installer to hand them**, and it reverses one piece of this plan's stated sequencing: "settle the look first, packaging adds nothing visual" holds for *Windows*, but macOS verification is now **downstream of Phase 4**, not parallel to it. **Do not schedule, re-propose, or block Phase 3 on macOS verification, and do not ask the owner to find a Mac.** Everything the launcher can be given without a Mac it already has: it fails loudly rather than silently on each of the three unknowns above.
 
-16. **Menus, popovers, diffs, terminal — PARTIALLY seen, and one new open question.** The open menu panel traces to **`--color-background-control-opaque`** (defined by this theme), *not* to `--color-background-elevated-primary-opaque` which findings §2's impact table names for "menus, popovers, dialogs" — the **third** reads-vs-paints trap, see [findings §8.3](../research/phase3-inventory-findings.md). Diffs were seen once by the owner and are coherent, but never measured under the theme, and **the diff view uses no `pre`/`code`/`kbd`/`samp` elements at all**, so the settled check's code-surface line does not cover it. Dialogs and the terminal remain entirely unobserved. **New open question ([findings §8.4](../research/phase3-inventory-findings.md)):** menu panels are `/90` over `backdrop-filter: blur(8px)`, so their text does **not** sit on flat colour and D-0001-6's assumption does not hold there. Stated open, not fixed — the fix needs a landmark, and no number has been produced yet.
+17. **The translucent-menu question — ANSWERED, and it needed no code.** Two steps, 2026-08-02.
+    (a) *Bounded analytically* ([findings §8.4.1](../research/phase3-inventory-findings.md)): the
+    panel is 90% opaque, so a backdrop can move it at most 10% toward black or white; compositing
+    over pure black and pure white therefore bounds it **unconditionally**. Menu label and
+    secondary text pass over *any* backdrop (worst **9.13**/**5.12** dark, **8.88**/**5.69** light).
+    The four solved-to-target tiers do not — because `audit.mjs` binary-searches them onto exactly
+    4.5:1, leaving 0.11–0.36 of headroom, which no translucent surface fits inside. Every
+    break-even is a mid-grey and the app's surfaces are nowhere near mid-grey. (b) *Then measured*
+    (§8.4.2): the `[role=menu]` panels are **opaque, `backdropFilter=none`**, paint from
+    `--color-background-application-menu` `#E7DECC` — **not** the `--color-background-control-opaque`
+    that §8.3 named — and carry exactly **two** ink tiers, `#34425C` (7.56) and `#323A48` (8.57),
+    both with headroom. **No landmark written**, same shape of answer as D-0001-15. The `/90` +
+    `blur(8px)` popover family of §8.3 is a *different* surface and remains unmeasured; §8.4.1's
+    bound is its standing answer. Instrument work in [`inject.js`](../../injector/core/inject.js):
+    compositing is measured on a 1×1 canvas rather than modelled, and the panel's alpha is
+    recovered from two paints rather than trusted.
+
+18. **LIGHT MODE VERIFIED 2026-08-02** ([findings §8.4.3](../research/phase3-inventory-findings.md)).
+    30 samples, zero probe failures. Composer control `#182336`/`#DFD7C5` **11.00:1**; active-row
+    brass `#896D15` on `#EBE2D0` **3.83:1** (AA non-text); title-bar tint `#E7DECC`; code surface
+    Monaspace Neon `#182336` on `#E7DECC` **11.80:1**; all three fonts load; hero correctly absent;
+    accent collapse holds (`--color-token-charts-purple: #6F5708`). **Two things did not close:**
+    the run ended at +204s of a 300s schedule, so **dialogs and the terminal were never reached**;
+    and the **four empty-state cards were not found in light** on the home screen with an empty
+    composer — neither documented cause applies, both hooks missed, and it is unexplained. See §8.6.
+
+16. **Menus, popovers, diffs, terminal — PARTIALLY seen, and one new open question.** *(Superseded
+    in part by items 17–18 above: the "new open question" is the translucency one, now answered for
+    `[role=menu]` and bounded for the popover family.)* The open menu panel traces to **`--color-background-control-opaque`** (defined by this theme), *not* to `--color-background-elevated-primary-opaque` which findings §2's impact table names for "menus, popovers, dialogs" — the **third** reads-vs-paints trap, see [findings §8.3](../research/phase3-inventory-findings.md). Diffs were seen once by the owner and are coherent, but never measured under the theme, and **the diff view uses no `pre`/`code`/`kbd`/`samp` elements at all**, so the settled check's code-surface line does not cover it. Dialogs and the terminal remain entirely unobserved. **New open question ([findings §8.4](../research/phase3-inventory-findings.md)):** menu panels are `/90` over `backdrop-filter: blur(8px)`, so their text does **not** sit on flat colour and D-0001-6's assumption does not hold there. Stated open, not fixed — the fix needs a landmark, and no number has been produced yet.
 
 14. **DARK MODE VERIFIED 2026-08-02.** Both of this session's visual changes confirmed in the running app in dark: `root class electron-dark`, `--color-background-surface-under: #0B111C` (the sidebar had been showing Mica in dark too, just unnoticeably), and the active-row indicator matched with `::before bg=rgb(192,164,84)` = `#C0A454`, dark brass. Light was verified separately by pixel sampling.
 

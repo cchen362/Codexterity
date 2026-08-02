@@ -581,6 +581,68 @@ which is why the measured figures above differ from a hand calculation in the se
   so even a fresh launch is not necessarily a clean empty state. The check now reports the home
   screen's presence, the button count and the draft, and says which of them explains the miss.
 
+### 8.4.2 MEASURED in the running app, 2026-08-02 (light) — and §8.3's attribution was too narrow
+
+30 samples across two windows, 23 scheduled offsets, **zero `root environment probe FAILED`**.
+Two `[role=menu]` panels were caught open. The result closes §8.4 for them, and corrects §8.3:
+
+```
+<div role=menu> 220x338  bg=rgb(231,222,204)  measuredAlpha=1.000  opaqueForm=#E7DECC  backdropFilter=none
+<div role=menu> 300x539  bg=rgb(231,222,204)  measuredAlpha=1.000  opaqueForm=#E7DECC  backdropFilter=none
+  behind it: rgb(235,226,208) x3  |  rgb(249,240,221) x6
+  ink tiers painted on it (2):
+    #34425C x16 "Toggle Sidebar" -> flat 7.56  WORST 7.56  PASSES AA OVER ANY BACKDROP
+    #323A48 x14 "Ctrl+B"         -> flat 8.57  WORST 8.57  PASSES AA OVER ANY BACKDROP
+```
+
+**Three things, in order of how easily each would have been got wrong.**
+
+1. **These menus are OPAQUE and carry NO blur.** `measuredAlpha=1.000`, `backdropFilter=none`.
+   The premise of §8.4 — that menu text does not sit on flat colour — **does not hold for them at
+   all**, so D-0001-6's assumption is intact here and there is nothing to fix. The alpha is
+   *measured* (recovered from two canvas paints), not read off a stylesheet, which is the only
+   reason this is a finding rather than a repetition of §8.3's quotation.
+2. **They paint from `#E7DECC` = `--color-background-application-menu`, NOT from
+   `--color-background-control-opaque` (`#DFD7C5`).** §8.3 corrected the impact table by measuring
+   the *permissions popover* and generalised from it to "the menu surface". That generalisation is
+   too wide: **there are at least two distinct floating-panel families**, and the one §8.3 measured
+   is not the one behind `[role=menu]`. Both tokens are defined by this theme, so both are themed —
+   but §8.3 must not be cited as the attribution for menus. *This is the reads-vs-paints trap in
+   its subtler form: not a wrong chain, a right chain generalised past its evidence.*
+3. **Only two ink tiers appear, and both are the ones with headroom.** No tertiary, no accent, no
+   error or success ink was painted on either panel. Per §8.4.1 that is the outcome in which the
+   question closes with **no code**: the four solved-to-target tiers are the only ones translucency
+   could threaten, and menus do not use them.
+
+**Ruling: no landmark is written for menu panels.** Same shape of answer as D-0001-15, reached the
+same way — by measuring the thing instead of styling it.
+
+**What this does NOT close.** The `/90` + `blur(8px)` panel of §8.3 was never open during a sample,
+so the translucent family remains unmeasured. §8.4.1's bound is the standing answer for it: safe
+unless it carries tertiary/accent/error/success ink, and its break-evens are all mid-grey.
+
+### 8.4.3 Light mode — the computed figures are now painted figures
+
+Everything §8 previously stated as "computed only" for light, measured in the running app
+(`rootClass=electron-light`):
+
+| Surface | Measured | Ratio |
+|---|---|---|
+| Composer filled control | disc `#182336`, glyph `#DFD7C5`, both `aria` states caught | **11.00:1** |
+| Active sidebar row mark (D-0001-14) | `::before` `2x16px` `bg=#896D15` on `#EBE2D0` | **3.83:1** (AA non-text) |
+| Title-bar tint (D-0001-10) | `#E7DECC` | painting |
+| Code surface | `Monaspace Neon`, ink `#182336` on `#E7DECC` | **11.80:1** |
+| Hero | `container present, NO background-image` | correct — light has no hero by owner decision |
+| Fonts | `Literata=YES Fraunces=YES Monaspace Neon=YES` | all three load |
+| Accent collapse (D-0001-11) | `--color-token-charts-purple: #6F5708` | brass, as ruled |
+
+**One lead worth not losing.** The mono block's first opaque ancestor is **`#E7DECC`**
+(`--color-token-bg-secondary`), *not* `#F6EDDB`, which is what this theme sets for both
+`--color-background-editor-opaque` and `--color-token-diff-surface`. The contrast is fine either
+way (11.80:1), so this is **not a defect** — but it means the editor/diff tokens the theme defines
+may not be what paints the code surface the user actually sees. Unresolved; do not assume either
+way, and do not "fix" it before measuring which element the editor tokens reach.
+
 ### 8.6 Still not seen under the theme
 
 Recorded so no one reads section 8 as "Phase 3 is finished":
@@ -595,6 +657,17 @@ Recorded so no one reads section 8 as "Phase 3 is finished":
   #301413` replacing Codex's 23%-alpha saturated wash), but never *measured* under the theme.
   Note the diff view uses **no `pre`/`code`/`kbd`/`samp` elements at all** — the settled check
   read `pre=0 code=0` on a screen full of visible code, so that check does not cover diffs.
-- **Dialogs and the terminal surface** — never observed at all, in either mode.
+- **Dialogs and the terminal surface** — still never observed. The 2026-08-02 light run was
+  scheduled to 300s but the app closed at **+204s**, so the last five samples never fired and both
+  screens went unreached. Not a negative result — an unrun measurement.
+- **The four empty-state cards, in light — a NEW anomaly, unexplained.** The check reported
+  `homeScreen=yes buttons=105 (largest: 654x40, 315x30, 315x30) composerDraft=""` — i.e. on the
+  home screen, with an empty composer, and **still no cards**, so neither of the two documented
+  causes (wrong screen, persisted draft) applies. Both hooks missed: the geometric one (nothing in
+  120–320 x 70–180) and the authored-class one (`min-h-26`). In dark the same check measured
+  **4 cards** at that size. The `315x30` items are the right width and the wrong height, which
+  looks like the same content rendered as compact rows rather than cards. Cause unknown —
+  candidates are window width, a Codex update, or a genuinely different light empty state.
+  **Do not treat D-0001-15's dark figures as covering light until this is explained.**
 - **Light mode** for everything in section 8. Every figure above is dark-mode measured; the light
   values are computed only. Appearance mode is set inside Codex, so this needs the owner.
