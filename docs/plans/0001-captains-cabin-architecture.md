@@ -29,7 +29,27 @@ These replace the entry-state list above. Each is a consequence of an observatio
 
 8. ~~**Light mode: the mint-green sidebar.**~~ **DONE — D-0001-13.** Not a palette bug. Every ancestor of `.app-shell-left-panel` up to `<html>` computes `rgba(0,0,0,0)`; Codex's own sidebar rule is gated `:not([data-codex-window-chrome=application-menu])` and the Windows main window carries exactly that attribute, so Codex deliberately leaves the panel transparent and Windows 11 Mica shows the **desktop wallpaper** through it. Sampled before the fix: `#E6F9F6` / `#B7C5C6` / `#EAF7F3` down its length — not one colour, so not a token. Fixed by painting the authored `.app-shell-left-panel` landmark from `--color-background-surface-under`. A **contrast** fix: sidebar text sat over an arbitrary wallpaper, so its contrast was unprovable. Verified `#EBE2D0` uniform. Findings §2.1 corrects the inventory's mis-attribution.
 9. ~~**Brass active-row indicator.**~~ **DONE — D-0001-14.** Verified matched, computed and painted.
-19. **Sidebar hover/active — REOPENED and FIXED 2026-08-02 (D-0001-17).** Item 10 below dropped this
+20. **OPEN — does the theme SUPPRESS the four empty-state cards?** Runs 1 and 2 concluded Codex had
+    removed them; **that conclusion is retracted.** An owner screenshot of **stock** Codex shows all
+    four on the same screen, so they exist and do not appear under the theme. Two themed runs
+    agreeing with each other was never a control. Our CSS cannot remove DOM nodes (custom properties
+    plus three landmark rules, none touching `display`/`visibility`/`content`), so **no mechanism is
+    identified and none should be guessed.** One clue: a themed sample found a `<div>` 224x110 with
+    `--tw-ring-color` set to our `--color-border` but a box-shadow of `rgba(0,0,0,0) 0 0 0 0` — the
+    hairline resolves and never paints. **Resolve with `CDX_PROBE=1` (injection suppressed), not
+    with more themed runs.** See [findings §8.5.1](../research/phase3-inventory-findings.md).
+
+21. **Diffs and terminals MEASURED 2026-08-02 (run 3) — legible, but the code face misses them.**
+    Light `#182336` on `#F0E7D5` = **12.83:1**; dark `#F4EAD4` on `#0E141F` = **15.43:1**. Both pass
+    handsomely, and these were Phase 3's last unmeasured surfaces. Two defects, both reads-vs-paints:
+    the panel computes **`ui-monospace`** (Consolas on Windows), so **Monaspace Neon does not reach
+    it** despite this theme setting four mono variables; and it paints from
+    `--color-background-surface`, leaving `--color-token-diff-surface` and
+    `--color-background-editor-opaque` **inert**. Needs a probe to find the governing rule —
+    **do not add a landmark first.** See [findings §8.6.1](../research/phase3-inventory-findings.md).
+
+19. **Sidebar hover/active — REOPENED and FIXED 2026-08-02 (D-0001-17). VERIFIED in the running app
+    by the owner the same day: *"The hover contrast is great!"*, both modes.** Item 10 below dropped this
     as "a non-problem" on the strength of a chain trace. The chain was healthy and the conclusion was
     still wrong: the owner reported the light hover as invisible in the running app, and it measured
     ΔL **0.0122** against dark's **0.0574** — 4.7× weaker *from the same formula*, because row states

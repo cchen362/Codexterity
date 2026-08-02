@@ -643,7 +643,29 @@ way (11.80:1), so this is **not a defect** — but it means the editor/diff toke
 may not be what paints the code surface the user actually sees. Unresolved; do not assume either
 way, and do not "fix" it before measuring which element the editor tokens reach.
 
-### 8.5.1 RUN 2, 2026-08-02 — the four empty-state cards no longer exist in Codex
+### 8.5.1 RUN 2 — CONCLUSION RETRACTED. The cards exist; they do not appear UNDER THE THEME
+
+> **RETRACTED 2026-08-02, same day, by an owner screenshot of STOCK Codex showing all four
+> cards on the same screen.** The section below concluded that Codex had removed them. That
+> was wrong, and the error is instructive: two themed runs agreed with each other, in both
+> modes, and agreement between two runs of the *same* configuration is not a control. There
+> was no unthemed comparison, and the probe exists precisely to provide one.
+>
+> **The live question is now the opposite and more serious one: does Captain's Cabin SUPPRESS
+> the four empty-state cards?** A theme that removes UI violates the standing rule that the
+> app must never be left half-styled. Note our CSS *cannot* remove DOM nodes — it is custom
+> properties plus three landmark rules, none touching `display`, `visibility` or `content` —
+> so a mechanism is not yet identified and must not be guessed at.
+>
+> One measured clue, not yet an explanation: a themed light sample found a `<div>` at
+> **224x110** carrying `--tw-ring-color=#D9D0BE` (our `--color-border`) but a box-shadow of
+> `rgba(0,0,0,0) 0px 0px 0px 0px` — ring colour set, ring **width zero and transparent**.
+> That is the shape of a card whose hairline resolves but never paints.
+>
+> **Resolve with the control experiment, not with more themed runs:** `CDX_PROBE=1` suppresses
+> injection. Sample the home screen with and without the theme and compare.
+
+### 8.5.1 (retracted text, kept for the record) — what run 2 measured
 
 46 samples, both modes, full 300s schedule, zero probe failures. With the census rebuilt to find
 elements by what they paint (§8.6), the answer to the "missing cards" anomaly is **not** a query
@@ -747,7 +769,40 @@ Recorded so no one reads section 8 as "Phase 3 is finished":
   #301413` replacing Codex's 23%-alpha saturated wash), but never *measured* under the theme.
   Note the diff view uses **no `pre`/`code`/`kbd`/`samp` elements at all** — the settled check
   read `pre=0 code=0` on a screen full of visible code, so that check does not cover diffs.
-- **Dialogs and the terminal surface — STILL never observed, after two runs.** Run 1 closed at
+### 8.6.1 RUN 3, 2026-08-02 — diffs and terminals MEASURED at last, and the code face is not reaching them
+
+The owner opened a diff in the side panel and a terminal in the side panel, in both modes, and
+held each across several sample ticks. Measured:
+
+```
+light:  475x1280  font=ui-monospace  ink=#182336  surface=#F0E7D5 (from <div>)  contrast=12.83 PASS
+dark:   475x1280  font=ui-monospace  ink=#F4EAD4  surface=#0E141F (from <div>)  contrast=15.43 PASS
+```
+
+**Contrast passes comfortably in both modes** — the last unmeasured surfaces in Phase 3 are now
+measured, and they are legible. Two defects come with that, both of the same family:
+
+1. **The code face does NOT reach the diff/terminal panel.** It computes `ui-monospace` first,
+   which is Codex's stock stack resolving to **Consolas on Windows** — not Monaspace Neon. This
+   theme sets **four** mono variables (`--font-mono`, `--font-mono-default`,
+   `--default-mono-font-family`, `--vscode-editor-font-family`), all naming Monaspace Neon first,
+   and the panel reads **none of them**: it carries a literal stack. D-0001-7's code face is
+   therefore absent from the one surface most made of code.
+2. **The panel paints from `--color-background-surface`** (the plain ground: `#F0E7D5` / `#0E141F`),
+   **not** from `--color-token-diff-surface` or `--color-background-editor-opaque` (`#F6EDDB` /
+   `#111722`), which this theme defines for exactly this job. Those two tokens are inert here.
+
+Both are the **reads-vs-paints trap again** — the fifth and sixth instances — and neither is
+fixable by guessing. What is needed is the rule that actually sets the panel's `font-family` and
+`background`, which is a probe question (`CDX_PROBE=1`, `CDX_PROBE_DUMP_CSS=1`), not a theme edit.
+**Do not add a landmark for either before that rule is measured** — four pre-Gate-0 landmarks died
+exactly that way.
+
+`pre=0 code=0` held throughout, confirming §8.6's standing note that the diff view contains no such
+elements; the surface was found by its mono rendering instead, which is why it was found at all.
+
+- **Dialogs — still never observed.** No `[role=dialog]` at any sample across three runs.
+- **Dialogs and the terminal surface — the terminal is now measured (§8.6.1); dialogs are not.** Run 1 closed at
   +204s of a 300s schedule. Run 2 ran the full 300s in both modes and still reported
   `pre=0 code=0` on **all 46 samples** with no mono-rendered block ≥200×60 anywhere, and **no
   `[role=dialog]` at any sample** — Codex's settings surface is evidently not an ARIA dialog, and
