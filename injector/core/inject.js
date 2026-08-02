@@ -591,16 +591,33 @@ async function reportRootEnvironment(webContents) {
       // are supposed to leave fully functional. A diagnostic that degrades the
       // app it is diagnosing is not an acceptable trade, so the scan stops after
       // a fixed budget and says so rather than running to completion.
+      // Two runs reported "no mono block" while the owner believed a diff was
+      // open. Before concluding anything about the SCREEN, this has to be able
+      // to distinguish three different states it previously collapsed into one
+      // message: nothing mono on screen at all; something mono on screen but
+      // below the size/tag filter; and a scan that ran out of budget. So a
+      // separate, unfiltered tally runs first and is reported either way.
+      // Without it, "no diff" is indistinguishable from "the query cannot see
+      // the diff" -- which is exactly the mistake the card census just made.
       const monoRegions = [];
       let scanned = 0;
       let scanTruncated = false;
-      for (const el of document.querySelectorAll('div, section, main, table, pre, code')) {
+      let monoAnySize = 0;
+      let monoBiggest = null;
+      for (const el of document.querySelectorAll('*')) {
         if (++scanned > SCAN_BUDGET) { scanTruncated = true; break; }
-        const r = el.getBoundingClientRect();
-        if (r.width < 200 || r.height < 60) continue;
         const ecs = getComputedStyle(el);
         const fam = ecs.fontFamily || '';
         if (!/Monaspace|monospace|Consolas|Menlo/i.test(fam)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          monoAnySize++;
+          if (!monoBiggest || r.width * r.height > monoBiggest.w * monoBiggest.h) {
+            monoBiggest = { w: r.width, h: r.height, tag: el.tagName.toLowerCase() };
+          }
+        }
+        if (r.width < 200 || r.height < 60) continue;
+        if (!/^(div|section|main|table|pre|code|tbody|article)$/.test(el.tagName.toLowerCase())) continue;
         // Only the OUTERMOST such block, or every nested row reports itself.
         if (monoRegions.some((m) => m.el.contains(el))) continue;
         // The region's own background is usually transparent, so the surface
@@ -622,11 +639,18 @@ async function reportRootEnvironment(webContents) {
       // truncated scan is a different statement from "none found" after a
       // complete one, and reporting them identically is how an absent surface
       // gets read as a measured negative.
+      const monoTally = 'monoElements=' + monoAnySize +
+        (monoBiggest ? ' biggest=<' + monoBiggest.tag + '> ' +
+          Math.round(monoBiggest.w) + 'x' + Math.round(monoBiggest.h) : '') +
+        '  scanned=' + scanned + (scanTruncated ? ' (TRUNCATED)' : '');
       const codeRegions = monoRegions.length
         ? monoRegions.map((m) => m.line)
         : [scanTruncated
-            ? 'none found, but the scan hit its ' + SCAN_BUDGET + '-element budget — INCONCLUSIVE, not a negative result'
-            : 'no mono-rendered block >=200x60 anywhere on this screen (' + scanned + ' elements scanned; no diff/terminal/code view open — not a finding)'];
+            ? 'none — scan hit its ' + SCAN_BUDGET + '-element budget. INCONCLUSIVE, not a negative result. ' + monoTally
+            : monoAnySize
+              ? 'no qualifying block, BUT ' + monoTally + ' — mono text IS on screen and the size/tag filter is what rejected it. ' +
+                'This is a finding about the QUERY, not about the screen.'
+              : 'nothing on screen renders in a mono face at all (' + monoTally + '). No diff/terminal/code view was open at this sample — an unrun measurement, not a negative result.'];
 
       const heading = document.querySelector('.heading-xl, .heading-lg, .heading-2xl');
       const headingFont = heading ? getComputedStyle(heading).fontFamily : '(no heading on screen)';

@@ -124,12 +124,24 @@ const PARCHMENT = { L: 0.930, C: 0.026, H: 85 };
  * @param p      the partially built palette (surfaces + ink + status already solved)
  * @param ctx    { surf, tint, worst, ground, dir } from the caller's own mode
  */
+// The sidebar's offset from the ground, and the row-interaction depths measured
+// FROM THE SIDEBAR. Module-level because `buildLight` needs the row depth to know
+// how far its ramp really extends, and a second copy of these numbers is exactly
+// how a derived palette starts disagreeing with itself.
+//
+// 0.058 is not a taste value: it is the separation dark already had and that the
+// owner reads as correct (0.0574 measured in the running app). Light inherits it
+// rather than being tuned independently.
+const SIDEBAR_DL = -0.014;
+const ROW_HOVER_DL = 0.058;
+const ROW_ACTIVE_DL = 0.070;
+
 function deriveChrome(p, { surf, tint, worst, dir }) {
   // ── Surfaces the app paints that the core ramp did not name ────────────────
   // The sidebar sits a step BELOW the ground, as Codex's own does (#0e0e0e under
   // a #111111 ground). Going down rather than up keeps every text/surface pair
   // already solved against the LIGHTEST surface comfortably valid.
-  p['background-surface-under']            = surf(dir === 'up' ? -0.014 : -0.014);
+  p['background-surface-under']            = surf(SIDEBAR_DL);
   p['background-editor-opaque']            = p['token-diff-surface'];
   p['background-elevated-primary-opaque']  = p['background-elevated-primary'];
   p['background-elevated-secondary-opaque'] = p['background-elevated-secondary'];
@@ -187,17 +199,56 @@ function deriveChrome(p, { surf, tint, worst, dir }) {
   p['background-accent-hover']  = tint(ROLE.brass.H, step(0.71));
   p['background-accent-active'] = tint(ROLE.brass.H, step(0.93));
 
-  // Row hover / press. These sit under list rows everywhere in the sidebar.
+  // Row hover / press — anchored to the SIDEBAR, not to the ground (D-0001-17).
   //
-  // The steps are small on purpose, and the size is a constraint rather than a
-  // taste call. Every ink tier above is solved against `worst` — the lightest
-  // surface in the ramp (dark mode) — so a hover surface LIGHTER than `worst`
-  // silently invalidates that proof. A first attempt used +0.100/+0.120 and the
-  // audit caught it: meta text landed at 4.32:1 on a hovered row. A hover lift
-  // should in any case read as less elevation than a popover, not more; stock
-  // Codex uses roughly an 8% white overlay, which is about this size.
-  p['background-button-secondary-hover']  = surf(step(0.55));
-  p['background-button-secondary-active'] = surf(step(0.76));
+  // These were a fraction of the ramp measured from the GROUND until 2026-08-02,
+  // and the same formula produced opposite outcomes in the two modes for a
+  // reason that is pure geometry. The sidebar sits BELOW the ground in BOTH
+  // modes (SIDEBAR_DL is negative either way). In dark the ramp rises, so hover
+  // moved AWAY from the sidebar and the two diverged — 0.0574 of separation. In
+  // light the ramp falls, so hover moved TOWARD the sidebar and they converged —
+  // 0.0122, which the owner reported as an invisible hover in the running app
+  // and which measured out at 4.7x weaker than dark (findings §8.5.2).
+  //
+  // List rows live ON THE SIDEBAR, so the step that matters is the one against
+  // the sidebar, and that is what these are now measured from. The modes become
+  // symmetric by construction rather than by luck. The check that this is a fix
+  // to light and not a retune of both: dark lands at +0.044 from the ground
+  // where the old fraction gave +0.045, i.e. visually unchanged.
+  //
+  // The old comment warned that a hover beyond `worst` invalidates the ink proof.
+  // That is still true and is now handled explicitly below rather than by keeping
+  // the step too small to matter.
+  // Note the direction is +1 in BOTH modes, deliberately: a hovered row LIFTS
+  // away from the sidebar. Dark already did this (the sidebar is the darkest
+  // thing on screen, so its hover could only go up); light did not, and that —
+  // not the size of the step — was the actual asymmetry. Lifting in light also
+  // keeps the row INSIDE the existing ramp, and because light ink is solved
+  // against the DARKEST surface, a lighter row can only raise every contrast
+  // figure. So this costs no ink change at all, where deepening the row would
+  // have forced every light ink tier down to keep its AA proof.
+  p['background-button-secondary-hover']  = surf(SIDEBAR_DL + ROW_HOVER_DL);
+  p['background-button-secondary-active'] = surf(SIDEBAR_DL + ROW_ACTIVE_DL);
+
+  // In light mode the deepened rows are now the darkest surface any ink lands
+  // on — deeper than the ramp's own `worst` — so the AA proof no longer covers
+  // them. Re-solve the ONE tier actually at risk, meta text, against whichever
+  // is the extreme. Primary and secondary ink deliberately keep the values the
+  // owner approved: they clear the deepened row at 10.2:1 and 6.5:1, and
+  // re-solving them would move a locked palette to fix pairs that never failed.
+  const rowExtreme = [
+    p['background-button-secondary-hover'],
+    p['background-button-secondary-active'],
+    worst,
+  ].reduce((a, b) => (dir === 'up'
+    ? (hexToOklch(a).L > hexToOklch(b).L ? a : b)    // dark: the extreme is the LIGHTEST
+    : (hexToOklch(a).L < hexToOklch(b).L ? a : b))); // light: the extreme is the DARKEST
+  if (rowExtreme !== worst) {
+    const t = hexToOklch(p['text-tertiary']);
+    p['text-tertiary'] = solveL({ C: t.C, H: t.H }, rowExtreme, 4.6, dir);
+    p['text-button-tertiary']     = p['text-tertiary'];
+    p['text-foreground-tertiary'] = p['text-tertiary'];
+  }
   p['background-button-tertiary']         = p['background-button-secondary'];
   p['background-button-tertiary-hover']   = p['background-button-secondary-hover'];
   p['background-button-tertiary-active']  = p['background-button-secondary-active'];
@@ -255,7 +306,15 @@ export function buildDark(groundHex) {
     'token-bg-tertiary':             surf(0.082, -0.004),
   };
   // Text is solved against the LIGHTEST surface, so it clears AA on all of them.
-  const worst = p['background-elevated-secondary'];
+  // Same reasoning as buildLight below, mirrored: the extreme is the LIGHTEST
+  // surface in dark. The rows land at +0.044 from the ground against a ramp that
+  // already reaches +0.082, so this is a no-op here today — kept symmetric so a
+  // future change to ROW_*_DL cannot quietly void the dark proof the way it
+  // would have voided the light one.
+  const rowCeiling = surf(SIDEBAR_DL + ROW_ACTIVE_DL);
+  const worst = hexToOklch(rowCeiling).L > hexToOklch(p['background-elevated-secondary']).L
+    ? rowCeiling
+    : p['background-elevated-secondary'];
   p['text-primary']     = solveL(ROLE.ink, worst, 12.5, 'up');
   p['text-secondary']   = solveL(ROLE.ink, worst, 7.0, 'up');
   p['text-tertiary']    = solveL(ROLE.ink, worst, 4.6, 'up');
@@ -311,7 +370,16 @@ export function buildLight(groundHex) {
     'background-elevated-secondary': surf(0.026),
     'token-bg-tertiary':             surf(-0.050),
   };
-  const worst = p['token-bg-tertiary']; // darkest surface — solve text against it
+  // The darkest surface ink lands on is no longer token-bg-tertiary: since
+  // D-0001-17 the row interaction states are anchored to the sidebar and sit
+  // DEEPER than the ramp. Ink must be solved against the true extreme, or every
+  // figure this theme claims is optimistic on a hovered row — which is exactly
+  // what deriveChrome's guard refuses to allow. Following that guard rather than
+  // relaxing it is why all three light ink tiers deepen slightly.
+  const rowFloor = surf(SIDEBAR_DL + ROW_ACTIVE_DL);
+  const worst = hexToOklch(rowFloor).L < hexToOklch(p['token-bg-tertiary']).L
+    ? rowFloor
+    : p['token-bg-tertiary'];
   p['text-primary']    = solveL({ C: 0.040, H: inkH }, worst, 11.0, 'down');
   p['text-secondary']  = solveL({ C: 0.048, H: inkH }, worst, 7.0, 'down');
   p['text-tertiary']   = solveL({ C: 0.052, H: inkH }, worst, 4.6, 'down');

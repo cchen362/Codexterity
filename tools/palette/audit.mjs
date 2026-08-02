@@ -63,6 +63,12 @@ export const CHECKS = [
   ['Body text on hovered row', 'text-primary', 'background-button-secondary-hover', 4.5],
   ['Body text on pressed row', 'text-primary', 'background-button-secondary-active', 4.5],
   ['Meta text on hovered row', 'text-tertiary', 'background-button-secondary-hover', 4.5],
+  // The pressed row is a step further from the sidebar than hover (D-0001-17), so
+  // it is a distinct surface and the hover check does not cover it. Added when the
+  // row states were re-anchored, because that change is what made the two differ
+  // by enough to matter.
+  ['Meta text on pressed row', 'text-tertiary', 'background-button-secondary-active', 4.5],
+  ['Supporting text on hovered row', 'text-secondary', 'background-button-secondary-hover', 4.5],
   ['Body text on warning ground', 'text-primary', 'background-status-warning', 4.5],
   ['Body text on error ground', 'text-primary', 'background-status-error', 4.5],
   ['Error edge on ground', 'border-error', 'background-surface', 3.0],

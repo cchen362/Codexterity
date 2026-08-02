@@ -700,11 +700,38 @@ healthy — hover resolves to a token this theme defines, with this theme's valu
 value that is invisible where it lands. **A resolved token is not a visible pixel** — the same
 lesson as §2.1 and §8.3, in its third form.
 
-**Headroom.** Deepening light hover darkens a surface under dark ink, so `Meta text on hovered row`
-(`--color-text-tertiary`) is the binding audit check. It caps the step at **ΔL ≈ 0.042** (`#DDD4C2`,
-4.51:1). Candidates rendered for the owner at ΔL 0.030 / 0.036 / 0.042. **Not implemented — the
-palette is locked (D-0001-7) and colour is an owner decision made from a render.** Any change goes
-through `palette-engine.mjs` and must re-emit and re-audit 264/264; `theme.css` is never hand-edited.
+**RESOLVED the same day as D-0001-17 — and the first fix was the wrong one.**
+
+Deepening the light hover ran into `deriveChrome`'s guard, which refuses any surface beyond the one
+the ink was solved against. That guard is correct and says *"raise the core ramp and re-solve the ink
+rather than relaxing this check"*, so it was followed rather than relaxed — and following it cost
+**nine** ink tokens, including `--color-text-primary` `#182336 → #0F192B`. That is a locked,
+owner-approved palette moving to fix one hover.
+
+**The better fix was noticed only because the guard forced the cost into the open.** In dark, a
+hovered row has always gone *lighter* than the sidebar — the sidebar is the darkest thing on screen,
+so it could only lift. Making light **darken** preserved the asymmetry in a new form. Making light
+**lift** as well uses one rule in both modes, stays inside the ramp that already exists, and — because
+light ink is solved against the *darkest* surface — can only *raise* contrast:
+
+| | old | darken route | **lift route (shipped)** |
+|---|---|---|---|
+| light hover ΔL from sidebar | 0.0122 | 0.0580 | **0.0600** (dark: 0.0574) |
+| light press ΔL from sidebar | 0.0221 | 0.0700 | **0.0709** (dark: 0.0700) |
+| meta text on hovered row | 4.96 | 4.77 | **6.17** |
+| body text on hovered row | 11.80 | 10.20 | **14.67** |
+| other palette tokens changed | — | **9** | **0** |
+
+Shipped values: light hover `#E7DECC → #FFF6E3`, light press `#E3DBC9 → #FFFAEF`. The only other
+movement anywhere is dark's press, `#1C222E → #1B212D` — one quantisation step, invisible. Owner
+chose lift from a render.
+
+**The lesson is about the guard, not the hover.** A blanket structural invariant that looks
+over-strict — "no surface beyond `worst`" — is what surfaced the real cost of the obvious fix and
+sent the design somewhere better. It would have been easy, and wrong, to relax it. Two audit checks
+were added at the same time (`Meta text on pressed row`, `Supporting text on hovered row`): the
+pressed row is now a genuinely distinct surface from hover, so the hover check no longer covers it.
+Audit is **272/272**.
 
 ### 8.6 Still not seen under the theme
 

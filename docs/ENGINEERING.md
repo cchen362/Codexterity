@@ -86,7 +86,7 @@ The shape is decided (Plan 0001) even though code is not yet written. Record it 
 **Palette values are derived, not hand-picked.** Ramps are stepped in OKLCH and every contrast-critical token is *solved* for its WCAG AA target by binary search. The derivation is [`tools/palette/palette-engine.mjs`](../tools/palette/palette-engine.mjs); the check is `audit.mjs`; the emitter is `emit-theme.mjs`. To change a colour, change the recipe and regenerate — do not hand-edit `theme.css`:
 
 ```bash
-node tools/palette/audit.mjs        # 152 checks; must be 152/152
+node tools/palette/audit.mjs        # 272 checks; must be 272/272
 node tools/palette/emit-theme.mjs   # rewrites theme.css + syntax.json
 ```
 

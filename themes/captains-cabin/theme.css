@@ -175,10 +175,10 @@
 
   /* Interaction states — list rows and secondary buttons */
   --color-background-button-secondary-hover: #181E2A !important;
-  --color-background-button-secondary-active: #1C222E !important;
+  --color-background-button-secondary-active: #1B212D !important;
   --color-background-button-tertiary: #222731 !important;
   --color-background-button-tertiary-hover: #181E2A !important;
-  --color-background-button-tertiary-active: #1C222E !important;
+  --color-background-button-tertiary-active: #1B212D !important;
 
   /* Button and tertiary ink */
   --color-text-button-primary: #23272F !important;
@@ -322,11 +322,11 @@
   --color-decoration-unchanged: #7081A0 !important;
 
   /* Interaction states — list rows and secondary buttons */
-  --color-background-button-secondary-hover: #E7DECC !important;
-  --color-background-button-secondary-active: #E3DBC9 !important;
+  --color-background-button-secondary-hover: #FFF6E3 !important;
+  --color-background-button-secondary-active: #FFFAEF !important;
   --color-background-button-tertiary: #E7DECC !important;
-  --color-background-button-tertiary-hover: #E7DECC !important;
-  --color-background-button-tertiary-active: #E3DBC9 !important;
+  --color-background-button-tertiary-hover: #FFF6E3 !important;
+  --color-background-button-tertiary-active: #FFFAEF !important;
 
   /* Button and tertiary ink */
   --color-text-button-primary: #FDF7E8 !important;
