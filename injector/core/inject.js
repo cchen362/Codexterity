@@ -249,6 +249,135 @@ async function reportRootEnvironment(webContents) {
                     ' zIndex=' + own.zIndex;
       }
 
+      // THE EMPTY-STATE CARD HAIRLINE. D-0001-15 — no landmark is written for
+      // this, deliberately; the check below is the whole of the implementation.
+      // Measured 2026-08-02: on Electron the
+      // cards carry BOTH 'border border-token-input-border' AND
+      // 'electron:border-0 electron:ring-[0.5px] electron:ring-token-border-heavy'
+      // — Codex zeroes the border on this platform and substitutes a ring, which
+      // Tailwind implements as a BOX-SHADOW. Computed border-width is 0 0 0 0.
+      //
+      // So the hairline is reachable only through --tw-ring-color, which reads
+      // --color-token-border-heavy -> --color-border-heavy, a stage-1 token this
+      // theme already defines. No landmark is needed and none is written. What
+      // IS needed is proof that our value arrives, because a resolved token is
+      // not a painted pixel — reported as the ring colour the card computes.
+      //
+      // A border-based check here would read 0px and conclude "unstyled" on a
+      // screen showing four visibly outlined cards, which is why the width is
+      // reported alongside: the zero is the expected answer, not a fault.
+      // Found geometrically (a card is a large button) with the measured
+      // authored class as a second, independent route — the same two-hook
+      // reasoning as D-0001-14, so a Codex layout change that moves the size
+      // out of range does not silently produce "absent".
+      //
+      // A MISS MUST NAME ITS OWN CAUSE. The cards disappear whenever the
+      // composer holds text, and Codex PERSISTS that draft across a restart —
+      // so a fresh launch is not necessarily a clean empty state, and a bare
+      // "no cards" would be read as a theming failure when it is a draft. The
+      // negative branch therefore reports whether the home screen is even
+      // present, how many buttons were considered, and whether a draft is
+      // suppressing them.
+      const allButtons = Array.from(document.querySelectorAll('button'));
+      const cards = allButtons.filter((b) => {
+        const r = b.getBoundingClientRect();
+        const bySize = r.width > 120 && r.width < 320 && r.height > 70 && r.height < 180;
+        const byClass = typeof b.className === 'string' && b.className.split(/\\s+/).indexOf('min-h-26') >= 0;
+        return bySize || byClass;
+      });
+      let cardHairline;
+      if (!cards.length) {
+        const onHome = !!document.querySelector('.heading-xl');
+        const composerText = (document.querySelector('.ProseMirror') || {}).textContent || '';
+        const biggest = allButtons
+          .map((b) => b.getBoundingClientRect())
+          .sort((a, b) => (b.width * b.height) - (a.width * a.height))
+          .slice(0, 3)
+          .map((r) => Math.round(r.width) + 'x' + Math.round(r.height))
+          .join(', ');
+        cardHairline = 'NOT FOUND — homeScreen=' + (onHome ? 'yes' : 'no') +
+          '  buttons=' + allButtons.length + ' (largest: ' + (biggest || 'none') + ')' +
+          '  composerDraft=' + JSON.stringify(composerText.slice(0, 24)) +
+          (onHome && composerText.trim()
+            ? '  => a non-empty composer HIDES the cards, and Codex persists the draft across restarts. Clear the composer and re-sample; this is not a theming failure.'
+            : onHome ? '  => on the home screen with an empty composer and still no cards: investigate.'
+                     : '  => not the home screen; cards exist only there.');
+      } else {
+        const cs = getComputedStyle(cards[0]);
+        cardHairline = cards.length + ' card(s); ring-color=' + (cs.getPropertyValue('--tw-ring-color').trim() || '(unset)') +
+          '  border-width=' + cs.borderTopWidth + ' (0px expected on Electron)' +
+          '  bg=' + cs.backgroundColor;
+      }
+
+      // THE COMPOSER'S FILLED CIRCULAR CONTROL. D-0001-15 — no landmark here
+      // either, and this one CANNOT have a useful token override of its own.
+      // Voice when the composer is
+      // empty, SEND once text is typed. Measured 2026-08-02: it is ONE element
+      // whose aria-label flips between 'Start new voice chat' and 'Send'; the
+      // classes, size and position never change. It is painted by
+      // 'bg-token-foreground' -> --color-token-foreground -> --vscode-foreground
+      // -> --color-text-foreground, a stage-1 token this theme already sets.
+      //
+      // That token is also the app's main TEXT colour, so it cannot be
+      // retargeted at the button alone without recolouring every glyph in the
+      // app. The button therefore inherits the theme rather than being themed
+      // separately — and the thing that must be checked is not the fill but the
+      // CONTRAST between the disc and the glyph sitting on it. Both are read,
+      // because a foreground-coloured glyph on a foreground-coloured disc is
+      // invisible, and that failure would look like a missing icon rather than
+      // like a theming bug.
+      const filled = Array.from(document.querySelectorAll('button'))
+        .find((b) => b.className && typeof b.className === 'string' &&
+                     b.className.split(/\\s+/).indexOf('bg-token-foreground') >= 0);
+      let composerAction;
+      if (!filled) {
+        composerAction = 'not on this screen';
+      } else {
+        const cs = getComputedStyle(filled);
+        const glyph = filled.querySelector('path, circle, rect, polygon, svg');
+        const gcs = glyph ? getComputedStyle(glyph) : null;
+        composerAction = 'aria=' + JSON.stringify(filled.getAttribute('aria-label')) +
+          '  disc=' + cs.backgroundColor +
+          '  glyphFill=' + (gcs ? gcs.fill : '(no glyph)') +
+          '  glyphColor=' + (gcs ? gcs.color : '-');
+      }
+
+      // FLOATING SURFACES — menus, popovers, dialogs.
+      //
+      // Measured 2026-08-02: the open permissions popover is
+      // 'bg-token-dropdown-background/90 ring-token-border', i.e.
+      // --color-token-dropdown-background -> --vscode-dropdown-background ->
+      // --color-background-control-opaque, a stage-1 token this theme defines.
+      // Note that is NOT --color-background-elevated-primary-opaque, which the
+      // inventory's impact table names for "menus, popovers, dialogs" — that
+      // table ranks var() READS, and a token can be read 333 times and paint
+      // none of the menu in front of you (findings §2.1, the same trap as the
+      // sidebar).
+      //
+      // Reported opportunistically rather than on a dedicated run, because an
+      // unopened menu is UNMOUNTED, not hidden, and Codex exposes no
+      // UI-automation tree to open one from outside. So this records itself the
+      // first time anyone happens to have a menu open when a sample fires.
+      //
+      // The alpha and the backdrop-filter are reported deliberately: the panel
+      // is 90% opaque OVER A BLUR, so text on it does not sit on flat colour,
+      // and D-0001-6 computes every contrast figure this theme claims against
+      // flat colour. That is an open question, not a settled one — do not read
+      // a themed-looking colour here as a passed contrast check.
+      const panel = document.querySelector('[role=menu], [role=dialog], [role=alertdialog], [role=listbox]');
+      let floatingSurface;
+      if (!panel) {
+        floatingSurface = 'none open at this sample (a closed menu is unmounted, not hidden — not a finding)';
+      } else {
+        const cs = getComputedStyle(panel);
+        floatingSurface = '<' + panel.tagName.toLowerCase() + ' role=' + panel.getAttribute('role') + '> ' +
+          'bg=' + cs.backgroundColor +
+          '  backdropFilter=' + (cs.backdropFilter === 'none' ? 'none' : cs.backdropFilter) +
+          '  color=' + cs.color +
+          '  borderRadius=' + cs.borderTopLeftRadius +
+          '  NOTE: alpha<1 or a blur means text here is NOT on flat colour (D-0001-6)';
+      }
+
       const heading = document.querySelector('.heading-xl, .heading-lg, .heading-2xl');
       const headingFont = heading ? getComputedStyle(heading).fontFamily : '(no heading on screen)';
       const bodyFont = document.body ? getComputedStyle(document.body).fontFamily : '(no body)';
@@ -260,6 +389,9 @@ async function reportRootEnvironment(webContents) {
         hero,
         tint,
         indicator,
+        cardHairline,
+        composerAction,
+        floatingSurface,
         headingFont,
         bodyFont,
         rootClass: root.className || '(none)',
@@ -286,6 +418,9 @@ async function reportRootEnvironment(webContents) {
     if (env.hero) log(`  hero: ${env.hero}`);
     if (env.tint) log(`  title-bar tint computes: ${env.tint}`);
     if (env.indicator) log(`  active-row indicator: ${env.indicator}`);
+    if (env.cardHairline) log(`  empty-state card hairline: ${env.cardHairline}`);
+    if (env.composerAction) log(`  composer filled control: ${env.composerAction}`);
+    if (env.floatingSurface) log(`  floating surface: ${env.floatingSurface}`);
     if (env.bodyFont) log(`  body font-family:    ${env.bodyFont}`);
     if (env.headingFont) log(`  heading font-family: ${env.headingFont}`);
   } catch (err) {
@@ -353,20 +488,48 @@ function scheduleProbes(webContents) {
  *
  * Set CDX_VERIFY_AT=<ms> to take a second reading after the app has settled.
  * That is the one that tells you whether the theme reached what Codex paints.
+ *
+ * SEVERAL offsets may be given, comma-separated, exactly as CDX_PROBE_AT
+ * already accepts them. This is not symmetry for its own sake. Half of what the
+ * settled check reports only exists on ONE screen — the empty-state cards are
+ * absent from a conversation, a menu is unmounted until it is opened, code
+ * surfaces are absent until a code block is on screen — and Codex exposes no
+ * UI-automation tree, so no screen can be driven to from outside. A single
+ * offset therefore measures whichever screen the user happened to be on and
+ * silently reports every other surface as absent. Several offsets let one
+ * launch cover several screens, which is the difference between one owner
+ * interaction and three.
  */
-function scheduleSettledVerification(webContents) {
+function verifySchedule() {
   const raw = process.env.CDX_VERIFY_AT;
-  if (!raw) return;
-  const ms = Number(raw);
-  if (!Number.isFinite(ms) || ms < 0) {
-    log(`CDX_VERIFY_AT="${raw}" is not a millisecond value; skipping the settled re-check.`);
-    return;
+  if (!raw) return [];
+  const parsed = [];
+  for (const part of String(raw).split(',')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const ms = Number(trimmed);
+    // Reported per-entry rather than rejecting the whole list: a typo in the
+    // third offset should not silently cancel the first two, and a skipped
+    // sample that says nothing is how a wrong screen gets read as a finding.
+    if (!Number.isFinite(ms) || ms < 0) {
+      log(`CDX_VERIFY_AT entry "${trimmed}" is not a millisecond value; skipping that sample.`);
+      continue;
+    }
+    parsed.push(ms);
   }
-  setTimeout(() => {
-    if (webContents.isDestroyed()) return;
-    log(`settled token re-check on webContents#${webContents.id} (+${ms}ms):`);
-    reportRootEnvironment(webContents);
-  }, ms);
+  return parsed;
+}
+
+function scheduleSettledVerification(webContents) {
+  const offsets = verifySchedule();
+  if (!offsets.length) return;
+  for (const ms of offsets) {
+    setTimeout(() => {
+      if (webContents.isDestroyed()) return;
+      log(`settled token re-check on webContents#${webContents.id} (+${ms}ms):`);
+      reportRootEnvironment(webContents);
+    }, ms);
+  }
 }
 
 async function reportLandmarks(webContents) {

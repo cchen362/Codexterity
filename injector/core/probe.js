@@ -661,9 +661,14 @@ function buildProbeScript(options) {
         dataAttrs: dataAttrs(el),
         ariaCurrent: el.getAttribute('aria-current'),
         ariaSelected: el.getAttribute('aria-selected'),
+        ariaLabel: el.getAttribute('aria-label'),
+        title: el.getAttribute('title'),
+        disabled: el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true',
         backgroundColor: cs.backgroundColor,
         borderColor: cs.borderTopColor,
         borderWidth: cs.borderTopWidth,
+        borderRadius: cs.borderTopLeftRadius,
+        boxShadow: cs.boxShadow === 'none' ? null : cs.boxShadow.slice(0, 120),
         color: cs.color,
         hasSvg: !!el.querySelector('svg'),
       });
@@ -672,6 +677,147 @@ function buildProbeScript(options) {
     return out;
   }
   const controls = controlCensus();
+
+  // ---------------------------------------------------------------------
+  // MAIN-CONTENT SURFACE CENSUS — the empty-state cards, found by what they
+  // PAINT rather than by what they are.
+  //
+  // The control census above asks "which elements are controls", and answers
+  // it with a role/tag list. That question cannot find an empty-state card
+  // built as a plain <div> with a click handler and no ARIA role, which is the
+  // common React shape — and it would return a confident, complete-looking
+  // list with none of the cards in it. Plan 0001 item 11 exists because two
+  // selectors were guessed for these cards rather than measured; guessing a
+  // second time from an instrument that structurally cannot see them would be
+  // the same mistake with more steps.
+  //
+  // So this asks a geometric and visual question instead: inside the main
+  // content region (everything right of the sidebar's right edge), which
+  // elements paint a border or a background? A "card hairline" IS a painted
+  // border by definition, so no card can escape this filter whatever its tag.
+  // The matched rules are attached for bordered elements only — that is the
+  // set where we need to know WHICH rule and WHICH token draws the line, and
+  // matchedRules() is O(all rules) per element, so it is not free.
+  // ---------------------------------------------------------------------
+  function mainContentCensus() {
+    const panel = document.querySelector('.app-shell-left-panel');
+    const leftEdge = panel ? panel.getBoundingClientRect().right : 0;
+    const out = [];
+    let withRules = 0;
+    for (const el of document.querySelectorAll('*')) {
+      const r = el.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8) continue;
+      if (r.right <= leftEdge + 1) continue;
+      const cs = getComputedStyle(el);
+      const widths = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth]
+        .map((w) => parseFloat(w) || 0);
+      const colours = [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor];
+      const hasBorder = widths.some((w, i) => w > 0 && (alphaOf(colours[i]) || 0) > 0);
+      const hasBackground = (alphaOf(cs.backgroundColor) || 0) > 0;
+      const isControl = el.matches('button, a[href], [role=button], [role=tab], input, textarea, [contenteditable]');
+      if (!hasBorder && !hasBackground && !isControl) continue;
+      const classes = Array.from(el.classList);
+      const entry = {
+        tag: el.tagName.toLowerCase(),
+        rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+        text: (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 64) || null,
+        authoredClasses: classes.filter((c) => !HASHED.test(c)),
+        hashedClasses: classes.filter((c) => HASHED.test(c)),
+        dataAttrs: dataAttrs(el),
+        ariaLabel: el.getAttribute('aria-label'),
+        role: el.getAttribute('role'),
+        isControl,
+        hasBorder,
+        hasBackground,
+        backgroundColor: cs.backgroundColor,
+        borderWidths: widths.join(' '),
+        borderColors: colours.join(' | '),
+        borderRadius: cs.borderTopLeftRadius,
+        // NOT truncated, and the ring variable is read alongside it. Codex's
+        // Electron variant replaces the cards' border with ring-[0.5px],
+        // which Tailwind implements as a BOX-SHADOW coloured by --tw-ring-color
+        // — so on this platform the "card hairline" has zero border width and
+        // is invisible to any border-based measurement or override. Reading the
+        // shadow and the ring colour is the only way to see it at all.
+        boxShadow: cs.boxShadow === 'none' ? null : cs.boxShadow,
+        ringColor: cs.getPropertyValue('--tw-ring-color').trim() || null,
+        ringWidth: cs.getPropertyValue('--tw-ring-offset-width').trim() || null,
+        color: cs.color,
+        fontFamily: cs.fontFamily.slice(0, 60),
+      };
+      const hasRing = !!entry.boxShadow || !!entry.ringColor;
+      if ((hasBorder || hasRing) && withRules < 40) { entry.rules = matchedRules(el); withRules += 1; }
+      out.push(entry);
+      if (out.length >= 250) break;
+    }
+    return { sidebarRightEdge: Math.round(leftEdge), sidebarFound: !!panel, elements: out };
+  }
+  const mainContent = mainContentCensus();
+
+  // ---------------------------------------------------------------------
+  // OVERLAY CENSUS — menus, popovers, dialogs and tooltips.
+  //
+  // Plan 0001's remaining unseen surfaces. Their stage-1 token
+  // (--color-background-elevated-primary-opaque, 333 downstream reads) is set,
+  // but "set" is not "painted" — the sidebar cost this project a day on exactly
+  // that distinction. These surfaces cannot be probed the way a card can,
+  // because they DO NOT EXIST in the DOM until opened: a closed menu is not a
+  // hidden menu, it is unmounted. So a zero here means "nothing was open when
+  // the sample fired", never "the app has no menus", and the report says so
+  // rather than leaving a zero to be misread as a finding.
+  //
+  // Two questions are asked, and the union taken, because either alone has a
+  // known blind spot. The ROLE query finds correctly-ARIA'd overlays but misses
+  // an unlabelled div; the GEOMETRIC query — taken out of flow, painting a
+  // background, casting a shadow — is what a floating surface physically IS,
+  // and catches the unlabelled ones.
+  // ---------------------------------------------------------------------
+  const OVERLAY_ROLES = 'menu,menuitem,menubar,dialog,alertdialog,listbox,option,tooltip,combobox,tabpanel';
+  function overlayCensus() {
+    const seen = new Set();
+    const out = [];
+    const byRole = Array.from(document.querySelectorAll(
+      OVERLAY_ROLES.split(',').map((r) => '[role=' + r + ']').join(',') +
+      ',[data-radix-popper-content-wrapper],[data-slot*=popover],[data-slot*=dropdown],[data-slot*=menu],dialog'));
+    const floating = Array.from(document.querySelectorAll('*')).filter((el) => {
+      const cs = getComputedStyle(el);
+      if (cs.position !== 'fixed' && cs.position !== 'absolute') return false;
+      if (cs.boxShadow === 'none') return false;
+      if ((alphaOf(cs.backgroundColor) || 0) === 0) return false;
+      const r = el.getBoundingClientRect();
+      return r.width >= 40 && r.height >= 24;
+    });
+    for (const el of byRole.concat(floating)) {
+      if (seen.has(el)) continue;
+      seen.add(el);
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      const classes = Array.from(el.classList);
+      out.push({
+        how: byRole.indexOf(el) >= 0 ? 'role/slot' : 'floating-geometry',
+        tag: el.tagName.toLowerCase(),
+        role: el.getAttribute('role'),
+        rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+        text: (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 80) || null,
+        authoredClasses: classes.filter((c) => !HASHED.test(c)),
+        hashedClasses: classes.filter((c) => HASHED.test(c)),
+        dataAttrs: dataAttrs(el),
+        position: cs.position,
+        zIndex: cs.zIndex,
+        backgroundColor: cs.backgroundColor,
+        backdropFilter: cs.backdropFilter === 'none' ? null : cs.backdropFilter,
+        borderColor: cs.borderTopColor,
+        borderWidth: cs.borderTopWidth,
+        borderRadius: cs.borderTopLeftRadius,
+        boxShadow: cs.boxShadow === 'none' ? null : cs.boxShadow,
+        color: cs.color,
+        fontFamily: cs.fontFamily.slice(0, 60),
+      });
+      if (out.length >= 60) break;
+    }
+    return out;
+  }
+  const overlays = overlayCensus();
 
   // Code surfaces, described rather than merely counted. Plan 0001 item 6 needs
   // to know what a code block actually IS in this app before anything
@@ -795,6 +941,8 @@ function buildProbeScript(options) {
     paintTraces,
     windowGuards,
     controls,
+    mainContent,
+    overlays,
     codeSurfaceDetails,
     icons,
     codeSurfaces,
@@ -864,6 +1012,41 @@ async function runProbe(webContents, log, outDir, tag) {
       `htmlAttrs=${JSON.stringify(report.windowGuards.documentElementAttrs)}`);
   log(`    controls: ${report.controls.length} interactive; ` +
       `code surfaces described: ${report.codeSurfaceDetails.length}`);
+  // The census is only trustworthy if the sidebar edge it clips against was
+  // actually found; a missing panel would silently make leftEdge 0 and admit
+  // the whole window. Report the edge so a wrong one is visible, not inferred.
+  const mc = report.mainContent;
+  const bordered = mc.elements.filter((e) => e.hasBorder);
+  log(`    main content: ${mc.elements.length} painted/bordered elements right of x=${mc.sidebarRightEdge}` +
+      `${mc.sidebarFound ? '' : ' (SIDEBAR NOT FOUND — edge is a fallback, treat the clip as untrusted)'}; ` +
+      `${bordered.length} carry a visible border`);
+  for (const e of bordered.slice(0, 12)) {
+    log(`      border <${e.tag}> ${e.rect.w}x${e.rect.h} @${e.rect.x},${e.rect.y} ` +
+        `w=[${e.borderWidths}] c=${e.borderColors.split(' | ')[0]} r=${e.borderRadius} ` +
+        `bg=${e.backgroundColor} text=${JSON.stringify((e.text || '').slice(0, 32))}`);
+  }
+  // Rings, separately from borders: on Electron the cards' hairline has zero
+  // border width and lives entirely in a box-shadow, so a border-only summary
+  // reports "1 bordered element" on a screen with four visibly outlined cards.
+  for (const e of mc.elements.filter((x) => x.ringColor).slice(0, 8)) {
+    log(`      ring   <${e.tag}> ${e.rect.w}x${e.rect.h} @${e.rect.x},${e.rect.y} ` +
+        `ring-color=${e.ringColor} shadow=${(e.boxShadow || '').slice(0, 80)} ` +
+        `text=${JSON.stringify((e.text || '').slice(0, 32))}`);
+  }
+  // A zero here is "nothing was open", not "this app has no menus" — an
+  // unopened Radix menu is unmounted, not hidden. Say which, so the next
+  // reader cannot mistake an empty sample for a measured absence.
+  if (report.overlays.length === 0) {
+    log(`    overlays: NONE MOUNTED at this sample. Not a finding — a closed menu/dialog ` +
+        `does not exist in the DOM. Re-sample with one open.`);
+  } else {
+    log(`    overlays: ${report.overlays.length} mounted`);
+    for (const o of report.overlays.slice(0, 10)) {
+      log(`      <${o.tag}${o.role ? ' role=' + o.role : ''}> via ${o.how} ${o.rect.w}x${o.rect.h} ` +
+          `bg=${o.backgroundColor} border=${o.borderWidth} ${o.borderColor} r=${o.borderRadius} ` +
+          `blur=${o.backdropFilter || 'none'} text=${JSON.stringify((o.text || '').slice(0, 40))}`);
+    }
+  }
   for (const c of report.codeSurfaceDetails.slice(0, 6)) {
     log(`      <${c.tag}> ${c.rect.w}x${c.rect.h} font=${c.fontFamily.slice(0, 40)} bg=${c.backgroundColor}`);
   }

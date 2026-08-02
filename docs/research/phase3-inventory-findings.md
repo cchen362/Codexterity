@@ -402,3 +402,140 @@ powershell -NoProfile -ExecutionPolicy Bypass -File launcher\windows\launch.ps1
 
 The report is `probe-wc<id>-t<ms>.json`. `wc1` is the main window; `wc3` is the avatar
 overlay and is not interesting for theming.
+
+---
+
+## 8. The empty-state controls and the menu surface — measured 2026-08-02
+
+Plan 0001 item 11 carried two pieces of approved design as **NOT BUILT, no measured hook**:
+the empty-state card hairlines and the composer send control. Both are now measured, and
+**neither needed code.** Each was already reached by a stage-1 token this theme defines. The
+work this session was finding that out without shipping a third dead selector.
+
+### 8.1 The card "hairline" is not a border — it is a ring, and on Electron the border is gone
+
+The four cards on the home empty state carry **both**:
+
+```
+border  border-token-input-border                                          /* the non-Electron path */
+electron:border-0  electron:ring-[0.5px]  electron:ring-token-border-heavy  /* what applies here */
+```
+
+On this platform Codex **zeroes the border and substitutes a ring**, which Tailwind implements
+as a `box-shadow`. Measured computed border width on all four cards: **`0 0 0 0`**.
+
+**Any selector written against `border-color` would have applied cleanly, passed review and
+painted nothing** — the same silent no-op that killed the four pre-Gate-0 landmarks. Item 11's
+"two guessed selectors were deliberately not shipped" was the right call, for a reason nobody
+had yet measured.
+
+The ring resolves through a chain that ends inside this theme's own vocabulary:
+
+```
+ring-token-border-heavy -> --tw-ring-color -> --color-token-border-heavy
+                        -> --color-border-heavy      (STAGE 1 — this theme already defines it)
+```
+
+**Verified painted in the running app, dark mode:**
+
+```
+empty-state card hairline: 4 card(s); ring-color=#5F6675  border-width=0px  bg=rgb(14, 20, 31)
+```
+
+`#5F6675` is this theme's `--color-border-heavy`; `#0E141F` is its `--color-background-surface`.
+Contrast hairline-on-card is **3.20:1** in dark and **3.20:1** in light (both computed; the
+light figure is not yet confirmed *painted*). AA non-text is 3:1, so both clear.
+
+### 8.2 The send control and the voice control are ONE element
+
+There is no separate send button. The filled circular control at the composer's right is a
+single element whose `aria-label` flips between `"Start new voice chat"` and `"Send"` when the
+composer holds text. Classes, size and position never change. It is painted by
+`bg-token-foreground`:
+
+```
+bg-token-foreground -> --color-token-foreground -> --vscode-foreground
+                    -> --color-text-foreground   (STAGE 1 — this theme already defines it)
+```
+
+That token is also the app's **main text colour**, so the button cannot be retargeted alone
+without recolouring every glyph in the app. It therefore inherits the theme rather than being
+themed separately — and what has to be checked is not the fill but the **contrast between the
+disc and the glyph on it**, because a foreground-coloured glyph on a foreground-coloured disc
+would read as a missing icon rather than as a theming bug.
+
+**Verified painted in the running app, dark mode:**
+
+```
+composer filled control: aria="Send"  disc=rgb(244, 234, 212)  glyphFill=rgb(34, 39, 49)
+```
+
+`#F4EAD4` disc, `#222731` glyph — **12.52:1**. Both ends are this theme's own ramp, so the
+inversion is correct by construction in both modes.
+
+**Recorded as D-0001-15: no landmark is written for either, deliberately.**
+
+### 8.3 A THIRD reads-vs-paints trap — the menu surface
+
+Section 2.1 recorded that impact ranking measures `var()` **reads**, not **paints**. It happened
+again, and the table in section 2 is again the thing that would have misled:
+
+| Section 2 says | What actually paints the open menu |
+|---|---|
+| `--color-background-elevated-primary-opaque` — *"menus, popovers, dialogs"*, 333 reads | `bg-token-dropdown-background/90` -> `--color-token-dropdown-background` -> `--vscode-dropdown-background` -> **`--color-background-control-opaque`** |
+
+Measured on the open permissions popover:
+
+```
+<div role=menu> 427x223  bg=oklab(0.268617 … / 0.9)  backdrop-filter: blur(8px)  radius=15px
+classes: bg-token-dropdown-background/90  text-token-foreground  ring-token-border
+```
+
+This theme **does** define `--color-background-control-opaque`, so the menu is themed — but by
+a different token than the one the impact table would have sent you to. **Read section 2's table
+as a list of candidates, never as an attribution.**
+
+### 8.4 OPEN — menu panels are translucent over a blur, and D-0001-6 has not been applied to them
+
+The panel is `/90` (90% opaque) **over `backdrop-filter: blur(8px)`**. Text on it therefore does
+**not** sit on flat colour, which is the assumption behind every contrast figure this theme
+claims (D-0001-6). The blur means what shows through is low-frequency, so the perturbation is
+small — but "small" is not a number, and no number has been produced.
+
+**This is stated as open, not fixed.** The alpha is Codex's own `/90` utility on the element, so
+changing it needs a landmark, and writing one to solve an unquantified problem is the instinct
+this project dropped in item 10. What is needed first is a measurement of menu text over a
+worst-case backdrop.
+
+### 8.5 Instrument changes that made the above possible
+
+- **The control census could not see the cards.** It matched `button, a[href], [role=button],
+  [role=tab], .sidebar-item` and would have returned a confident, complete-looking list with no
+  cards in it had they been unlabelled `div`s. Replaced by a **geometric + visual** query over
+  the main-content region — *which elements paint a border or a background* — which cannot miss
+  a card whatever its tag. It is what found the zero-width border.
+- **Ring colour and full box-shadow are now read**, not just border width. A border-only summary
+  reports "1 bordered element" on a screen showing four visibly outlined cards.
+- **An overlay census**, by ARIA role *and* by floating geometry (out of flow + background +
+  shadow), because either alone has a known blind spot.
+- **`CDX_VERIFY_AT` now accepts several comma-separated offsets**, like `CDX_PROBE_AT`. Half of
+  what the settled check reports exists on only one screen, and Codex exposes no UI-automation
+  tree, so one offset measures one screen and silently reports every other surface as absent.
+  Several offsets turn three owner interactions into one.
+- **Every new negative branch names its own cause.** `"no cards on this screen"` was itself a
+  trap: **a non-empty composer hides the cards, and Codex PERSISTS the draft across a restart**,
+  so even a fresh launch is not necessarily a clean empty state. The check now reports the home
+  screen's presence, the button count and the draft, and says which of them explains the miss.
+
+### 8.6 Still not seen under the theme
+
+Recorded so no one reads section 8 as "Phase 3 is finished":
+
+- **Diffs and terminals** — seen once by the owner in a screenshot and coherent (navy ground,
+  Monaspace Neon, this theme's `--color-editor-added: #092414` / `--color-editor-deleted:
+  #301413` replacing Codex's 23%-alpha saturated wash), but never *measured* under the theme.
+  Note the diff view uses **no `pre`/`code`/`kbd`/`samp` elements at all** — the settled check
+  read `pre=0 code=0` on a screen full of visible code, so that check does not cover diffs.
+- **Dialogs and the terminal surface** — never observed at all, in either mode.
+- **Light mode** for everything in section 8. Every figure above is dark-mode measured; the light
+  values are computed only. Appearance mode is set inside Codex, so this needs the owner.
