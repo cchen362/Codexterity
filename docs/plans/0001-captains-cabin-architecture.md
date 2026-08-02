@@ -255,9 +255,36 @@ captains-cabin.ccskin   (a zip)
 
 **Distribution package** (what your friend downloads): a signed installer per OS (see §9) bundling the injector + launcher + the `captains-cabin.ccskin` theme.
 
+### Phase 4 — milestones (added 2026-08-02, when Phase 3 closed)
+
+Ordered so that **every milestone is verifiable on Windows**, per the D-0001-16 amendment: the
+macOS installer is an artifact we produce and hand over, and nothing here waits on anyone running
+it. `cdx` is the CLI name (D-0001-5).
+
+- **M1 — theme-loader + safe-CSS validation** (`injector/theme-loader/`). Read a theme from a
+  directory *or* a `.ccskin` zip; parse and validate `manifest.json`; enforce the safe-CSS
+  allowlist (**no `@import`, no remote `url()`, no non-embedded resource references**) and the
+  **32 MiB** cap. Marker: D-0001-4. *Verifiable headlessly — this is the one milestone a unit
+  test can honestly close, and the first test harness in the repo lands with it.*
+- **M2 — `.ccskin` packer + the real package.** Zip `manifest.json` + `theme.css` + `syntax.json`
+  + assets into `captains-cabin.ccskin`, and produce it for the actual theme. `theme.css` is
+  **generated** (`tools/palette/emit-theme.mjs`), so the packer consumes the emitter's output and
+  never edits it. Round-trip check: pack → load → validate → byte-compare.
+- **M3 — `cdx` CLI** (`injector/cli.js`): `apply` / `restore` / `verify` / `list`. **Gate:
+  a clean apply/restore round-trip leaving nothing residual.** `restore` must return Codex to
+  the stock look with the injector detached — that is D-0001-3's user-facing promise, and it is
+  verified by launching the app, not by a green test.
+- **M4 — installers.** Windows first (portable folder + `install.ps1`, or a signed exe if a cert
+  exists) and verified on this machine. Then the macOS `.dmg`/wrapper `.app`, **built, documented
+  as unverified, and handed over** — see the D-0001-16 amendment before touching it.
+
+**Do not re-derive anything Phase 3 settled.** The theme is finished and owner-verified; Phase 4
+packages it and must not change a single token value. `node tools/palette/audit.mjs` must stay
+**272/272**.
+
 ## 6. Platform compatibility
 
-See findings §12. One runtime-injection strategy on both OSes; only the launcher + installer are per-OS. Estimated <10% platform-specific code. **One Mac verification pass is required** (confirm DOM parity + that the wrapper launches Codex's `.app` with injection) — scheduled as a Phase 6 gate with your friend.
+See findings §12. One runtime-injection strategy on both OSes; only the launcher + installer are per-OS. Estimated <10% platform-specific code. A Mac verification pass would confirm DOM parity and that the wrapper launches Codex's `.app` with injection — but it is **no longer a required gate**. Per the D-0001-16 amendment (2026-08-02) the macOS installer is handed to a collaborator whose participation is optional, so **macOS may never be verified and that is an accepted outcome.** The three macOS unknowns stay open and loud; `launcher/macos/launch.sh` ships unverified and says so.
 
 ## 7. Customizable UI inventory
 
@@ -292,10 +319,10 @@ Residual accepted risk: a major OpenAI UI overhaul will need a theme refresh (re
 |---|---|---|
 | **1. Research & Architecture** *(this doc)* | Understand + decide | **Your sign-off on §12** |
 | **2. Palette, Type & Assets** ✅ **COMPLETE** | Lock ground + palette (exact hex, both modes); pick + licence fonts; author syntax palette; decide the asset set | ✅ Approved by owner from a rendered mockup (swatch board + restyled Codex UI, three grounds, both modes, both pairings). 152/152 WCAG AA. Textures cut; no raster assets |
-| **3. CSS & Theme Dev** *(active)* | ✅ Hero embedded, ✅ character pass approved and shipped to `emit-theme.mjs` (see entry state above); **Gate 0: launch-test the injector (A vs B) on the real app** *(in progress, separate work stream)*; then wire the editor palette, build the hot-reload dev loop | Theme visibly applied to running Codex, verified in-app by you |
+| **3. CSS & Theme Dev** ✅ **COMPLETE 2026-08-02** | Hero embedded; character pass shipped; Gate 0 run; inventory rebuilt from the running app; every surface measured in **both modes** — menus, empty state, composer, sidebar, code blocks, diffs, terminals | ✅ Theme verified in the running Codex by the owner. Last item closed as **D-0001-19** (the xterm terminal). **Dialogs** are the only surface never observed — Codex may simply not have one |
 | **4. Packaging** | `.ccskin` format + injector CLI (apply/restore/verify) + safe-CSS validation | Clean apply/restore round-trip; nothing residual |
 | **5. Windows Installer** | Launcher + MSIX exe resolver + installer + shortcuts | Fresh-machine install works; survives a simulated app-version bump |
-| **6. macOS Installer** | Wrapper `.app` + `.dmg`; **friend's Mac verification** (DOM parity + launch) | Friend confirms theme applies on macOS |
+| **6. macOS Installer** | Wrapper `.app` + `.dmg`, handed to the collaborator | **Installer built, and its unverified status documented.** *(Gate CHANGED 2026-08-02 — see the D-0001-16 amendment. It was "friend confirms theme applies on macOS"; no milestone may depend on another person's willingness to run it. The collaborator may never install it, and that is an accepted outcome, not an open task.)* |
 | **7. Testing & Release** | Cross-platform QA, update-resilience test, docs, release | Both platforms green; restore verified |
 
 **Model economy:** I orchestrate + QA; Sonnet subagents do scripting/asset/CSS grunt work (max 2 in flight, non-overlapping). Browser/real-app verification is mine and yours — subagent self-reports don't count as "done."

@@ -208,6 +208,32 @@ clone the repo, install Node, and run `launcher/macos/launch.sh` by hand.
 **Do not re-propose macOS verification as Phase 3 work, and do not ask the owner to obtain
 a Mac.** The next honest step is Phase 4, and the macOS answer arrives with it.
 
+#### AMENDED 2026-08-02 — macOS verification is an ARTIFACT WE HAND OVER, not a gate we wait on
+
+Refined by the owner when Phase 4 was scoped: *"the macOS collaborator might not like or want
+to run/test it… I will provide the macOS installer to the collaborator and it's up to him
+whether he wants to install it and provide feedback."*
+
+**The ruling above stands** — macOS verification still cannot happen before an installer
+exists. What changes is what happens **after**: the collaborator running it is **optional and
+outside this project's control**, so no milestone, gate, or release may depend on it.
+
+- **Build and verify everything on Windows.** Windows is the only machine where "verified in
+  the running app" can mean what `docs/ENGINEERING.md` requires it to mean.
+- **Ship the macOS installer as a deliverable, produced and handed over.** It is complete when
+  it is built and documented, not when someone runs it. Feedback, if it comes, is a bonus.
+- **Roadmap Phase 6's gate is therefore changed.** It was *"Friend confirms theme applies on
+  macOS."* No milestone may be blocked on another person's willingness. The gate is now
+  *"installer built, and its unverified status documented."*
+- **The three macOS unknowns stay open, stay loud, and stay unguessed** (bundle identity, the
+  `EnableNodeOptionsEnvironmentVariable` fuse on the macOS binary, whether D-0001-13 needs
+  `!important` there). Do not "pre-fix" them, and **do not soften `launcher/macos/launch.sh`'s
+  unverified header** — that honesty is now permanent rather than temporary, because the run
+  that would retire it may never happen.
+
+**Consequence to internalise: macOS may never be verified, and that is an accepted outcome,
+not an outstanding task.** Do not carry it as open work or re-raise it as a blocker.
+
 ### Phase 2 outcome (reference, 2026-07-31)
 
 Captain's Cabin ships **no raster assets**. The theme is text plus two OFL fonts. This retires the 32 MiB package cap, the seamless-tiling pipeline, and the per-ground texture re-grade as concerns. An atmospheric hero for the empty state remains a documented *optional future* addition — nothing has been generated, and the theme is complete and correct without it.
