@@ -283,6 +283,29 @@ it. `cdx` is the CLI name (D-0001-5).
   + assets into `captains-cabin.ccskin`, and produce it for the actual theme. `theme.css` is
   **generated** (`tools/palette/emit-theme.mjs`), so the packer consumes the emitter's output and
   never edits it. Round-trip check: pack → load → validate → byte-compare.
+
+  Four things settled when M1 closed, so M2 does not have to guess at them:
+
+  - **What goes in the package is `manifest.json`'s `assets[]`, and nothing else.** Do **not**
+    zip the `themes/captains-cabin/` directory wholesale. `assets/fonts/` holds five faces this
+    theme does not use — the losing typography candidates and the superseded Monaspace Xenon —
+    kept as the record of D-0001-7. The emitter already derives the real list (D-0001-21); the
+    packer reads it. Measured payload today: `theme.css` 475,958 B plus 7 declared assets =
+    **~0.78 MiB**, against the 32 MiB cap. The three OFL licence texts are in that list and are
+    **not optional** — SIL OFL 1.1 requires the licence to accompany the font, and the fonts
+    travel inside `theme.css` as data URIs.
+  - **The writer lives at `injector/theme-loader/zip-write.js`, CommonJS, beside the reader**, so
+    the container format has one home rather than two implementations that can disagree. It is
+    subject to D-0001-20 — `node:zlib` only, no dependency. Reuse the exported `crc32` from
+    `zip.js`; do not write a second one. The packer script itself is `tools/pack-ccskin.js`
+    (CJS, not `.mjs`, so the round-trip test can plain-`require` both halves).
+  - **Output goes to `dist/captains-cabin.ccskin`.** Both `dist/` and `*.ccskin` are already in
+    `.gitignore` — the package is build output, reproducible from the repo by
+    `node tools/pack-ccskin.js`. **Do not commit the binary and do not "fix" the gitignore.**
+    M4's installer bundles the built artifact.
+  - **The zip must be byte-reproducible**: fixed mtime (use the DOS epoch, 1980-01-01), fixed
+    entry order, no OS-dependent external attributes. Otherwise "pack → load → byte-compare"
+    compares a moving target, and M4 cannot tell a real change from a rebuild.
 - **M3 — `cdx` CLI** (`injector/cli.js`): `apply` / `restore` / `verify` / `list`. **Gate:
   a clean apply/restore round-trip leaving nothing residual.** `restore` must return Codex to
   the stock look with the injector detached — that is D-0001-3's user-facing promise, and it is
