@@ -36,12 +36,21 @@
 
 [CmdletBinding()]
 param(
-    # Absolute path to the theme CSS to inject. Left empty here and defaulted in
-    # the body on purpose: under Windows PowerShell 5.1, $PSScriptRoot is not yet
-    # populated while param() default expressions are evaluated for a script
-    # invoked via -File, so defaulting here yields an empty Join-Path and a
-    # confusing failure far from its cause.
-    [string]$ThemeCssPath
+    # Absolute path to a theme PACKAGE: either a theme directory (e.g.
+    # themes/captains-cabin) or a built .ccskin file. Left empty here and
+    # defaulted in the body on purpose: under Windows PowerShell 5.1,
+    # $PSScriptRoot is not yet populated while param() default expressions are
+    # evaluated for a script invoked via -File, so defaulting here yields an
+    # empty Join-Path and a confusing failure far from its cause.
+    #
+    # D-0001-25 (Phase 4 M3) — replaces -ThemeCssPath. The injector now loads
+    # a whole package through the validating theme-loader (manifest.json,
+    # theme.css, syntax.json, assets), not a bare stylesheet, so this
+    # parameter names the PACKAGE, not the CSS file inside it. Defaults to
+    # the theme DIRECTORY, never dist/*.ccskin: dist/ is gitignored build
+    # output (tools/pack-ccskin.js) and may not exist on a fresh checkout,
+    # while themes/captains-cabin always does.
+    [string]$ThemePackage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,16 +65,20 @@ function Write-Info($Message) {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Resolve the theme CSS payload (read-only; ours, not Codex's).
+# 1. Resolve the theme package (read-only; ours, not Codex's). Accepts either
+#    a theme DIRECTORY or a .ccskin FILE -- injector/theme-loader/index.js
+#    tells them apart with statSync, never by extension, so this launcher does
+#    not need to know or guess which kind it was handed.
 # ---------------------------------------------------------------------------
-if ([string]::IsNullOrWhiteSpace($ThemeCssPath)) {
-    $ThemeCssPath = Join-Path $PSScriptRoot '..\..\themes\captains-cabin\theme.css'
+if ([string]::IsNullOrWhiteSpace($ThemePackage)) {
+    $ThemePackage = Join-Path $PSScriptRoot '..\..\themes\captains-cabin'
 }
-$ThemeCssPath = [System.IO.Path]::GetFullPath($ThemeCssPath)
-if (-not (Test-Path -LiteralPath $ThemeCssPath -PathType Leaf)) {
-    Write-Fail "Theme CSS not found at '$ThemeCssPath'. Pass -ThemeCssPath explicitly if Captain's Cabin has moved."
+$ThemePackage = [System.IO.Path]::GetFullPath($ThemePackage)
+if (-not (Test-Path -LiteralPath $ThemePackage -PathType Container) -and
+    -not (Test-Path -LiteralPath $ThemePackage -PathType Leaf)) {
+    Write-Fail "Theme package not found at '$ThemePackage'. Pass -ThemePackage explicitly if Captain's Cabin has moved -- it may be a theme directory or a .ccskin file."
 }
-Write-Info "Theme CSS: $ThemeCssPath"
+Write-Info "Theme package: $ThemePackage"
 
 # ---------------------------------------------------------------------------
 # 2. Resolve the installed Codex package -- version-independent.
@@ -175,14 +188,18 @@ foreach ($entry in [System.Environment]::GetEnvironmentVariables().GetEnumerator
 # discovered during Gate 0 testing, where a backslash-separated Windows path
 # arrived in the child process as "C:Userscchen362Desktop...", an unresolvable
 # module specifier. Node accepts forward slashes in paths on Windows, so use
-# those for the NODE_OPTIONS value specifically; CDX_THEME_CSS_PATH below is
+# those for the NODE_OPTIONS value specifically; CDX_THEME_PACKAGE below is
 # read via fs, not Node's option parser, so it keeps native backslashes.
 $preloadPathForNodeOptions = $preloadPath -replace '\\', '/'
 $psi.EnvironmentVariables['NODE_OPTIONS'] = "--require `"$preloadPathForNodeOptions`""
-$psi.EnvironmentVariables['CDX_THEME_CSS_PATH'] = $ThemeCssPath
+# D-0001-25 -- CDX_THEME_PACKAGE replaces CDX_THEME_CSS_PATH. This one is read
+# by the injector via plain fs (statSync/readFileSync inside the theme
+# loader), not by Node's own CLI-option tokenizer, so it keeps native
+# backslashes -- only NODE_OPTIONS above needs the forward-slash rewrite.
+$psi.EnvironmentVariables['CDX_THEME_PACKAGE'] = $ThemePackage
 
 Write-Info "Launching with NODE_OPTIONS=--require `"$preloadPathForNodeOptions`""
-Write-Info "Launching with CDX_THEME_CSS_PATH=$ThemeCssPath"
+Write-Info "Launching with CDX_THEME_PACKAGE=$ThemePackage"
 
 $process = New-Object System.Diagnostics.Process
 $process.StartInfo = $psi

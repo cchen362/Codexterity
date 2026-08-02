@@ -5,6 +5,9 @@
   "description": "A non-destructive theming engine for OpenAI's Codex Desktop app.",
   "license": "MIT",
   "type": "commonjs",
+  "bin": {
+    "cdx": "injector/cli.js"
+  },
   "engines": {
     "node": ">=22"
   },

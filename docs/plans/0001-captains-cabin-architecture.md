@@ -1,6 +1,6 @@
 # Plan 0001 — Captain's Cabin: Architecture & Roadmap
 
-**Status:** **Phase 4 (Packaging) IN PROGRESS — M1 (theme-loader + safe-CSS validation) COMPLETE 2026-08-02 and M2 (the `.ccskin` packer + the real package) COMPLETE 2026-08-03.** The test harness (`npm test`, zero dependencies) is at **95/95**, and the decisions from these two milestones are D-0001-20/21/22 (M1) and **D-0001-23** (M2); see the Phase 4 milestone list below. M3 (the `cdx` CLI) is next, and it is where the "verified in the running app" gate returns. Phase 1 (Research & Architecture) **COMPLETE**. **Phase 3 (CSS & Theme Dev) COMPLETE 2026-08-02** — every surface measured in the running app in both modes; see the Phase 3 close-out below and D-0001-19. **Phase 4 (packaging) is IN PROGRESS — M1 done, M2 next.** Phase 2 (Palette, Type & Assets) **COMPLETE** — ground, palette and syntax palette locked and emitted. The hero artwork and the Layer 2 character pass both shipped 2026-08-01 (D-0001-9, D-0001-10). **Gate 0 RAN 2026-08-01 — see [`docs/research/gate0-findings.md`](../research/gate0-findings.md), which is now the authority on how this theme behaves in the real app.** Injection works and needs no debug port; the theme applies only **partially**, because the Tier-2 landmark inventory and the token-consumption model were both built by static analysis and do not match the shipped build. **Phase 3 was larger than this plan assumed** — that gap is now closed; the paragraph is kept for the history of how it was found.
+**Status:** **Phase 4 (Packaging) IN PROGRESS — M1 (theme-loader + safe-CSS validation) COMPLETE 2026-08-02, M2 (the `.ccskin` packer + the real package) COMPLETE 2026-08-03, and M3 (the `cdx` CLI) COMPLETE 2026-08-03 AND VERIFIED IN THE RUNNING APP.** The test harness (`npm test`, zero dependencies) is at **131/131**, and the decisions from these three milestones are D-0001-20/21/22 (M1), **D-0001-23** (M2) and **D-0001-24/25** (M3); see the Phase 4 milestone list below. **M3 closed the gate M1 and M2 could not**: Codex was launched through the argument-free `cdx`, the real 681,124-byte `.ccskin` loaded and painted, and `restore` left nothing residual. It also found two defects that only a launch could find — the theme being loaded four times per launch in processes that cannot apply it, and a required-landmark alarm that fired on every launch because it was sampled before the DOM existed. **M4 (installers) is next**, and the shortcut's icon and name are decided there from a render, not in prose. Phase 1 (Research & Architecture) **COMPLETE**. **Phase 3 (CSS & Theme Dev) COMPLETE 2026-08-02** — every surface measured in the running app in both modes; see the Phase 3 close-out below and D-0001-19. **Phase 4 (packaging) is IN PROGRESS — M1 done, M2 next.** Phase 2 (Palette, Type & Assets) **COMPLETE** — ground, palette and syntax palette locked and emitted. The hero artwork and the Layer 2 character pass both shipped 2026-08-01 (D-0001-9, D-0001-10). **Gate 0 RAN 2026-08-01 — see [`docs/research/gate0-findings.md`](../research/gate0-findings.md), which is now the authority on how this theme behaves in the real app.** Injection works and needs no debug port; the theme applies only **partially**, because the Tier-2 landmark inventory and the token-consumption model were both built by static analysis and do not match the shipped build. **Phase 3 was larger than this plan assumed** — that gap is now closed; the paragraph is kept for the history of how it was found.
 **Inventory rebuilt 2026-08-01 — see [`docs/research/phase3-inventory-findings.md`](../research/phase3-inventory-findings.md), now the authority on Codex's token architecture and landmarks.** The styling strategy (D-0001-2) is confirmed correct against the running app; the theme's *token list* was the thing that was wrong, and the work is now enumerated rather than unknown.
 
 **PHASE 3 IS COMPLETE as of 2026-08-02 (items 16–22 below, plus D-0001-19).** Every surface this plan set out to settle has now been *measured in the running app*, in **both modes**: menus, empty state, composer, sidebar, code blocks, and finally diffs and terminals. Contrast passes everywhere it was checked (diff/terminal 12.83:1 light, 15.43:1 dark). Three questions that looked like defects turned out to need **no code at all** — the translucent menu (§8.4), the empty-state controls (D-0001-15), and the missing empty-state cards (a Codex content rule, not a theme effect). Two real bugs were found and fixed: **D-0001-17** (the light hover was perceptually invisible; owner-verified fixed) and **D-0001-18** (Codex sets `--vscode-editor-font-family` on `<body>`, so a value on `<html>` could never govern it — **the token fix is verified, but see the correction below: it did not fix the terminal panel, which never reads that token**).
@@ -327,10 +327,60 @@ it. `cdx` is the CLI name (D-0001-5).
   - **The zip must be byte-reproducible**: fixed mtime (use the DOS epoch, 1980-01-01), fixed
     entry order, no OS-dependent external attributes. Otherwise "pack → load → byte-compare"
     compares a moving target, and M4 cannot tell a real change from a rebuild.
-- **M3 — `cdx` CLI** (`injector/cli.js`): `apply` / `restore` / `verify` / `list`. **Gate:
-  a clean apply/restore round-trip leaving nothing residual.** `restore` must return Codex to
-  the stock look with the injector detached — that is D-0001-3's user-facing promise, and it is
-  verified by launching the app, not by a green test.
+- **M3 — `cdx` CLI** (`injector/cli.js`): `apply` / `restore` / `verify` / `list`. ✅ **DONE
+  2026-08-03, and VERIFIED IN THE RUNNING APP** — the gate that M1 and M2 could not close.
+  The suite went **95 → 131**, zero skips, still zero dependencies; `audit.mjs` is **272/272**
+  and `theme.css`/`syntax.json` are byte-unchanged, so this milestone wired the engine together
+  without touching a token. Two decisions came out of it, **D-0001-24** (persisted state) and
+  **D-0001-25** (the injector's contract).
+
+  **What shipped.** `cdx apply <theme>` resolves a theme id *or* a path — preferring the
+  packaged `dist/<id>.ccskin` over the development `themes/<id>/` directory — runs it through
+  `loadTheme()`, and persists it to `~/.codexterity/state.json` **only on success**. `cdx`
+  (bare) and `cdx launch` are the argument-free entry point M4's shortcut will target;
+  `cdx verify` reports the manifest without launching; `cdx list` enumerates both roots and
+  marks the active one; `cdx restore` clears the choice. The injector now reads
+  **`CDX_THEME_PACKAGE`** through the validating loader — `CDX_THEME_CSS_PATH` is deleted, as is
+  the stale 4-entry `DECLARED_LANDMARKS` constant, replaced by `manifest.landmarks[]`.
+
+  **Verified in the running app, through the real 681,124-byte `.ccskin`** (so the shipped
+  package path, not the directory, is what was exercised): surface `#F0E7D5`, all three fonts
+  loadable, active-row brass `#896D15`, the four card hairlines, the composer control at
+  `#182336`/`#DFD7C5`, and — on a conversation containing code — `Monaspace Neon` at
+  **11.80:1**, reproducing Phase 3's recorded figure exactly. At the settled sample all four
+  screen-present landmarks report PRESENT, including `sidebar-panel` (the only `required: true`
+  one) and `home-hero`, whose escaped selector
+  `.\[container-name\:home-main-content\]:has(.heading-xl)` **matches 1 element** — proving the
+  CSS escapes survive JSON → template-literal → renderer intact, which a parse check alone
+  could not establish. `restore` leaves **nothing residual**: `state.json` and the
+  `.codexterity` directory are both gone, a `find` over `$HOME` returns nothing, and `~/.codex`
+  is untouched.
+
+  **Two defects were found BY the launch and fixed, both introduced by this milestone's own
+  change — neither was visible to a green test suite.**
+
+  - **The theme was being loaded four times per launch, in processes that cannot apply it.**
+    `NODE_OPTIONS` is inherited by every child process Codex spawns (GPU, utility, renderers),
+    so `start()` runs in all of them and only one is an Electron main process. That was free
+    when the theme was a bare `readFileSync`; routing through `loadTheme()` made it a zip
+    inflate plus a safe-CSS scan, **measured at 27 ms**, paid three times over by processes that
+    then failed the `require('electron')` check and exited. Fixed by ordering the two guards by
+    dependency rather than by the order they were written: `electron` resolves first, and only
+    then is a theme loaded. Verified: **4 → 1**.
+  - **The required-landmark alarm fired on every single launch, and was meaningless.** The
+    landmark probe ran only at `dom-ready` — 24 elements in the DOM, `stylesheets: 3` — so
+    `sidebar-panel` reported `MISSING (REQUIRED)` every time, while the settled sample that
+    could actually answer it called `reportRootEnvironment` alone and **never re-probed the
+    landmarks**. This is the pre-Gate-0 landmark failure in its *noisy* form rather than its
+    silent one: an alarm that always fires trains the reader to ignore it. Fixed by re-probing
+    at the settled offsets and labelling every line with the phase it was taken at, so an early
+    zero cannot be read as a late verdict. The authority test is `phase.startsWith('settled')`
+    rather than a match on one phase name, so a third call site cannot inherit the
+    authoritative wording by accident.
+
+  **Not claimed:** live re-theming is *not* built — M3 ships only the mutable theme slot that
+  keeps the door open. `launcher/macos/launch.sh` was updated to the same `--theme-package`
+  contract and **remains unverified**; nothing here was blocked on macOS (D-0001-16 as amended).
 
   **Three things settled by the owner 2026-08-03, before M3 was handed off, so M3 does not have
   to guess at them.** The governing requirement the owner stated, which decides the other two:

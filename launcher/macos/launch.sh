@@ -58,12 +58,14 @@ fail() { printf '[codexterity-launcher] FAILED: %s\n' "$*" >&2; exit 1; }
 
 usage() {
     cat <<'EOF'
-Usage: launch.sh [--theme-css <path>] [--app <path to Codex .app>]
+Usage: launch.sh [--theme-package <path>] [--app <path to Codex .app>]
 
-  --theme-css  Theme CSS to inject. Defaults to
-               themes/captains-cabin/theme.css in this repo.
-  --app        Skip discovery and use this .app bundle. Use when discovery
-               reports several candidates, or none.
+  --theme-package  Theme package to inject: either a theme DIRECTORY (e.g.
+                   themes/captains-cabin) or a built .ccskin file. Detected
+                   by stat, never by extension. Defaults to
+                   themes/captains-cabin in this repo.
+  --app            Skip discovery and use this .app bundle. Use when
+                   discovery reports several candidates, or none.
 
 Environment variables are passed through to the injector unchanged:
   CDX_DEBUG_LOG_PATH  write the injector's log here (strongly recommended)
@@ -74,14 +76,18 @@ Environment variables are passed through to the injector unchanged:
 EOF
 }
 
-THEME_CSS_PATH=""
+# D-0001-25 (Phase 4 M3) -- --theme-package replaces --theme-css. The
+# injector now loads a whole package through the validating theme-loader
+# (manifest.json, theme.css, syntax.json, assets), not a bare stylesheet, so
+# this flag names the PACKAGE, not the CSS file inside it.
+THEME_PACKAGE=""
 APP_BUNDLE=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --theme-css) [ $# -ge 2 ] || fail "--theme-css needs a value"; THEME_CSS_PATH="$2"; shift 2 ;;
-        --app)       [ $# -ge 2 ] || fail "--app needs a value";       APP_BUNDLE="$2";     shift 2 ;;
-        -h|--help)   usage; exit 0 ;;
-        *)           usage >&2; fail "unrecognised argument '$1'" ;;
+        --theme-package) [ $# -ge 2 ] || fail "--theme-package needs a value"; THEME_PACKAGE="$2"; shift 2 ;;
+        --app)           [ $# -ge 2 ] || fail "--app needs a value";          APP_BUNDLE="$2";     shift 2 ;;
+        -h|--help)        usage; exit 0 ;;
+        *)                usage >&2; fail "unrecognised argument '$1'" ;;
     esac
 done
 
@@ -95,14 +101,25 @@ done
 [ "$(uname -s)" = "Darwin" ] || fail "this is the macOS launcher; on Windows use launcher/windows/launch.ps1."
 
 # ---------------------------------------------------------------------------
-# 1. Resolve the theme CSS payload (read-only; ours, not Codex's).
+# 1. Resolve the theme package (read-only; ours, not Codex's). Accepts either
+#    a theme DIRECTORY or a .ccskin FILE -- injector/theme-loader/index.js
+#    tells them apart with statSync, never by extension, so this launcher
+#    does not need to know or guess which kind it was handed. Defaults to the
+#    theme DIRECTORY, never dist/*.ccskin: dist/ is gitignored build output
+#    (tools/pack-ccskin.js) and may not exist on a fresh checkout, while
+#    themes/captains-cabin always does.
 # ---------------------------------------------------------------------------
-if [ -z "$THEME_CSS_PATH" ]; then
-    THEME_CSS_PATH="${REPO_ROOT}/themes/captains-cabin/theme.css"
+if [ -z "$THEME_PACKAGE" ]; then
+    THEME_PACKAGE="${REPO_ROOT}/themes/captains-cabin"
 fi
-[ -f "$THEME_CSS_PATH" ] || fail "Theme CSS not found at '${THEME_CSS_PATH}'. Pass --theme-css explicitly if Captain's Cabin has moved."
-THEME_CSS_PATH="$(cd -- "$(dirname -- "$THEME_CSS_PATH")" && pwd)/$(basename -- "$THEME_CSS_PATH")"
-info "Theme CSS: ${THEME_CSS_PATH}"
+if [ -d "$THEME_PACKAGE" ]; then
+    THEME_PACKAGE="$(cd -- "$THEME_PACKAGE" && pwd)"
+elif [ -f "$THEME_PACKAGE" ]; then
+    THEME_PACKAGE="$(cd -- "$(dirname -- "$THEME_PACKAGE")" && pwd)/$(basename -- "$THEME_PACKAGE")"
+else
+    fail "Theme package not found at '${THEME_PACKAGE}'. Pass --theme-package explicitly if Captain's Cabin has moved -- it may be a theme directory or a .ccskin file."
+fi
+info "Theme package: ${THEME_PACKAGE}"
 
 # ---------------------------------------------------------------------------
 # 2. Resolve the installed Codex bundle -- by DISCOVERY, never a hardcoded name.
@@ -258,10 +275,11 @@ esac
 # fallback is a different mechanism and is not the default.
 # ---------------------------------------------------------------------------
 export NODE_OPTIONS="--require \"${PRELOAD_PATH}\""
-export CDX_THEME_CSS_PATH="${THEME_CSS_PATH}"
+# D-0001-25 -- CDX_THEME_PACKAGE replaces CDX_THEME_CSS_PATH.
+export CDX_THEME_PACKAGE="${THEME_PACKAGE}"
 
 info "Launching with NODE_OPTIONS=${NODE_OPTIONS}"
-info "Launching with CDX_THEME_CSS_PATH=${CDX_THEME_CSS_PATH}"
+info "Launching with CDX_THEME_PACKAGE=${CDX_THEME_PACKAGE}"
 if [ -n "${CDX_DEBUG_LOG_PATH:-}" ]; then
     info "Injector log: ${CDX_DEBUG_LOG_PATH}"
 else

@@ -14,10 +14,11 @@
  * D-0001-3 — non-destructive by construction. This module never touches any
  * file inside the Codex install directory, never opens a debug port, and
  * never reads or writes ~/.codex/auth.json, ~/.codex/.credentials.json, or
- * any API key/token. It reads exactly one file: the theme CSS path handed to
- * it via CDX_THEME_CSS_PATH, and the Electron APIs it calls are read-only
- * with respect to the app itself (they mutate only the in-memory render tree
- * of a window we did not create).
+ * any API key/token. It reads exactly one thing from disk: the theme package
+ * named by CDX_THEME_PACKAGE, and only through the validating loader in
+ * ../theme-loader/index.js — never a raw fs.readFileSync of a stylesheet.
+ * The Electron APIs it calls are read-only with respect to the app itself
+ * (they mutate only the in-memory render tree of a window we did not create).
  *
  * If the theme cannot be applied cleanly, this module logs the failure and
  * leaves the window exactly as Codex rendered it — never half-styled, never
@@ -28,16 +29,36 @@
 const fs = require('fs');
 const path = require('path');
 const { runProbe } = require('./probe.js');
+const { loadTheme, ThemeLoadError } = require('../theme-loader/index.js');
 
-// D-0001-2 — declared landmarks from themes/captains-cabin/theme.css and
-// docs/specs/customizable-ui-inventory.md. Gate 0's job is to report, for the
-// first time, which of these actually exist in the live DOM.
-const DECLARED_LANDMARKS = [
-  { name: 'app-header-tint', selector: '.app-header-tint' },
-  { name: 'popupContent', selector: '.popupContent' },
-  { name: 'app-shell-main-content-top-fade', selector: '.app-shell-main-content-top-fade' },
-  { name: 'code-surfaces (pre,code,kbd,samp)', selector: 'pre, code, kbd, samp' },
-];
+// D-0001-25 (Phase 4 M3) — CDX_THEME_PACKAGE replaces CDX_THEME_CSS_PATH,
+// with no fallback and no compatibility shim. Before M3, this module read
+// CDX_THEME_CSS_PATH and fs.readFileSync'd a raw stylesheet directly:
+// M1 and M2 built a validating loader (theme-loader/index.js — manifest
+// validation, the safe-CSS scan, the D-0001-4 size cap) and NOTHING called
+// it. A validator nothing calls is documentation, not a guarantee. Routing
+// through loadTheme() here makes that validation unskippable before a byte
+// of CSS reaches Codex, and it means the development theme directory and
+// the shipped .ccskin travel the exact same code path — loadTheme() tells
+// them apart with statSync, never by extension, so there is no second,
+// untested route for a packaged theme to take.
+
+// D-0001-25 / Phase 4 M3 — the loaded theme lives in a MUTABLE MODULE-LEVEL
+// SLOT, not a local captured in a closure. Before M3, start() bound the CSS
+// as a local `css` and threaded it explicitly through attachToWindow(win,
+// css) into every applyTheme() call. That works for a single theme chosen
+// once at launch, but it is a dead end for the live re-theming feature
+// recorded under "After Phase 4" in docs/plans/0001-captains-cabin-architecture.md:
+// applyThemeViaStyleTag already finds-or-creates one <style> element with a
+// stable id and replaces its textContent, and already re-runs on every
+// dom-ready / did-navigate / did-navigate-in-page — so repainting a live
+// window is NOT launch-bound, only the injector's *attachment* is (NODE_OPTIONS
+// is read at process start). A slot a later milestone can repoint is the whole
+// cost of keeping that door open; a value threaded through call arguments is not
+// repointable without touching every call site. THIS MILESTONE (M3) BUILDS ONLY
+// THE SLOT — no change signal, no watcher, no IPC listens for a new theme. It is
+// set once, in start(), and read at every applyTheme() call.
+let activeTheme = null;
 
 // Gate 0 diagnostic aid: stdout capture from a packaged GUI-subsystem
 // Electron process launched through unusual activation paths is itself an
@@ -69,30 +90,35 @@ function log(message) {
   }
 }
 
-function resolveThemePath() {
-  const themePath = process.env.CDX_THEME_CSS_PATH;
-  if (!themePath) {
+function resolveThemePackagePath() {
+  const packagePath = process.env.CDX_THEME_PACKAGE;
+  if (!packagePath) {
     throw new Error(
-      'CDX_THEME_CSS_PATH is not set. The launcher must set this to an absolute ' +
-        'path to themes/<name>/theme.css before starting Codex.'
+      'CDX_THEME_PACKAGE is not set. The launcher must set this to an absolute ' +
+        'path to a theme directory (e.g. themes/captains-cabin) or a .ccskin file ' +
+        'before starting Codex.'
     );
   }
-  return themePath;
-}
-
-function loadThemeCss(themePath) {
-  // Read-only access to OUR OWN theme package file. Never touches anything
-  // under the Codex install directory.
-  return fs.readFileSync(themePath, 'utf8');
+  return packagePath;
 }
 
 /**
- * Probe the live DOM for the declared landmarks. Read-only querySelector
- * checks only — no mutation, no data extraction beyond boolean presence and
- * a match count.
+ * Probe the live DOM for the active theme's declared landmarks. Read-only
+ * querySelector checks only — no mutation, no data extraction beyond boolean
+ * presence and a match count.
+ *
+ * D-0001-25 / Phase 4 M3 — the selector list comes from
+ * activeTheme.manifest.landmarks[], not a constant compiled into this file.
+ * Before M3 this read a hardcoded DECLARED_LANDMARKS array frozen at Gate 0
+ * (4 selectors) that had silently drifted from the real manifest (6, each
+ * carrying a build-time `probe` asserted against the emitted stylesheet —
+ * D-0001-21). A hardcoded list rots without anyone noticing; a list read from
+ * the manifest fails the BUILD the moment a rule is renamed, and it keeps a
+ * theme-specific fact (which selectors this theme cares about) out of the
+ * theme-agnostic injector core, per the layer rule in docs/ENGINEERING.md.
  */
 function buildLandmarkProbeScript() {
-  const selectors = DECLARED_LANDMARKS.map((l) => l.selector);
+  const selectors = activeTheme.manifest.landmarks.map((l) => l.selector);
   return `
     (() => {
       const selectors = ${JSON.stringify(selectors)};
@@ -919,27 +945,77 @@ function scheduleSettledVerification(webContents) {
     setTimeout(() => {
       if (webContents.isDestroyed()) return;
       log(`settled token re-check on webContents#${webContents.id} (+${ms}ms):`);
-      reportRootEnvironment(webContents);
+      // D-0001-25 — the SETTLED sample re-probes the landmarks too, not just
+      // the token environment. This was reportRootEnvironment() alone, and the
+      // first real launch through the M3 path showed why that is wrong: the
+      // landmark probe ran ONLY at `dom-ready`, where the DOM held 24 elements
+      // and `stylesheets: 3`, so `sidebar-panel` — the one required:true
+      // landmark — reported MISSING (REQUIRED) on EVERY launch, while the
+      // later sample that could actually answer it never asked. A required
+      // alarm that fires every time is worse than no alarm: it trains the
+      // reader to ignore the line, and the next time it is real nobody looks.
+      // This is the same failure that killed the four pre-Gate-0 landmarks,
+      // in its noisy form rather than its silent one.
+      reportLandmarks(webContents, `settled +${ms}ms`);
     }, ms);
   }
 }
 
-async function reportLandmarks(webContents) {
+/**
+ * @param {string} phase - where in the lifecycle this reading was taken.
+ *   It is printed on every line because the two call sites are NOT equally
+ *   authoritative: `dom-ready` fires before Codex has built its shell, so a
+ *   zero there is a fact about WHEN we looked, while a zero at a settled
+ *   offset is a fact about the SCREEN. Reporting both without saying which is
+ *   which is precisely the collapse "a negative result must name its query"
+ *   exists to prevent.
+ */
+async function reportLandmarks(webContents, phase) {
+  // Only a settled reading can convict a required landmark. Tested on the
+  // caller's intent rather than by matching one phase STRING, so adding a
+  // third call site later cannot silently inherit the authoritative verdict
+  // just by being named something the check did not anticipate.
+  const settled = phase.startsWith('settled');
   await reportRootEnvironment(webContents);
   try {
     const results = await webContents.executeJavaScript(buildLandmarkProbeScript(), true);
     results.forEach((result, i) => {
-      const declared = DECLARED_LANDMARKS[i];
+      const declared = activeTheme.manifest.landmarks[i];
+      const governedBy = declared.governedBy ? `  [${declared.governedBy}]` : '';
       if (result.count > 0) {
-        log(`  landmark PRESENT: ${declared.name}  (${result.count} match${result.count === 1 ? '' : 'es'})`);
+        log(`  landmark PRESENT: ${declared.name}  (${result.count} match${result.count === 1 ? '' : 'es'})${governedBy}`);
       } else if (result.count === 0) {
-        log(`  landmark MISSING: ${declared.name}  (selector "${declared.selector}" matched nothing)`);
+        // D-0001-21: only `sidebar-panel` is required:true (D-0001-13) — the
+        // other five are optional because they only exist on certain screens
+        // (a terminal, a code block, the home hero). A zero count for an
+        // optional landmark on a screen that never has one is NOT a defect —
+        // "a negative result must name its query" is a repeated, hard-won
+        // lesson in this project (docs/DECISIONS.md), and a log line that
+        // reads MISSING for both cases would relitigate it. A missing
+        // required landmark must be louder: it names its own severity so the
+        // owner does not have to cross-reference the manifest to know whether
+        // to worry.
+        if (declared.required) {
+          // A required landmark absent at dom-ready is EXPECTED, not a
+          // finding — Codex has not built its shell yet. Only the settled
+          // reading can convict it, so the early one says so in the line
+          // itself rather than leaving the reader to know it.
+          log(
+            `  landmark ${settled ? 'MISSING (REQUIRED)' : 'not yet present'}: ${declared.name}  ` +
+              `(selector "${declared.selector}" matched nothing at ${phase})${governedBy}` +
+              (settled
+                ? ' — REQUIRED and absent on a settled DOM. This is a real defect.'
+                : ' — the shell is not built this early; the settled check (CDX_VERIFY_AT) is what convicts it')
+          );
+        } else {
+          log(`  landmark absent (optional, screen-dependent): ${declared.name}  (selector "${declared.selector}" matched nothing at ${phase} — not necessarily a defect)${governedBy}`);
+        }
       } else {
-        log(`  landmark PROBE ERROR: ${declared.name}  (invalid selector "${declared.selector}")`);
+        log(`  landmark PROBE ERROR: ${declared.name}  (invalid selector "${declared.selector}" at ${phase})${governedBy}`);
       }
     });
   } catch (err) {
-    log(`  landmark probe FAILED: ${err.message}`);
+    log(`  landmark probe FAILED at ${phase}: ${err.message}`);
   }
 }
 
@@ -985,14 +1061,22 @@ async function applyThemeViaStyleTag(webContents, css) {
   return webContents.executeJavaScript(script, true);
 }
 
-async function applyTheme(webContents, css) {
+async function applyTheme(webContents) {
   const label = `webContents#${webContents.id}`;
+  // Read from the module-level slot, not a captured argument (D-0001-25 —
+  // see the slot's own doc comment above). This is the read half of the
+  // mutable slot M3 exists to build: every call site asks "what is the
+  // active theme RIGHT NOW" instead of "what was it when this window
+  // attached", which is exactly the indirection a future live-re-theming
+  // milestone needs and exactly what a closure-captured `css` local cannot
+  // provide without restructuring every call site that holds one.
+  const css = activeTheme.css;
   const bytes = Buffer.byteLength(css, 'utf8');
 
   try {
     await webContents.insertCSS(css, { cssOrigin: 'user' });
     log(`injected OK via insertCSS on ${label} — ${bytes} bytes`);
-    await reportLandmarks(webContents);
+    await reportLandmarks(webContents, 'apply-time (dom-ready/navigate)');
     return;
   } catch (err) {
     log(`insertCSS FAILED on ${label}: ${err.message}`);
@@ -1007,7 +1091,7 @@ async function applyTheme(webContents, css) {
       `injected OK via executeJavaScript style tag on ${label} — ` +
         `${result.bytes} chars, lastChildOfHead=${result.lastChildOfHead}`
     );
-    await reportLandmarks(webContents);
+    await reportLandmarks(webContents, 'apply-time (dom-ready/navigate)');
     return;
   } catch (err) {
     // Both official routes are gone. Degrade to the stock look — never leave
@@ -1020,7 +1104,7 @@ async function applyTheme(webContents, css) {
   }
 }
 
-function attachToWindow(win, css) {
+function attachToWindow(win) {
   const wc = win.webContents;
   const label = `webContents#${wc.id}`;
 
@@ -1037,36 +1121,26 @@ function attachToWindow(win, css) {
 
   wc.once('dom-ready', () => scheduleSettledVerification(wc));
 
+  // No CSS argument threaded through: applyTheme() reads the active theme
+  // from the module-level slot at the moment each event fires (D-0001-25).
   wc.on('dom-ready', () => {
     log(`dom-ready on ${label} (url=${wc.getURL()})`);
-    applyTheme(wc, css);
+    applyTheme(wc);
   });
 
   wc.on('did-navigate', (_event, url) => {
     log(`did-navigate on ${label} -> ${url}`);
-    applyTheme(wc, css);
+    applyTheme(wc);
   });
 
   wc.on('did-navigate-in-page', (_event, url) => {
     log(`did-navigate-in-page on ${label} -> ${url}`);
-    applyTheme(wc, css);
+    applyTheme(wc);
   });
 }
 
 function start() {
   log('preload loaded into main process');
-
-  let css;
-  try {
-    const themePath = resolveThemePath();
-    css = loadThemeCss(themePath);
-    log(`theme CSS loaded from ${themePath} (${Buffer.byteLength(css, 'utf8')} bytes)`);
-  } catch (err) {
-    // Cannot theme without CSS. Degrade: log loudly, attach nothing, let
-    // Codex run completely stock and functional.
-    log(`STARTUP FAILED, running stock/unthemed: ${err.message}`);
-    return;
-  }
 
   // NODE_OPTIONS=--require runs this module via Node's own internal preload
   // step, which executes BEFORE Electron's bootstrap has patched Module._load
@@ -1097,12 +1171,49 @@ function start() {
       return;
     }
 
+    // D-0001-25 — THE THEME IS LOADED HERE, AFTER 'electron' HAS RESOLVED, AND
+    // DELIBERATELY NOT IN start()'s OWN BODY.
+    //
+    // NODE_OPTIONS is inherited by EVERY child process Codex spawns (GPU,
+    // utility, renderer helpers), so this module's start() runs in all of
+    // them — and only one of them is an Electron main process that can apply
+    // anything. Loading above the electron check was correct while the theme
+    // was a bare fs.readFileSync, whose cost was invisible. It is not
+    // invisible now: loadTheme() inflates a ~681 KB zip and runs the
+    // safe-CSS scan over ~476 KB of CSS, MEASURED at 27 ms, and the first
+    // real launch through this path showed the package being loaded FOUR
+    // times — once usefully, three times in processes that then failed the
+    // electron check and exited. A process that structurally cannot apply a
+    // theme must never pay to validate one. The two guards are now in
+    // dependency order rather than in the order they were written.
+    try {
+      const packagePath = resolveThemePackagePath();
+      activeTheme = loadTheme(packagePath);
+      log(
+        `theme package loaded from ${activeTheme.sourcePath} (${activeTheme.sourceKind}) — ` +
+          `id=${activeTheme.id}  ${Buffer.byteLength(activeTheme.css, 'utf8')} bytes of CSS  ` +
+          `${activeTheme.manifest.landmarks.length} landmark(s) declared`
+      );
+    } catch (err) {
+      // Cannot theme without a validated package. Degrade: log the failure's
+      // machine-readable code loudly (docs/ENGINEERING.md "fail loudly in
+      // development, gracefully in production" — never half-styled, never
+      // crashed), attach nothing, and let Codex run completely stock and
+      // functional. A ThemeLoadError names exactly what was wrong
+      // (SOURCE_NOT_FOUND, MANIFEST_INVALID, CSS_UNSAFE, SIZE_EXCEEDED,
+      // ZIP_MALFORMED); anything else is an unexpected error and is reported
+      // the same way, degrading rather than propagating.
+      const code = err instanceof ThemeLoadError ? err.code : 'UNEXPECTED';
+      log(`STARTUP FAILED [${code}], running stock/unthemed: ${err.message}`);
+      return;
+    }
+
     log(`process.versions: ${JSON.stringify(process.versions)}`);
 
     const attach = () => {
       app.on('browser-window-created', (_event, win) => {
         log(`browser-window-created (webContents#${win.webContents.id})`);
-        attachToWindow(win, css);
+        attachToWindow(win);
       });
       log('attached browser-window-created listener; waiting for windows');
     };
@@ -1115,4 +1226,4 @@ function start() {
   });
 }
 
-module.exports = { start, DECLARED_LANDMARKS };
+module.exports = { start };
