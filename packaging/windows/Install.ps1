@@ -194,6 +194,30 @@ if (-not (Test-Path -LiteralPath $IconPath -PathType Leaf)) {
     $IconPath = $ExePath
 }
 
+# D-0001-30 -- these shortcuts deliberately set NO System.AppUserModel.ID.
+#
+# Consequence, which looks like a bug and is not: when themed Codex is running,
+# the taskbar shows the running indicator under CODEX's icon, not under the
+# Codexterity one. Windows groups taskbar buttons by AppUserModelID; Codex's is
+# fixed by its MSIX package identity (OpenAI.Codex_<hash>!App) and belongs to
+# the window, so Codex's window files itself under Codex's button no matter who
+# started it. Our stub owns no window at all (MainWindowHandle = 0, by design --
+# that is what removes the console window, D-0001-27), so there is nothing for a
+# separate button to attach to.
+#
+# This is the CORRECT behaviour and the owner confirmed it as such (2026-08-03):
+# the Codexterity icon is a launcher, and it opens the real Codex app rather
+# than presenting itself as a second application. It is also what makes one
+# shortcut serve every future theme -- `cdx apply <theme>` swaps what launches,
+# and it always launches into the app the user already knows.
+#
+# DO NOT "fix" this by setting System.AppUserModel.ID on the shortcut to Codex's
+# AUMID. That would merge the pinned Codexterity button and Codex's own into a
+# single taskbar button, which is a real change to how the user's taskbar
+# behaves and is not ours to make silently. DO NOT fix it from the injector via
+# app.setAppUserModelId() either: the injector's reach is styling only
+# (docs/ENGINEERING.md), and overriding the AUMID of a packaged app tends to be
+# ignored or to break toast notifications.
 $shell = New-Object -ComObject WScript.Shell
 
 $StartMenuDir = [Environment]::GetFolderPath('Programs')
