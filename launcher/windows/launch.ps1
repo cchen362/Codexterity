@@ -50,18 +50,53 @@ param(
     # the theme DIRECTORY, never dist/*.ccskin: dist/ is gitignored build
     # output (tools/pack-ccskin.js) and may not exist on a fresh checkout,
     # while themes/captains-cabin always does.
-    [string]$ThemePackage
+    [string]$ThemePackage,
+
+    # D-0001-27 (Phase 4 M4) — the log fork. Unset (the default), this
+    # script's behaviour is byte-for-byte what it was before this parameter
+    # existed: every line still goes to the console via Write-Host, nothing
+    # more. When set, every line this script would Write-Host — its own
+    # [codexterity-launcher] lines AND Codex's streamed stdout/stderr — is
+    # ALSO appended to this file. This does not replace the console output
+    # (a developer running the script by hand still sees everything); it is
+    # an additional sink for the ONE caller that has no console to read from
+    # at all: a double-clicked shortcut running through the GUI-subsystem
+    # stub (packaging/windows/Codexterity.cs), which sets
+    # CDX_LAUNCHER_LOG and is read by injector/cli.js's cmdLaunch(), which
+    # passes it through as this parameter. A logging failure (e.g. an
+    # unwritable path) must never take down the launch itself — see the
+    # try/catch around every write below.
+    [string]$LogFile
 )
+
+function Write-Log($Message) {
+    if ([string]::IsNullOrWhiteSpace($LogFile)) { return }
+    try {
+        $parent = Split-Path -Parent $LogFile
+        if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        Add-Content -LiteralPath $LogFile -Value $Message -Encoding UTF8
+    } catch {
+        # Logging is diagnostics, not the feature (see the parameter's own
+        # comment above) -- a failure here must never abort or alter the
+        # launch this script exists to perform.
+    }
+}
 
 $ErrorActionPreference = 'Stop'
 
 function Write-Fail($Message) {
-    Write-Host "[codexterity-launcher] FAILED: $Message" -ForegroundColor Red
+    $line = "[codexterity-launcher] FAILED: $Message"
+    Write-Host $line -ForegroundColor Red
+    Write-Log $line
     exit 1
 }
 
 function Write-Info($Message) {
-    Write-Host "[codexterity-launcher] $Message" -ForegroundColor Cyan
+    $line = "[codexterity-launcher] $Message"
+    Write-Host $line -ForegroundColor Cyan
+    Write-Log $line
 }
 
 # ---------------------------------------------------------------------------
@@ -204,22 +239,35 @@ Write-Info "Launching with CDX_THEME_PACKAGE=$ThemePackage"
 $process = New-Object System.Diagnostics.Process
 $process.StartInfo = $psi
 
-$stdoutBuilder = New-Object System.Text.StringBuilder
-$stderrBuilder = New-Object System.Text.StringBuilder
-
-$stdoutAction = {
-    if ($null -ne $EventArgs.Data) {
-        Write-Host $EventArgs.Data
-    }
-}
-$stderrAction = {
-    if ($null -ne $EventArgs.Data) {
-        Write-Host $EventArgs.Data -ForegroundColor Yellow
-    }
-}
-
-Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action $stdoutAction | Out-Null
-Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action $stderrAction | Out-Null
+# ---------------------------------------------------------------------------
+# Stream Codex's stdout/stderr. D-0001-28 (Phase 4 M4) -- do not revert this to an event handler.
+#
+# This DELIBERATELY does not use Register-ObjectEvent + BeginOutputReadLine,
+# which is what this script used until Phase 4 M4 and which does not work.
+# Measured, not theorised: a child emitting 800 lines fired the -Action
+# scriptblock exactly 4 times, with ZERO exceptions raised -- and a slow child
+# emitting 40 lines over 4 seconds also fired it 4 times, so the loss is
+# rate-independent. The cause is that PowerShell dispatches -Action handlers on
+# the runspace's own pipeline thread, and this script then blocks that very
+# thread in $process.WaitForExit(). A blocked runspace pumps no events, so the
+# handlers simply never run. (Start-Sleep does not pump them either, which is
+# why "wait a moment for events to drain" does not rescue it.)
+#
+# That defect PRE-DATES this milestone -- it means the console streaming this
+# launcher advertises has never actually worked -- and it went unnoticed because
+# the injector writes its own log directly from inside Codex's process via
+# CDX_DEBUG_LOG_PATH, which is what every launch in this project was really
+# verified against. M4 made it worth fixing rather than merely noting: the
+# shortcut's failure dialog (packaging/windows/Codexterity.cs) quotes this log,
+# so an empty log would turn a real failure into an unexplained one.
+#
+# The replacement reads both streams with .NET async Tasks and polls them from
+# THIS thread. Task completion is driven by the threadpool and needs no
+# PowerShell event pumping, so nothing depends on the runspace being idle. Both
+# streams are read concurrently, which is what avoids the classic deadlock of
+# draining one pipe to EOF while the other fills its buffer.
+#
+# The streams cannot be touched before Start(), so the loop lives below it.
 
 try {
     $started = $process.Start()
@@ -233,11 +281,47 @@ if (-not $started) {
     Write-Fail "Process.Start() returned false -- Codex did not launch."
 }
 
-$process.BeginOutputReadLine()
-$process.BeginErrorReadLine()
-
 Write-Info "Codex launched (PID $($process.Id)). Streaming its stdout/stderr below."
 Write-Info "Close Codex normally when you are done observing; this script exits when the process exits."
+
+$stdoutReader = $process.StandardOutput
+$stderrReader = $process.StandardError
+$outTask = $stdoutReader.ReadLineAsync()
+$errTask = $stderrReader.ReadLineAsync()
+$outEof = $false
+$errEof = $false
+
+while (-not ($outEof -and $errEof)) {
+    $didWork = $false
+
+    if (-not $outEof -and $outTask.IsCompleted) {
+        $line = $outTask.Result
+        if ($null -eq $line) {
+            $outEof = $true
+        } else {
+            Write-Host $line
+            Write-Log $line
+            $outTask = $stdoutReader.ReadLineAsync()
+        }
+        $didWork = $true
+    }
+
+    if (-not $errEof -and $errTask.IsCompleted) {
+        $line = $errTask.Result
+        if ($null -eq $line) {
+            $errEof = $true
+        } else {
+            Write-Host $line -ForegroundColor Yellow
+            Write-Log $line
+            $errTask = $stderrReader.ReadLineAsync()
+        }
+        $didWork = $true
+    }
+
+    # Only idle when neither stream had anything ready, so a busy child is
+    # drained at full speed and a quiet one costs ~nothing.
+    if (-not $didWork) { Start-Sleep -Milliseconds 25 }
+}
 
 $process.WaitForExit()
 Write-Info "Codex process exited with code $($process.ExitCode)."

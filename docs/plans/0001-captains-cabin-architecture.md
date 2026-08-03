@@ -1,6 +1,6 @@
 # Plan 0001 — Captain's Cabin: Architecture & Roadmap
 
-**Status:** **Phase 4 (Packaging) IN PROGRESS — M1 (theme-loader + safe-CSS validation) COMPLETE 2026-08-02, M2 (the `.ccskin` packer + the real package) COMPLETE 2026-08-03, and M3 (the `cdx` CLI) COMPLETE 2026-08-03 AND VERIFIED IN THE RUNNING APP.** The test harness (`npm test`, zero dependencies) is at **131/131**, and the decisions from these three milestones are D-0001-20/21/22 (M1), **D-0001-23** (M2) and **D-0001-24/25** (M3); see the Phase 4 milestone list below. **M3 closed the gate M1 and M2 could not**: Codex was launched through the argument-free `cdx`, the real 681,124-byte `.ccskin` loaded and painted, and `restore` left nothing residual. It also found two defects that only a launch could find — the theme being loaded four times per launch in processes that cannot apply it, and a required-landmark alarm that fired on every launch because it was sampled before the DOM existed. **M4 (installers) is next**, and the shortcut's icon and name are decided there from a render, not in prose. Phase 1 (Research & Architecture) **COMPLETE**. **Phase 3 (CSS & Theme Dev) COMPLETE 2026-08-02** — every surface measured in the running app in both modes; see the Phase 3 close-out below and D-0001-19. **Phase 4 (packaging) is IN PROGRESS — M1 done, M2 next.** Phase 2 (Palette, Type & Assets) **COMPLETE** — ground, palette and syntax palette locked and emitted. The hero artwork and the Layer 2 character pass both shipped 2026-08-01 (D-0001-9, D-0001-10). **Gate 0 RAN 2026-08-01 — see [`docs/research/gate0-findings.md`](../research/gate0-findings.md), which is now the authority on how this theme behaves in the real app.** Injection works and needs no debug port; the theme applies only **partially**, because the Tier-2 landmark inventory and the token-consumption model were both built by static analysis and do not match the shipped build. **Phase 3 was larger than this plan assumed** — that gap is now closed; the paragraph is kept for the history of how it was found.
+**Status:** **Phase 4 (Packaging) COMPLETE 2026-08-03 — M1 (theme-loader + safe-CSS validation), M2 (the `.ccskin` packer), M3 (the `cdx` CLI) and M4 (the installers) are all DONE, and M3 and M4 are VERIFIED IN THE RUNNING APP.** The test harness (`npm test`, zero dependencies) is at **181/181**, and the decisions from these four milestones are D-0001-20/21/22 (M1), **D-0001-23** (M2), **D-0001-24/25** (M3) and **D-0001-27/28/29** (M4); see the Phase 4 milestone list below. **M4 closed the milestone's real gate the only way it could be closed** — by installing from the built artifact the way a recipient would and launching the shortcut: themed Codex starts with **no console window**, and the uninstall path leaves nothing residual. It also found the milestone's standing lesson, **D-0001-29**: the suite was **180/180 green while the installed product could not start at all**, because `%LOCALAPPDATA%` — the conventional no-elevation install root — is MSIX-redirected and therefore invisible to Codex. **Phases 5 and 6 of the roadmap are satisfied by M4** (Windows installer built and verified; macOS installer built and documented as unverified per the D-0001-16 amendment); **Phase 7 (cross-platform QA, docs, release) is the remaining work.** **M3 closed the gate M1 and M2 could not**: Codex was launched through the argument-free `cdx`, the real 681,124-byte `.ccskin` loaded and painted, and `restore` left nothing residual. It also found two defects that only a launch could find — the theme being loaded four times per launch in processes that cannot apply it, and a required-landmark alarm that fired on every launch because it was sampled before the DOM existed. **M4 (installers) is next**, and the shortcut's icon and name are decided there from a render, not in prose. Phase 1 (Research & Architecture) **COMPLETE**. **Phase 3 (CSS & Theme Dev) COMPLETE 2026-08-02** — every surface measured in the running app in both modes; see the Phase 3 close-out below and D-0001-19. **Phase 4 (packaging) is IN PROGRESS — M1 done, M2 next.** Phase 2 (Palette, Type & Assets) **COMPLETE** — ground, palette and syntax palette locked and emitted. The hero artwork and the Layer 2 character pass both shipped 2026-08-01 (D-0001-9, D-0001-10). **Gate 0 RAN 2026-08-01 — see [`docs/research/gate0-findings.md`](../research/gate0-findings.md), which is now the authority on how this theme behaves in the real app.** Injection works and needs no debug port; the theme applies only **partially**, because the Tier-2 landmark inventory and the token-consumption model were both built by static analysis and do not match the shipped build. **Phase 3 was larger than this plan assumed** — that gap is now closed; the paragraph is kept for the history of how it was found.
 **Inventory rebuilt 2026-08-01 — see [`docs/research/phase3-inventory-findings.md`](../research/phase3-inventory-findings.md), now the authority on Codex's token architecture and landmarks.** The styling strategy (D-0001-2) is confirmed correct against the running app; the theme's *token list* was the thing that was wrong, and the work is now enumerated rather than unknown.
 
 **PHASE 3 IS COMPLETE as of 2026-08-02 (items 16–22 below, plus D-0001-19).** Every surface this plan set out to settle has now been *measured in the running app*, in **both modes**: menus, empty state, composer, sidebar, code blocks, and finally diffs and terminals. Contrast passes everywhere it was checked (diff/terminal 12.83:1 light, 15.43:1 dark). Three questions that looked like defects turned out to need **no code at all** — the translucent menu (§8.4), the empty-state controls (D-0001-15), and the missing empty-state cards (a Codex content rule, not a theme effect). Two real bugs were found and fixed: **D-0001-17** (the light hover was perceptually invisible; owner-verified fixed) and **D-0001-18** (Codex sets `--vscode-editor-font-family` on `<body>`, so a value on `<html>` could never govern it — **the token fix is verified, but see the correction below: it did not fix the terminal panel, which never reads that token**).
@@ -435,9 +435,74 @@ it. `cdx` is the CLI name (D-0001-5).
     manifest data rather than a constant compiled into the engine. This also removes a
     theme-specific fact from the theme-agnostic injector core, which the layer rule in
     `docs/ENGINEERING.md` requires anyway.
-- **M4 — installers.** Windows first (portable folder + `install.ps1`, or a signed exe if a cert
-  exists) and verified on this machine. Then the macOS `.dmg`/wrapper `.app`, **built, documented
-  as unverified, and handed over** — see the D-0001-16 amendment before touching it.
+- **M4 — installers.** ✅ **DONE 2026-08-03, and VERIFIED BY INSTALLING FROM THE BUILT ARTIFACT.**
+  The suite went **131 → 181**, zero skips, still zero dependencies; `audit.mjs` is **272/272** and
+  `theme.css`/`syntax.json` are byte-unchanged, so this milestone packaged the engine without
+  touching a token. Three decisions came out of it: **D-0001-27** (the GUI-subsystem shortcut stub
+  and the environment-based log fork), **D-0001-28** (the launcher's output streaming), and
+  **D-0001-29** (the install root).
+
+  **What shipped.** `tools/build-windows-package.js` assembles `dist/Codexterity-Windows/` — an
+  `Install.ps1` / `Uninstall.ps1` / `README.txt` beside a `payload/` that **mirrors the repo root**,
+  which is what lets `cli.js`'s `resolveThemeSource()` find the packaged `.ccskin` with zero code
+  change. `Install.ps1` needs **no elevation**, checks Node ≥ 22 and Codex's presence (warning, not
+  failing, on the latter), runs `cdx apply captains-cabin` once, and creates a Start-menu shortcut
+  (plus an optional desktop one) whose target is `bin\Codexterity.exe` with **empty arguments** —
+  the argument-free `cdx`. `packaging/macos/` ships the wrapper `.app` tree, `install.sh`,
+  `uninstall.sh`, `build-dmg.sh` and a handover `README.md`, **built and documented as UNVERIFIED**
+  (D-0001-16 as amended); nothing in this milestone was blocked on it.
+
+  **The shortcut's icon and name were chosen by the owner from a render**, per this entry's own
+  instruction — [`docs/mockups/0004-shortcut-icon-comparison.html`](../mockups/0004-shortcut-icon-comparison.html),
+  generated by `tools/mockup/build-icon-comparison.mjs`, which reads every colour out of
+  `theme.css` and extracts Codex's own icon live from the installed package. **Name: `Codexterity`.
+  Icon: candidate R5** — Codex's own knot silhouette (taken from the alpha of Codex's
+  white-on-transparent tile asset, so no artwork was generated) filled with a full OKLCH hue sweep
+  on a theme-neutral near-black, **no glow**. The owner rejected the four glowing variants on the
+  evidence of the 16 px cells: *"the rest will look blurred because of the glow at some size."*
+  **Both are deliberately THEME-NEUTRAL, and that is load-bearing rather than stylistic** — one
+  shortcut serves every future theme, because its target reads the active theme from
+  `~/.codexterity/state.json` (D-0001-24), so `cdx apply <other-theme>` repoints it untouched. An
+  icon in Captain's Cabin brass and navy would be wrong the day a second theme ships. The spectrum
+  is stepped in **OKLCH, not HSL**: an HSL rainbow swings hard in perceived lightness, which would
+  make the knot's thin strokes look like they change width.
+
+  **Verified by installing from the built artifact and launching the shortcut** — not by running a
+  script from a dev shell. The package was staged outside the repo as a recipient would extract it,
+  installed, and the shortcut launched via `ShellExecute` (what a double-click does), with every
+  new on-screen window recorded by polling `EnumWindows` at ~20 ms: **no console window from any
+  host process**, one window, Codex's own. Process tree exactly as designed —
+  `Codexterity.exe → node → powershell → ChatGPT.exe`. The injector attached (23,318-byte log,
+  theme loaded from the installed `.ccskin`), and Captain's Cabin was confirmed **painting** in the
+  running app. `Uninstall.ps1` then reported 4/4 PASS and an **independent** residue sweep found all
+  five paths gone, with `~/.codex` and `auth.json` untouched (D-0001-3).
+
+  **Three defects were found that no green test suite could have caught, and the middle one is the
+  milestone's standing lesson.**
+
+  - **The install root could not be `%LOCALAPPDATA%` — D-0001-29.** That is *the* conventional
+    per-user, no-elevation install root, and it is the one place this payload cannot live: Codex is
+    a packaged **MSIX** app, and MSIX redirects `%LOCALAPPDATA%`/`%APPDATA%` into the package
+    container, so files installed there are **invisible to Codex**. Measured: the shortcut launched
+    and Codex exited **13** with `Cannot find module '…/AppData/Local/Codexterity/injector/core/preload.js'`
+    while `Test-Path` on that exact file returned True from an ordinary process; the identical
+    payload under `%USERPROFILE%` launched cleanly with the injector attached. **The suite was
+    180/180 green while the installed product could not start at all** — a unit test cannot see a
+    redirection boundary.
+  - **The launcher's output streaming had never worked — D-0001-28.** `Register-ObjectEvent
+    -Action` handlers are dispatched on the runspace's pipeline thread, which `WaitForExit()`
+    blocks, so they essentially never ran: a child emitting 800 lines fired the handler **4 times,
+    with zero exceptions**, and a slow child emitting 40 lines over 4 seconds also fired it 4 times
+    (so it was rate-independent, and not file contention). It went unnoticed for the whole project
+    because `CDX_DEBUG_LOG_PATH` — written by the injector directly from inside Codex's process —
+    was always the real instrument. M4 is what made it matter: the shortcut has no console, so its
+    failure dialog quotes this log. Replaced with concurrent `ReadLineAsync()` polling: **800/800
+    and 4000/4000, zero loss.** It is also what surfaced the MSIX bug above; under the old code the
+    log would have been empty.
+  - **The failure dialog could report a stale cause.** The stub appended to its log forever and
+    quoted the last 4 KB, so a launch failing *before* writing anything would present the
+    **previous** session's output as "Last log output" — the same class of defect as M3's
+    always-firing landmark alarm. It now truncates per launch, and only the logs it owns.
 
   **The shortcut's icon and name are decided in M4, from a render** (owner, 2026-08-03) — the same
   way every other visual call on this project was made. Produce candidates and ask; do not pick in

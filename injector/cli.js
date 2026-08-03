@@ -452,6 +452,18 @@ function cmdLaunch(ctx) {
     const script = path.join(ctx.repoRoot, 'launcher', 'windows', 'launch.ps1');
     command = 'powershell.exe';
     spawnArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-ThemePackage', themePackage];
+    // D-0001-27 (Phase 4 M4) -- the log fork lives in the ENVIRONMENT, not a
+    // new CLI flag: the argument-free entry point (see this file's header,
+    // point 2) must stay argument-free, so a developer terminal and the
+    // installed shortcut cannot be told apart by argv, only by which one set
+    // CDX_LAUNCHER_LOG. The GUI-subsystem shortcut stub
+    // (packaging/windows/Codexterity.cs) sets it before spawning this
+    // process; an ordinary developer shell leaves it unset, and launch.ps1's
+    // behaviour is then byte-for-byte what it always was (its own -LogFile
+    // parameter default is empty).
+    if (ctx.env && ctx.env.CDX_LAUNCHER_LOG) {
+      spawnArgs.push('-LogFile', ctx.env.CDX_LAUNCHER_LOG);
+    }
   } else if (ctx.platform === 'darwin') {
     const script = path.join(ctx.repoRoot, 'launcher', 'macos', 'launch.sh');
     command = 'bash';
@@ -477,6 +489,10 @@ function buildContext(options) {
     home: options.home || os.homedir(),
     repoRoot: options.repoRoot || REPO_ROOT,
     platform: options.platform || process.platform,
+    // Injectable so a test can assert cmdLaunch's -LogFile plumbing (see
+    // D-0001-27 marker at its call site) without setting a REAL environment
+    // variable that would leak into the rest of that test run.
+    env: options.env || process.env,
     spawnSync: options.spawnSync || spawnSync,
     now: options.now || (() => new Date().toISOString()),
     stdout: options.stdout || ((text) => process.stdout.write(text)),
@@ -487,7 +503,7 @@ function buildContext(options) {
 /**
  * @param {string[]} argv - e.g. `process.argv.slice(2)`
  * @param {object} [options] - injectable overrides for tests: home,
- *   repoRoot, platform, spawnSync, now, stdout, stderr.
+ *   repoRoot, platform, env, spawnSync, now, stdout, stderr.
  * @returns {number} process exit code.
  */
 function main(argv, options = {}) {
