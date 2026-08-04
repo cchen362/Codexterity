@@ -1,12 +1,14 @@
 # Plan 0003 — Image-led theme authoring: the hero-to-palette pipeline
 
-**Status:** **OPEN. Opened 2026-08-05. M1 DONE (2026-08-05); M2–M5 not started.** This is the first
+**Status:** **OPEN. Opened 2026-08-05. M1 and M2 DONE (both 2026-08-05); M3–M5 not started.** This is the first
 plan of the post-Phase-7 era; [Plan 0002](0002-phase-7-qa-docs-release.md) closed the roadmap at tag
 `v0.1.0` and is the release baseline this plan builds on. Numbers at the tag were: `npm test`
 **196/196**, `node tools/palette/audit.mjs` **272/272**, `themes/captains-cabin/theme.css` SHA-256
 `731CC9…4286E`, `syntax.json` `36DAD6…211FEB`. **After M1, measured on this machine 2026-08-05:**
 `npm test` **230/230**, `audit.mjs` still **272/272**, and both theme digests **unchanged** — M1 moved
-no token and no theme file.
+no token and no theme file. **After M2, measured on this machine 2026-08-05:** `npm test` **240/240**,
+`audit.mjs` still **272/272**, and **all three** theme digests unchanged — M2 rewrote the emitter
+without moving a byte of what ships.
 
 **Depends on:** [Plan 0001](0001-captains-cabin-architecture.md) (architecture authority),
 [Plan 0002](0002-phase-7-qa-docs-release.md) (the release baseline and the five review findings under
@@ -221,6 +223,55 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
     hand-picked" enforceable rather than aspirational, and a generic emitter must keep it: any theme
     the new path emits must be unable to reach disk while failing AA. Do not demote it to a
     post-hoc check the author is trusted to run.
+
+  **DONE 2026-08-05. Gate met, including both corrections.** Re-emitting Captain's Cabin through the
+  new path reproduces **all three** files byte-identically — `theme.css` `731CC9…4286E`,
+  `syntax.json` `36DAD6…211FEB`, `manifest.json` `0E44FF…AD5DB5`, with `git diff -- themes/` empty —
+  `audit.mjs` stays **272/272**, and `npm test` goes **230 → 240**. The 840-line flat script became
+  three files: [`emit-theme.mjs`](../../tools/palette/emit-theme.mjs) (the generic emitter — every CSS
+  rule and all the mechanism reasoning), [`codex-surface.mjs`](../../tools/palette/codex-surface.mjs)
+  (Codex's own names: root classes, token groups, ANSI slots, heading classes),
+  [`recipes/captains-cabin.mjs`](../../tools/palette/recipes/captains-cabin.mjs) (authored choices
+  only). The emitter's filename is **pinned by the gate** — the emitted `theme.css` and `syntax.json`
+  both contain the literal string `tools/palette/emit-theme.mjs`, so the generic emitter had to keep
+  that name and the recipe went somewhere new. Settled as **D-0003-1**.
+
+  **What M2 settled that the scoping did not anticipate — five measured facts:**
+
+  1. **The audit-binding question (review finding #3) has an answer, and it is not "make `audit.mjs`
+     recipe-driven".** The two ask different questions and both are needed. `audit.mjs`'s sweep is an
+     **engine**-level proof over a registry of grounds — 136 of its 272 checks cover oak, which ships
+     in nothing — while the **per-theme** proof is the emitter's own build-time refusal, which audits
+     exactly that recipe's two palettes. The refusal now *reports its count*, so a theme's proof has a
+     number the way `272/272` does: emitting prints `audit — dark 68/68 pass, light 68/68 pass`.
+  2. **D-0001-21's probe got stronger by being split, not weaker.** The landmark list and its probes
+     stay in the recipe (as the plan required); the assertion lives in the generic emitter. That turns
+     a same-file self-check into a **cross-file contract** — a rule renamed in the emitter now fails
+     *every* recipe's build, not just its own.
+  3. **The pre-M2 script wrote `theme.css` before asserting the probes**, so a stale probe left a
+     half-emitted theme on disk. All three writes now happen at one site after every gate, and the
+     suite proves it: a stale probe throws **and leaves the output directory empty**.
+  4. **The header underline is not derivable and never was.** `"Captain's Cabin — a theme package for
+     Codexterity"` is 49 characters; the rule under it is **48** dashes — hand-typed one short. There
+     is no length rule to recover, so it is carried as an authored recipe string with a comment saying
+     why, rather than "fixed" into a byte the gate depends on. (The `.heading-*` selector's two-line
+     wrap *is* derivable — `' '.repeat(prefix.length)` — and is computed.)
+  5. **Two counts in committed comments were wrong and are corrected.** `assets/fonts/` holds **nine**
+     faces and three ship, so **six** are unused — the emitter's comment and `docs/DECISIONS.md`'s
+     D-0001-21 row both said "five". And the pre-M2 script computed `fontBytes` and `heroBytes`,
+     described as feeding "the size accounting in the generated header", which **no header has ever
+     had**; both were dead and are removed.
+
+  **Deliberate boundary, stated so M3 and M4 do not have to re-derive it:** `palette-engine.mjs` was
+  **not** touched. Its role hues (`ROLE.brass` etc.) and its light-mode ground (`PARCHMENT`) are still
+  module constants, because nothing varies them yet and an input no theme uses would be a placeholder.
+  **M3 is the change that first parameterises a role hue** (its recommender proposes an accent hue),
+  and **M4 is the change that first parameterises `PARCHMENT`** (owner ruling 3 — light re-derived
+  cooler). Both are expected; neither is owed by M2.
+
+  **Not claimed:** nothing about how any theme looks. M2 moved code, not colour — which is precisely
+  what the three digests prove, and they prove it more strongly than a launch could, because
+  "identical bytes" cannot be eyeballed.
 
 - **M3 — the recommender: an image in, recipe inputs out.** The pipeline step the owner asked for.
   Given a hero, propose the palette inputs that suit it — ground hue and chroma per mode, accent

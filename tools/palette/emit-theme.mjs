@@ -1,168 +1,77 @@
-// Emits themes/captains-cabin/theme.css, syntax.json and manifest.json from the
-// derivation engine, so the shipped values are exactly the ones the owner
-// approved from the mockup.
+// Codexterity — generic theme emitter (Plan 0003 M2)
+// -----------------------------------------------------
+// Emits <theme>/theme.css, syntax.json and manifest.json from a RECIPE, so
+// adding a theme is "write a recipe" and never "edit this file". This module
+// owns MECHANISM and facts about CODEX (every CSS rule, every D-0001-*
+// mechanism comment, the emitted file structure); a recipe under
+// tools/palette/recipes/ owns IDENTITY and AUTHORED VALUES (palette inputs,
+// accent role, typography roles and font assets, shape values, hero
+// configuration, syntax policy, manifest landmarks, and the theme's own
+// prose/voice strings).
+//
+// The path and filename of THIS file are pinned: the emitted theme.css and
+// syntax.json both contain the literal string "tools/palette/emit-theme.mjs"
+// (see buildHeader() and the recipe's syntax.note), and every doc references
+// this exact command. Do not rename or move it.
 import { writeFileSync, readFileSync, statSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildDark, buildLight, buildSyntax, GROUNDS, ratio } from './palette-engine.mjs';
 import { run, runSyntax } from './audit.mjs';
+import {
+  ROOT_CLASSES, tokenGroups, TOKEN_ALIASES, ansiSlots, FONT_FAMILY_TOKENS, HEADING_CLASSES,
+} from './codex-surface.mjs';
 
-const GROUND = 'navy';
-// Resolved from this file's own location, never from a machine-specific absolute
-// path: the emitter has to run on the packaging machine and on a collaborator's
-// checkout, and a hardcoded C:\ path makes it silently a Windows-only tool.
-const OUT = fileURLToPath(new URL('../../themes/captains-cabin/', import.meta.url)).replace(/\\/g, '/');
-const dark = buildDark(GROUNDS[GROUND].ground);
-const light = buildLight(GROUNDS[GROUND].ground);
-const synDark = buildSyntax(dark, 'dark');
-const synLight = buildSyntax(light, 'light');
+// ── Recipe validation — fail loudly, by name ────────────────────────────────
+// Guards against an author's typo, not a security boundary.
+function validateRecipe(recipe) {
+  const fail = (msg) => { throw new Error(`emit-theme: recipe invalid — ${msg}`); };
 
-for (const [name, p, s] of [['dark', dark, synDark], ['light', light, synLight]]) {
-  const bad = [...run(p), ...runSyntax(s)].filter((x) => !x.pass);
-  if (bad.length) throw new Error(`${name} mode fails AA: ${bad.map((b) => b.label).join(', ')}`);
+  if (!recipe || typeof recipe !== 'object') fail('recipe must be an object');
+  if (typeof recipe.id !== 'string' || !recipe.id) fail('recipe.id must be a non-empty string');
+  if (/[\\/]/.test(recipe.id) || recipe.id.includes('..')) {
+    fail(`recipe.id ${JSON.stringify(recipe.id)} must be a safe directory name (no path separators, no "..")`);
+  }
+  if (typeof recipe.name !== 'string' || !recipe.name) fail('recipe.name must be a non-empty string');
+  if (typeof recipe.version !== 'string' || !recipe.version) fail('recipe.version must be a non-empty string');
+
+  const groundKey = recipe.palette && recipe.palette.ground;
+  if (!GROUNDS[groundKey]) {
+    fail(`recipe.palette.ground ${JSON.stringify(groundKey)} does not resolve in GROUNDS (known: ${Object.keys(GROUNDS).join(', ')})`);
+  }
+
+  if (!recipe.accent || typeof recipe.accent.token !== 'string' || !recipe.accent.token) {
+    fail('recipe.accent.token must be a non-empty string');
+  }
+
+  for (const role of ['ui', 'mono', 'display']) {
+    const r = recipe.typography && recipe.typography.roles && recipe.typography.roles[role];
+    if (!r || typeof r.stack !== 'string' || !r.stack) {
+      fail(`recipe.typography.roles.${role}.stack must be a non-empty string`);
+    }
+  }
+
+  if (!Array.isArray(recipe.landmarks) || recipe.landmarks.length === 0) {
+    fail('recipe.landmarks must be a non-empty array');
+  }
+  for (const l of recipe.landmarks) {
+    if (!l || typeof l.probe !== 'string' || !l.probe) {
+      fail(`landmark ${JSON.stringify(l && l.name)} must have a non-empty probe`);
+    }
+  }
+
+  if (!recipe.hero || !Array.isArray(recipe.hero.modes)) {
+    fail('recipe.hero.modes must be an array');
+  }
+  for (const mode of recipe.hero.modes) {
+    if (!recipe.hero.scrim || !recipe.hero.scrim[mode]) {
+      fail(`recipe.hero declares mode ${JSON.stringify(mode)} but has no matching recipe.hero.scrim.${mode}`);
+    }
+  }
 }
 
-const GROUPS = [
-  ['Surfaces — the six-step ground ramp', [
-    'background-surface', 'token-main-surface-primary', 'token-bg-secondary',
-    'background-elevated-primary', 'background-elevated-secondary', 'token-bg-tertiary',
-    'token-diff-surface',
-  ]],
-  ['Text — four tiers of ink', [
-    'text-primary', 'text-foreground', 'token-foreground', 'text-secondary',
-    'text-foreground-secondary', 'text-tertiary', 'text-quaternary', 'text-on-accent',
-  ]],
-  ['Status ink', ['text-success', 'text-warning', 'text-error']],
-  ['Borders', ['border-light', 'border', 'border-heavy', 'border-focus']],
-  ['Brass — the single accent', [
-    'background-button-primary', 'background-button-primary-hover',
-    'background-button-primary-active', 'background-button-secondary',
-  ]],
-  ['Icons', ['icon-primary', 'icon-secondary', 'icon-tertiary']],
-  ['Status & diff surfaces', [
-    'background-status-success', 'background-status-warning', 'background-status-error',
-    'background-danger-active', 'editor-added', 'editor-deleted',
-  ]],
-
-  // ── Added 2026-08-01 from the measured inventory ───────────────────────────
-  // docs/research/phase3-inventory-findings.md found Codex defines 97 custom
-  // properties on .electron-dark and this theme claimed 24. These are the rest of
-  // the ones with downstream paint impact — the tokens that were leaving the
-  // sidebar, menus, editor surfaces and every accent stock in the running app.
-  ['Chrome surfaces the app paints separately', [
-    'background-surface-under', 'background-panel', 'background-editor-opaque',
-    'background-elevated-primary-opaque', 'background-elevated-secondary-opaque',
-    'background-control', 'background-control-opaque',
-  ]],
-  ['Application menu bar', [
-    'background-application-menu', 'foreground-application-menu',
-    'border-application-menu-separator',
-  ]],
-  ['Accent — brass, and the two decorative hues that collapse into it (D-0001-11)', [
-    'text-accent', 'icon-accent', 'accent-blue', 'accent-purple',
-    'background-accent', 'background-accent-hover', 'background-accent-active',
-  ]],
-  ['Status hues — kept DISTINCT on purpose (D-0001-11)', [
-    'accent-green', 'accent-red', 'accent-orange', 'accent-yellow',
-    'icon-success', 'icon-warning', 'icon-error',
-    'border-error', 'border-warning',
-    'decoration-added', 'decoration-deleted', 'decoration-modified', 'decoration-unchanged',
-  ]],
-  ['Interaction states — list rows and secondary buttons', [
-    'background-button-secondary-hover', 'background-button-secondary-active',
-    'background-button-tertiary', 'background-button-tertiary-hover',
-    'background-button-tertiary-active',
-  ]],
-  ['Button and tertiary ink', [
-    'text-button-primary', 'text-button-secondary', 'text-button-tertiary',
-    'text-foreground-tertiary',
-  ]],
-];
-
-// The terminal's 16 ANSI slots. Codex names these on .electron-dark under their
-// VS Code spellings, and they reach the terminal through --color-token-terminal-*.
-// They are mapped from tokens already solved for this ground rather than left
-// stock, so a terminal does not become the one window in the app still wearing
-// OpenAI's palette. Programs rely on these being DISTINGUISHABLE, which is the
-// same reason D-0001-11 keeps the status hues apart.
-const ansi = (p, syn) => ({
-  Black: p['text-quaternary'],        BrightBlack: p['text-tertiary'],
-  Red: p['text-error'],               BrightRed: p['text-error'],
-  Green: p['text-success'],           BrightGreen: p['text-success'],
-  Yellow: p['text-warning'],          BrightYellow: p['text-warning'],
-  Blue: syn.number,                   BrightBlue: syn.number,
-  Magenta: syn.keyword,               BrightMagenta: syn.keyword,
-  Cyan: syn.type,                     BrightCyan: syn.type,
-  White: p['text-secondary'],         BrightWhite: p['text-primary'],
-});
-
-// ── The empty-state hero (D-0001-9) ──────────────────────────────────────────
-//
-// Approved 2026-08-01, shipped as a file the same day — and never referenced by
-// anything until now, so it has never actually been on screen. This wires it in.
-//
-// WHERE IT ATTACHES. Codex offers no class named for the empty state, and its
-// CSS-module classes are build-hashed and unusable as landmarks. The hook used
-// here is `[container-name:home-main-content]` — a Tailwind arbitrary-property
-// class whose name IS its declaration (`container-name: home-main-content`), so
-// it is authored and semantic rather than a build artefact. It is further gated
-// on `:has(.heading-xl)`, the empty state's own centred heading, so the image
-// cannot paint behind a loaded conversation. If either stops matching, the
-// empty state falls back to flat ground — the pre-hero look, not breakage.
-//
-// FULL BLEED, which is what was approved. D-0001-8 rejected a full-bleed
-// atmospheric background behind THE WHOLE APP and narrowed it to *empty states
-// only*; asset-manifest.md describes the hero as sitting "behind the
-// new-session screen ... under a scrim". A first attempt shipped it as a
-// top-anchored band with no scrim at all, which read as an awkward banner with
-// a hard horizontal seam. The scrim is a CSS layer we apply, not something
-// baked into the image — that is what "under a scrim" meant.
-//
-// WHY THIS DOES NOT VOID THE CONTRAST PROOF (D-0001-6). D-0001-6 forbids
-// luminance variation BEHIND TEXT; it does not forbid imagery. The scrim's
-// stops are SOLVED, not chosen by eye: for every horizontal band of the image,
-// the brightest pixel in that band is blended with the ground at that band's
-// scrim alpha, and the result is checked against --color-text-primary. Over the
-// whole region where text can sit (the heading and everything below it) the
-// worst case is 5.99:1 against a 4.5:1 requirement. The measurement is
-// deliberately pessimistic: it samples the brightest pixel across the image's
-// full width, while `cover` on a tall panel crops to the centre.
-//
-// If the hero is ever regraded or replaced, RE-SOLVE the scrim — do not assume
-// these stops still hold. The scrim and the image are one proof, not two.
-const heroB64 = readFileSync(OUT + 'assets/hero-empty-state.webp').toString('base64');
-const heroBytes = statSync(OUT + 'assets/hero-empty-state.webp').size;
-
-// Codex exposes --color-token-* aliases alongside the --color-* names; both are
-// set so a utility reading either resolves to the same value.
-const ALIAS = {
-  'token-border-default': 'border',
-  'token-border-light': 'border-light',
-  'token-border-heavy': 'border-heavy',
-};
-
-// ── Fonts ────────────────────────────────────────────────────────────────────
-//
-// D-0001-7 (typography half, CLOSED 2026-08-01): Fraunces for DISPLAY, Literata
-// for UI/body, Monaspace Neon for code. The owner chose Literata at 14px from
-// the rendered comparison in docs/mockups/0003-typography-comparison.html.
-//
-// THE FONTS ARE EMBEDDED, and that is not a packaging nicety — it is the fix for
-// a bug this change exists to correct. Until now theme.css named 'Fraunces' with
-// no @font-face, and Fraunces is not installed on either dev machine, so the app
-// silently rendered the CSS fallback: Georgia. Gate 0 recorded "Fraunces renders
-// throughout the app — CONFIRMED (by inheritance from the theme class)"; what was
-// actually confirmed was that the *declaration* inherits, never that the face
-// loaded. A font-family that names an unavailable face fails silently and looks
-// like success, so any future font change must be verified with
-// document.fonts.check(), not by reading a computed font-family.
-//
-// Axis ranges below are read from the files with fontTools, not assumed:
-//   Fraunces  opsz 9-144, wght 100-900, SOFT 0-100, WONK 0-1
-//   Literata  wght 400-900
-//   Monaspace Neon  static 400
-const FONT_DIR = OUT + 'assets/fonts/';
-const face = (family, file, extra) => {
-  const b64 = readFileSync(FONT_DIR + file).toString('base64');
+// ── @font-face ───────────────────────────────────────────────────────────────
+function faceBlock({ family, file, extra }, assetsDir) {
+  const b64 = readFileSync(assetsDir + 'assets/fonts/' + file).toString('base64');
   return `@font-face {
   font-family: '${family}';
   src: url(data:font/woff2;base64,${b64}) format('woff2');
@@ -171,66 +80,33 @@ ${extra}
      would hide text that Codex has already rendered legibly. */
   font-display: swap;
 }`;
-};
+}
 
-// One list, three consumers: the @font-face blocks, the size accounting in the
-// generated header, and manifest.json's assets[]. assets/fonts/ also holds five
-// faces this theme does NOT use -- the losing candidates from the typography
-// comparison (docs/mockups/0003-typography-comparison.html) plus the superseded
-// Monaspace Xenon. They stay in the repo as the record of that decision and must
-// never reach a .ccskin, which is precisely why the package's asset list is
-// derived from here rather than from a directory listing.
-//
-// The OFL text ships with each face. SIL OFL 1.1 requires the licence to
-// accompany the font, and the font travels inside theme.css as a data URI, so
-// the licence has to travel in the package alongside it. Not optional.
-const FONTS = [
-  { family: 'Literata', file: 'literata-latin-variable.woff2', licence: 'Literata-OFL.txt',
-    extra: '  font-weight: 400 900;\n  font-style: normal;' },
-  { family: 'Fraunces', file: 'fraunces-latin-variable.woff2', licence: 'Fraunces-OFL.txt',
-    extra: '  font-weight: 100 900;\n  font-style: normal;' },
-  { family: 'Monaspace Neon', file: 'monaspace-neon-latin-400.woff2', licence: 'Monaspace-OFL.txt',
-    extra: '  font-weight: 400;\n  font-style: normal;' },
-];
-
-const fontFaces = FONTS.map((f) => face(f.family, f.file, f.extra)).join('\n\n');
-
-const fontBytes = FONTS.reduce((n, f) => n + statSync(FONT_DIR + f.file).size, 0);
-
-// Codex reads its font families through tokens, exactly as it does colour, so
-// the split is expressed token-first (D-0001-2) rather than by chasing elements.
-// The root font-family below is the catch-all for rules that hardcode a stack.
-const FONT_TOKENS = {
-  'font-sans': "'Literata', Georgia, serif",
-  'font-sans-default': "'Literata', Georgia, serif",
-  'font-serif': "'Literata', Georgia, serif",
-  'font-openai-sans': "'Literata', Georgia, serif",
-  'default-font-family': "'Literata', Georgia, serif",
-  'font-mono': "'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-  'font-mono-default': "'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-  'default-mono-font-family': "'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-  'vscode-editor-font-family': "'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-};
+function buildFontFaces(recipe, assetsDir) {
+  return recipe.typography.faces.map((f) => faceBlock(f, assetsDir)).join('\n\n');
+}
 
 // Every token declaration is marked !important, and that is a measured
 // requirement rather than a specificity shortcut. See the D-0001-12 note in the
 // generated file header for the full reasoning.
 const decl = (name, value) => `  ${name}: ${value} !important;`;
 
-const block = (sel, p, syn, label) => {
-  const lines = [`.${sel} {`, `  /* ${label} */`];
-  for (const [title, keys] of GROUPS) {
+// ── The per-mode token block ─────────────────────────────────────────────────
+function tokenBlock(rootClass, p, syn, label, recipe) {
+  const lines = [`.${rootClass} {`, `  /* ${label} */`];
+  for (const [title, keys] of tokenGroups(recipe.accent.name)) {
     lines.push('', `  /* ${title} */`);
     for (const k of keys) lines.push(decl(`--color-${k}`, p[k]));
   }
   lines.push('', '  /* Aliased spellings of the same values */');
-  for (const [alias, src] of Object.entries(ALIAS)) lines.push(decl(`--color-${alias}`, p[src]));
+  for (const [alias, src] of Object.entries(TOKEN_ALIASES)) lines.push(decl(`--color-${alias}`, p[src]));
   lines.push('', '  /* Terminal — the 16 ANSI slots, under Codex\'s VS Code spellings */');
-  for (const [slot, hex] of Object.entries(ansi(p, syn))) {
+  for (const [slot, hex] of Object.entries(ansiSlots(p, syn))) {
     lines.push(decl(`--vscode-terminal-ansi${slot}`, hex));
   }
   lines.push('', '  /* Font families — Codex reads these as tokens, like colour (D-0001-7) */');
-  for (const [name, stack] of Object.entries(FONT_TOKENS)) lines.push(decl(`--${name}`, stack));
+  for (const name of FONT_FAMILY_TOKENS.ui) lines.push(decl(`--${name}`, recipe.typography.roles.ui.stack));
+  for (const name of FONT_FAMILY_TOKENS.mono) lines.push(decl(`--${name}`, recipe.typography.roles.mono.stack));
   lines.push('', '  /* Syntax palette — consumed by the editor layer (see syntax.json) */');
   for (const [role, hex] of Object.entries(syn)) {
     if (role === '_surface') continue;
@@ -238,13 +114,19 @@ const block = (sel, p, syn, label) => {
   }
   lines.push('}');
   return lines.join('\n');
-};
+}
 
-const css = `/*
- * Captain's Cabin — a theme package for Codexterity
- * ------------------------------------------------
- * Ground: deep navy (${GROUNDS[GROUND].ground}). Accent: antique brass, used sparingly.
- * Light mode is weathered parchment carrying navy ink.
+// ── Header comment ───────────────────────────────────────────────────────────
+// Mostly mechanism prose about THIS ENGINE (D-0001-2, D-0001-12, D-0001-6),
+// true of any theme it emits; only the title, its underline, and the two
+// blurb lines are the recipe's own voice.
+function buildHeader(recipe, groundHex) {
+  const [blurb0, blurb1] = recipe.voice.blurbLines(groundHex);
+  return `/*
+ * ${recipe.voice.title}
+ * ${recipe.voice.titleUnderline}
+ * ${blurb0}
+ * ${blurb1}
  *
  * THIS FILE IS THE SINGLE SOURCE OF TRUTH FOR THIS THEME'S TOKEN VALUES.
  * Mockups and palette studies under docs/ are design inputs; no other file
@@ -289,68 +171,58 @@ const css = `/*
  * flat colour; luminance variation behind text would make the governing value the
  * worst pixel rather than the average, and readability is this project's first law.
  * Do not reintroduce surface textures without redoing the contrast proof.
- */
+ */`;
+}
 
-/*
- * The three faces, embedded. See the Typography section below for the roles and
- * for why embedding is a correctness requirement rather than a packaging step.
- */
-${fontFaces}
-
-${block('electron-dark', dark, synDark, 'Dark — the night watch')}
-
-${block('electron-light', light, synLight, 'Light — the chart room by day')}
-
-/*
- * Shape. Tighter than stock: joinery, not pillows.
+// ── Shape block ──────────────────────────────────────────────────────────────
+function buildShapeBlock(recipe) {
+  const r = recipe.shape.radii;
+  return `/*
+ * ${recipe.shape.note}
  */
 .electron-dark,
 .electron-light {
-  --radius-sm: 3px !important;
-  --radius-md: 5px !important;
-  --radius-lg: 7px !important;
-  --radius-xl: 9px !important;
-  --radius-2xl: 12px !important;
-  --radius-3xl: 16px !important;
-  --radius-4xl: 20px !important;
-  --radius-full: 9999px !important;
+  --radius-sm: ${r.sm} !important;
+  --radius-md: ${r.md} !important;
+  --radius-lg: ${r.lg} !important;
+  --radius-xl: ${r.xl} !important;
+  --radius-2xl: ${r['2xl']} !important;
+  --radius-3xl: ${r['3xl']} !important;
+  --radius-4xl: ${r['4xl']} !important;
+  --radius-full: ${r.full} !important;
+}`;
 }
 
-/*
- * Typography.
- *
- * D-0001-7 (typography half) CLOSED 2026-08-01. Three faces, three jobs:
- * Fraunces for DISPLAY, Literata for UI and body, Monaspace Neon for code. All
- * three SIL OFL 1.1 and redistributable inside the .ccskin, and all three are
- * embedded above as data URIs — the theme references no remote resource and
- * depends on nothing being installed on the user's machine.
- *
- * The split replaces Fraunces doing double duty. The owner reopened the decision
- * after long sessions in the real app and then chose Literata at 14px from a
- * rendered comparison of seven candidates
- * (docs/mockups/0003-typography-comparison.html). Fraunces keeps the headings,
- * where its stroke contrast is an asset rather than a tax on the eyes.
- *
- * 'pre, code, kbd, samp' below is one of only two structural selector groups the
- * theme uses (the other is the .heading-* set). Both are semantic or authored
- * names rather than CSS-module hashes, and both degrade to a legible fallback.
- *
- * STATUS: unverified, not disproven. It matches nothing on Codex's empty state —
- * which contains no code, so that is expected rather than evidence of absence
- * (docs/research/phase3-inventory-findings.md §4.3). It must be re-probed on a
- * screen containing a code block. If it never matches, code renders in the stock
- * monospace stack and nothing breaks; the code SURFACE is themed regardless,
- * through --color-background-editor-opaque, which needs no selector.
- */
+// ── Heading selector — the ten .heading-* classes, wrapped exactly as a hand
+// -formatted CSS file would: the continuation line indents to the width of
+// ".<root-class> :is(", so dark and light naturally indent differently. ────
+function headingSelector(rootClass, classes) {
+  const prefix = `.${rootClass} :is(`;
+  const indent = ' '.repeat(prefix.length);
+  const first = classes.slice(0, 5).map((c) => `.${c}`).join(', ');
+  const rest = classes.slice(5).map((c) => `.${c}`).join(', ');
+  return `${prefix}${first},\n${indent}${rest})`;
+}
+
+// ── Typography: the root/body/xterm/heading/code rules (D-0001-7, -18, -19) ─
+// The big narrative comment above these rules is the recipe's own voice
+// (recipe.voice.typographyProse); the rules themselves, and the mechanism
+// comments fixed to Codex's own behaviour, are this engine's.
+function buildTypographyBlock(recipe) {
+  const ui = recipe.typography.roles.ui;
+  const mono = recipe.typography.roles.mono;
+  const display = recipe.typography.roles.display;
+
+  const rootRule = `${recipe.voice.typographyProse}
 /* UI and body — Literata. Inherited from the theme class, which covers the rules
  * that hardcode a font stack rather than reading --font-sans. */
 .electron-dark,
 .electron-light {
-  font-family: 'Literata', Georgia, serif !important;
-  font-variation-settings: normal;
-}
+  font-family: ${ui.stack} !important;
+  font-variation-settings: ${ui.variationSettings};
+}`;
 
-/* D-0001-18 — RE-DECLARED ON <body>, AND IT HAS TO BE.
+  const bodyRule = `/* D-0001-18 — RE-DECLARED ON <body>, AND IT HAS TO BE.
  *
  * Codex sets this same token on BODY, measured in the probe corpus:
  *
@@ -380,10 +252,10 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
  * of sheet order. */
 .electron-dark body,
 .electron-light body {
-  --vscode-editor-font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
-}
+  --vscode-editor-font-family: ${mono.stack} !important;
+}`;
 
-/* D-0001-19 — THE TERMINAL IS xterm.js, AND NO TOKEN CAN REACH IT.
+  const xtermRule = `/* D-0001-19 — THE TERMINAL IS xterm.js, AND NO TOKEN CAN REACH IT.
  *
  * Measured in the running app 2026-08-02, three identical samples:
  *
@@ -426,10 +298,10 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
 .electron-light .xterm-rows,
 .electron-dark .xterm-char-measure-element,
 .electron-light .xterm-char-measure-element {
-  font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
-}
+  font-family: ${mono.stack} !important;
+}`;
 
-/* DISPLAY — Fraunces, on Codex's ten authored heading classes.
+  const headingRule = `/* DISPLAY — Fraunces, on Codex's ten authored heading classes.
  *
  * These are global, semantic, hand-written class names, not build-hashed CSS
  * module names, which makes them the same grade of hook as 'pre, code, kbd,
@@ -442,22 +314,38 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
  * font-optical-sizing lets the browser drive it from the rendered size, which is
  * what a display face is for. The old rule pinned 'opsz' 14 because Fraunces was
  * doing double duty as the UI face; that constraint is gone with the split. */
-.electron-dark :is(.heading-2xl, .heading-3xl, .heading-4xl, .heading-xl, .heading-lg,
-                   .heading-base, .heading-sm, .heading-xs, .heading-dialog, .heading-subsection),
-.electron-light :is(.heading-2xl, .heading-3xl, .heading-4xl, .heading-xl, .heading-lg,
-                    .heading-base, .heading-sm, .heading-xs, .heading-dialog, .heading-subsection) {
-  font-family: 'Fraunces', Georgia, serif !important;
-  font-optical-sizing: auto;
-  font-variation-settings: 'SOFT' 30, 'WONK' 0;
-}
+${headingSelector(ROOT_CLASSES.dark, HEADING_CLASSES)},
+${headingSelector(ROOT_CLASSES.light, HEADING_CLASSES)} {
+  font-family: ${display.stack} !important;
+  font-optical-sizing: ${display.opticalSizing};
+  font-variation-settings: ${display.variationSettings};
+}`;
 
-.electron-dark :is(pre, code, kbd, samp),
+  const codeRule = `.electron-dark :is(pre, code, kbd, samp),
 .electron-light :is(pre, code, kbd, samp) {
-  font-family: 'Monaspace Neon', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-variation-settings: normal;
+  font-family: ${mono.stack};
+  font-variation-settings: ${mono.variationSettings};
+}`;
+
+  return `${rootRule}
+
+${bodyRule}
+
+${xtermRule}
+
+${headingRule}
+
+${codeRule}`;
 }
 
-/*
+// ── Layer 2 — the named-hook "character pass" (D-0001-10, -13, -14) ────────
+// Entirely mechanism: decorates chrome, never a content surface, and the
+// accent is always read through the recipe's own accent token so a palette
+// regeneration — or a future recipe with a different accent token — recolours
+// this layer automatically.
+function buildLayer2Block(recipe) {
+  const accent = `var(--color-${recipe.accent.token})`;
+  return `/*
  * Layer 2 — Named-hook rules (the "character pass").
  *
  * D-0001-10 — The owner approved this treatment on 2026-08-01 by toggling it
@@ -469,7 +357,7 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
  * 152/152 contrast proof are untouched. That scoping is the whole reason this
  * layer is permitted; do not extend it onto a content surface.
  *
- * The accent is always read through var(--color-background-button-primary) so a
+ * The accent is always read through ${accent} so a
  * palette regeneration recolours this layer automatically.
  *
  * NO STRUCTURAL SELECTORS — re-derived 2026-08-01 against the running app.
@@ -498,7 +386,7 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
 /* Selection — no landmark required, so this is the layer's most durable rule. */
 .electron-dark ::selection,
 .electron-light ::selection {
-  background: color-mix(in oklab, var(--color-background-button-primary) 34%, transparent);
+  background: color-mix(in oklab, ${accent} 34%, transparent);
   color: var(--color-text-primary);
 }
 
@@ -507,7 +395,7 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
 .electron-dark,
 .electron-light {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, var(--color-background-button-primary) 45%, transparent) transparent;
+  scrollbar-color: color-mix(in oklab, ${accent} 45%, transparent) transparent;
 }
 
 /* HOOK — --codex-titlebar-tint. The app's own title-bar tint variable, read 3×
@@ -649,41 +537,59 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
   width: 2px;
   border-radius: 1px;
   transform: translateY(-50%);
-  background: var(--color-background-button-primary);
+  background: ${accent};
   pointer-events: none;
+}`;
 }
 
-/*
- * The empty-state hero (D-0001-9). See the note in emit-theme.mjs for why this
- * hook, and why an image here does not void the flat-surface contrast proof.
- *
- * Dark mode only: the hero is a night scene — a chart table under an oil lamp —
- * and has no meaning on a parchment ground. Light mode keeps the flat empty
- * state, which is a complete and correct look on its own.
- */
-.electron-dark .\\[container-name\\:home-main-content\\]:has(.heading-xl) {
+// ── Hero scrim rendering ─────────────────────────────────────────────────────
+// One [fraction, alpha] stop format across the whole pipeline: this is the
+// SAME shape tools/palette/hero-scrim.mjs solves for, so the stops a solver
+// proves are literally the stops this renders.
+function renderScrimStop([fraction, alpha]) {
+  const fractionPct = Math.round(fraction * 100);
+  if (alpha >= 1) {
+    // color-mix(in srgb, X 100%, transparent) IS X — this is not a special
+    // case, it is a correct simplification, so alpha===1 renders the surface
+    // colour directly rather than through a no-op color-mix().
+    return `var(--color-background-surface) ${fractionPct}%`;
+  }
+  const alphaPct = Math.round(alpha * 100);
+  return `color-mix(in srgb, var(--color-background-surface) ${alphaPct}%, transparent) ${fractionPct}%`;
+}
+
+function buildHeroModeRule(recipe, mode, heroB64) {
+  const stops = recipe.hero.scrim[mode];
+  const stopLines = stops.map((s, i) => {
+    const rendered = renderScrimStop(s);
+    return `      ${rendered}${i === stops.length - 1 ? '),' : ','}`;
+  });
+  const rootClass = ROOT_CLASSES[mode];
+  return `.${rootClass} .\\[container-name\\:home-main-content\\]:has(.heading-xl) {
   /* FULL BLEED, under a computed scrim — two layers, scrim first (on top).
      The image fills the panel; the scrim is what makes text over it provable. */
   background-image:
     linear-gradient(to bottom,
-      color-mix(in srgb, var(--color-background-surface) 0%, transparent) 0%,
-      color-mix(in srgb, var(--color-background-surface) 5%, transparent) 40%,
-      color-mix(in srgb, var(--color-background-surface) 25%, transparent) 55%,
-      color-mix(in srgb, var(--color-background-surface) 62%, transparent) 70%,
-      color-mix(in srgb, var(--color-background-surface) 92%, transparent) 86%,
-      var(--color-background-surface) 100%),
-    url(data:image/webp;base64,${heroB64});
+${stopLines.join('\n')}
+    url(data:${recipe.hero.mime};base64,${heroB64});
   background-size: cover, cover;
-  /* 'center', not 'top': on a tall panel cover scales by height, so nothing is
+  /* '${recipe.hero.position}', not 'top': on a tall panel cover scales by height, so nothing is
      cropped vertically and this only centres horizontally. On a SHORT panel it
      crops top and bottom evenly, which drops the lamp — the brightest part of
      the frame — instead of holding it behind the heading. 'top center' would do
      the opposite and put the worst pixels where the text is. */
-  background-position: center, center;
+  background-position: ${recipe.hero.position}, ${recipe.hero.position};
   background-repeat: no-repeat, no-repeat;
+}`;
 }
 
-/*
+function buildHeroBlock(recipe, heroB64) {
+  const rules = recipe.hero.modes.map((mode) => buildHeroModeRule(recipe, mode, heroB64));
+  return `${recipe.hero.prose}
+${rules.join('\n\n')}`;
+}
+
+const MOTION_NOTE = `/*
  * Motion — deliberately absent.
  *
  * This theme adds no animation or transition of its own, so it has nothing to
@@ -697,144 +603,217 @@ ${block('electron-light', light, synLight, 'Light — the chart room by day')}
  */
 `;
 
-writeFileSync(OUT + 'theme.css', css.replace(/\r?\n/g, '\n'));
+// ── The full stylesheet ──────────────────────────────────────────────────────
+function buildCss(recipe, { dark, light, synDark, synLight, groundHex, fontFaces, heroB64 }) {
+  const header = buildHeader(recipe, groundHex);
+  const darkBlock = tokenBlock(ROOT_CLASSES.dark, dark, synDark, recipe.voice.modeLabels.dark, recipe);
+  const lightBlock = tokenBlock(ROOT_CLASSES.light, light, synLight, recipe.voice.modeLabels.light, recipe);
+  const shapeBlock = buildShapeBlock(recipe);
+  const typographyBlock = buildTypographyBlock(recipe);
+  const layer2Block = buildLayer2Block(recipe);
+  const heroBlock = buildHeroBlock(recipe, heroB64);
 
-// ── syntax.json ──────────────────────────────────────────────────────────────
-// Our own schema, deliberately not claimed to be Pierre-compatible: the editor
-// hook is a Phase 3 question (see docs/specs/css-architecture.md § Layer 4).
-const roles = (s, p) => Object.fromEntries(
-  Object.entries(s).filter(([k]) => k !== '_surface').map(([role, hex]) => [
-    role, { color: hex, contrast: +ratio(hex, s._surface).toFixed(2) },
-  ]).concat([['_meta', { surface: s._surface, foreground: p['text-primary'] }]])
-);
+  return `${header}
 
-const syntax = {
-  name: "Captain's Cabin",
-  version: '0.1.0',
-  ground: GROUNDS[GROUND].ground,
-  minimumContrast: 4.5,
-  note: 'Every role is solved against the code surface of its own mode. Regenerate with tools/palette/emit-theme.mjs; do not hand-edit.',
-  modes: { dark: roles(synDark, dark), light: roles(synLight, light) },
-};
-writeFileSync(OUT + 'syntax.json', JSON.stringify(syntax, null, 2).replace(/\r?\n/g, '\n') + '\n');
+/*
+ * The three faces, embedded. See the Typography section below for the roles and
+ * for why embedding is a correctness requirement rather than a packaging step.
+ */
+${fontFaces}
 
-// ── manifest.json ────────────────────────────────────────────────────────────
-//
-// D-0001-21 -- manifest.json is GENERATED here, never hand-written.
-//
-// D-0001-4 gives the manifest two jobs that are facts about the emitted CSS
-// rather than package metadata: the list of structural landmarks the theme
-// depends on, and the list of assets whose bytes it embeds. A hand-maintained
-// copy of either drifts the moment someone edits a rule here and forgets the
-// manifest -- and drift in THIS file is uniquely nasty, because a stale landmark
-// list makes the injector's verification report a landmark healthy when the rule
-// that needed it is gone. That is the same silent-success failure that killed the
-// four pre-Gate-0 landmarks (docs/research/gate0-findings.md).
-//
-// So the emitter, which is the only thing that knows what it just wrote, writes
-// the manifest too -- and every landmark carries a `probe`, an exact substring of
-// the generated stylesheet, asserted below. If a rule is renamed or removed
-// without updating this list, the build FAILS rather than shipping a manifest
-// that describes a stylesheet that no longer exists.
-//
-// `selector` is what the manifest publishes for the injector to verify against
-// the live DOM; `probe` exists only for the build-time drift check. They are
-// different strings on purpose: the CSS writes each selector twice (once per
-// root theme class) and wraps some in :is(), so no single form serves both.
-const LANDMARKS = [
-  {
-    name: 'sidebar-panel',
-    selector: '.app-shell-left-panel',
-    probe: '.electron-light .app-shell-left-panel',
-    governedBy: 'D-0001-13',
-    // The only REQUIRED landmark in the theme, and it is a contrast guarantee,
-    // not an aesthetic one: Codex leaves this panel transparent on Windows, so
-    // without this rule sidebar text sits over the user's desktop wallpaper and
-    // its contrast is not merely unproven but unprovable.
-    required: true,
-  },
-  {
-    name: 'sidebar-active-row',
-    selector: '.sidebar-item[data-app-action-sidebar-thread-active="true"], .sidebar-item[aria-current="page"]',
-    probe: '.sidebar-item[aria-current="page"]::before',
-    governedBy: 'D-0001-14',
-    required: false,
-  },
-  {
-    name: 'terminal',
-    selector: '.xterm, .xterm-rows, .xterm-char-measure-element',
-    probe: '.electron-light .xterm-char-measure-element',
-    governedBy: 'D-0001-19',
-    required: false,
-  },
-  {
-    name: 'heading-display',
-    selector: '.heading-2xl, .heading-3xl, .heading-4xl, .heading-xl, .heading-lg, ' +
-      '.heading-base, .heading-sm, .heading-xs, .heading-dialog, .heading-subsection',
-    probe: '.heading-dialog, .heading-subsection)',
-    governedBy: 'D-0001-7',
-    required: false,
-  },
-  {
-    name: 'code-surfaces',
-    selector: 'pre, code, kbd, samp',
-    probe: ':is(pre, code, kbd, samp)',
-    governedBy: 'D-0001-7',
-    required: false,
-  },
-  {
-    name: 'home-hero',
-    selector: '.\\[container-name\\:home-main-content\\]:has(.heading-xl)',
-    probe: ':has(.heading-xl)',
-    governedBy: 'D-0001-9',
-    required: false,
-  },
-];
+${darkBlock}
 
-for (const l of LANDMARKS) {
-  if (!css.includes(l.probe)) {
-    throw new Error(
-      `manifest landmark '${l.name}' probe ${JSON.stringify(l.probe)} is not in the ` +
-      'emitted stylesheet. Either the rule was renamed or removed and this list is ' +
-      'stale, or the probe is wrong. Fix the list -- do not weaken the probe.'
-    );
-  }
+${lightBlock}
+
+${shapeBlock}
+
+${typographyBlock}
+
+${layer2Block}
+
+${heroBlock}
+
+${MOTION_NOTE}`;
 }
 
-const asset = (p) => ({ path: p, bytes: statSync(OUT + p).size });
+const asset = (dir, p) => ({ path: p, bytes: statSync(dir + p).size });
 
-const manifest = {
-  formatVersion: 1,
-  id: 'captains-cabin',
-  name: "Captain's Cabin",
-  version: syntax.version,
-  author: 'cchen362',
-  license: 'MIT',
-  description:
-    "A captain's chart room at night — deep navy ground, antique brass accent, " +
-    'parchment light mode carrying navy ink.',
-  // Deliberately OUR OWN app id, not a per-OS identity. The Windows MSIX package
-  // is 'OpenAI.Codex' and the macOS bundle identifier is a still-open unknown
-  // (D-0001-16); resolving the installed app is the launcher's job, per the layer
-  // rule in docs/ENGINEERING.md. A theme should not carry a platform's name.
-  targetApp: 'openai-codex-desktop',
-  // NOT semver. Codex's real version is 26.727.6591.0 -- four components, and the
-  // leading one is a year. min is inclusive, max exclusive, compared
-  // component-wise. min is '26' rather than the verified build because
-  // token-first styling is version-tolerant by design (Plan 0001 §10) and we have
-  // no evidence it breaks on an earlier 26.x; claiming a floor we never tested
-  // would be as false as claiming a ceiling we did.
-  targetVersionRange: { min: '26', max: '27' },
-  verifiedAgainst: '26.727.6591.0',
-  files: { css: 'theme.css', syntax: 'syntax.json' },
-  landmarks: LANDMARKS.map(({ probe, ...rest }) => rest),
-  assets: [
-    asset('assets/hero-empty-state.webp'),
-    ...FONTS.flatMap((f) => [asset('assets/fonts/' + f.file), asset('assets/fonts/' + f.licence)]),
-  ],
-};
-writeFileSync(OUT + 'manifest.json', JSON.stringify(manifest, null, 2).replace(/\r?\n/g, '\n') + '\n');
+// THE BUILD-TIME AUDIT REFUSAL — kept exactly as it behaved pre-M2, because it
+// is load-bearing. This throws before a single byte reaches disk if either
+// mode fails WCAG AA, which is what makes "palette values are derived, not
+// hand-picked" enforceable rather than aspirational. It stays inside this
+// GENERIC emitter, so that any theme emitted through this path is
+// structurally unable to reach disk while failing AA — it is not demoted to
+// a check a theme author is trusted to run separately.
+//
+// This refusal is ALSO the answer to "how does an audit bind to a recipe".
+// audit.mjs's CLI sweeps a registry of GROUNDS (navy and oak) — 68 checks x
+// 2 modes x 2 grounds = 272 — and 136 of those prove a ground that ships in
+// NO theme. So `272/272` is an ENGINE-level proof, not a per-theme one, and
+// a theme reusing an existing ground adds no checks to it. The per-theme
+// proof is this refusal, which audits exactly the two palettes THIS recipe
+// produces and nothing else.
+//
+// EXPORTED so it can be unit-tested directly against a synthetic failing
+// palette without touching palette-engine.mjs (both real GROUNDS entries are
+// 272/272 clean) — this is the SAME function emitTheme() calls below, not a
+// copy, so a test against it proves what the emitter itself does.
+export function assertPalettesPassAA(modes) {
+  const summary = {};
+  for (const [name, p, s] of modes) {
+    const rows = [...run(p), ...runSyntax(s)];
+    const bad = rows.filter((x) => !x.pass);
+    if (bad.length) throw new Error(`${name} mode fails AA: ${bad.map((b) => b.label).join(', ')}`);
+    summary[name] = { checks: rows.length, failed: bad.length };
+  }
+  return summary;
+}
 
-console.log('theme.css + syntax.json + manifest.json written for ground', GROUNDS[GROUND].ground);
-console.log('dark surface', dark['background-surface'], '| brass', dark['background-button-primary']);
-console.log('light surface', light['background-surface'], '| ink', light['text-primary']);
+// ── The generic emitter ──────────────────────────────────────────────────────
+//
+// ORDER OF OPERATIONS, and one deliberate improvement over the pre-M2 script:
+// nothing is written to disk until every gate has passed. Build everything in
+// memory, run the build-time audit refusal, build the CSS, assert every
+// landmark's probe against it, build syntax and manifest, and only THEN write
+// all three files. This changes zero output bytes; it just makes the emitter
+// all-or-nothing, so a stale probe or a failing palette can never leave a
+// half-emitted theme on disk the way writing theme.css before the probe
+// assertion used to.
+export function emitTheme(recipe, { outDir, assetsDir } = {}) {
+  validateRecipe(recipe);
+
+  // Resolved from this file's own location, never from a machine-specific
+  // absolute path: the emitter has to run on the packaging machine and on a
+  // collaborator's checkout, and a hardcoded C:\ path makes it silently a
+  // Windows-only tool.
+  const defaultDir = fileURLToPath(new URL(`../../themes/${recipe.id}/`, import.meta.url)).replace(/\\/g, '/');
+  const ASSETS = assetsDir ?? defaultDir;
+  const OUT = outDir ?? defaultDir;
+
+  const groundHex = GROUNDS[recipe.palette.ground].ground;
+  const dark = buildDark(groundHex);
+  const light = buildLight(groundHex);
+  const synDark = buildSyntax(dark, 'dark');
+  const synLight = buildSyntax(light, 'light');
+
+  const audit = assertPalettesPassAA([['dark', dark, synDark], ['light', light, synLight]]);
+
+  const fontFaces = buildFontFaces(recipe, ASSETS);
+  const heroB64 = readFileSync(ASSETS + recipe.hero.file).toString('base64');
+
+  const css = buildCss(recipe, { dark, light, synDark, synLight, groundHex, fontFaces, heroB64 });
+
+  // THE LANDMARK PROBE ASSERTION (D-0001-21). The probe stays PER-RECIPE —
+  // never hoisted into this emitter and never auto-derived from a selector —
+  // but the ASSERTION itself lives here, which makes it a CROSS-FILE CONTRACT
+  // rather than a same-file self-check: a rule renamed in this emitter now
+  // fails EVERY recipe's build. That is stronger than a same-file version and
+  // is the correct reading of Plan 0002's review finding #4.
+  for (const l of recipe.landmarks) {
+    if (!css.includes(l.probe)) {
+      throw new Error(
+        `manifest landmark '${l.name}' probe ${JSON.stringify(l.probe)} is not in the ` +
+        'emitted stylesheet. Either the rule was renamed or removed and this list is ' +
+        'stale, or the probe is wrong. Fix the list -- do not weaken the probe.'
+      );
+    }
+  }
+
+  // ── syntax.json ──────────────────────────────────────────────────────────
+  // Our own schema, deliberately not claimed to be Pierre-compatible: the editor
+  // hook is a Phase 3 question (see docs/specs/css-architecture.md § Layer 4).
+  const roles = (s, p) => Object.fromEntries(
+    Object.entries(s).filter(([k]) => k !== '_surface').map(([role, hex]) => [
+      role, { color: hex, contrast: +ratio(hex, s._surface).toFixed(2) },
+    ]).concat([['_meta', { surface: s._surface, foreground: p['text-primary'] }]])
+  );
+
+  const syntax = {
+    name: recipe.name,
+    version: recipe.version,
+    ground: groundHex,
+    minimumContrast: recipe.syntax.minimumContrast,
+    note: recipe.syntax.note,
+    modes: { dark: roles(synDark, dark), light: roles(synLight, light) },
+  };
+
+  // ── manifest.json ────────────────────────────────────────────────────────
+  //
+  // D-0001-21 -- manifest.json is GENERATED here, never hand-written.
+  //
+  // D-0001-4 gives the manifest two jobs that are facts about the emitted CSS
+  // rather than package metadata: the list of structural landmarks the theme
+  // depends on, and the list of assets whose bytes it embeds. A hand-maintained
+  // copy of either drifts the moment someone edits a rule here and forgets the
+  // manifest -- and drift in THIS file is uniquely nasty, because a stale landmark
+  // list makes the injector's verification report a landmark healthy when the rule
+  // that needed it is gone. That is the same silent-success failure that killed the
+  // four pre-Gate-0 landmarks (docs/research/gate0-findings.md).
+  //
+  // So the emitter, which is the only thing that knows what it just wrote, writes
+  // the manifest too. assets[] is derived from the recipe's own font/hero lists,
+  // never from a directory listing, which is exactly the property that keeps the
+  // five losing typography candidates (six, counting the superseded Monaspace
+  // Xenon) out of a shipped package.
+  const fontAssets = recipe.typography.faces.flatMap((f) => [
+    asset(ASSETS, 'assets/fonts/' + f.file),
+    asset(ASSETS, 'assets/fonts/' + f.licence),
+  ]);
+
+  const manifest = {
+    formatVersion: 1,
+    id: recipe.id,
+    name: recipe.name,
+    version: recipe.version,
+    author: recipe.author,
+    license: recipe.license,
+    description: recipe.description,
+    targetApp: recipe.targetApp,
+    targetVersionRange: recipe.targetVersionRange,
+    verifiedAgainst: recipe.verifiedAgainst,
+    files: { css: 'theme.css', syntax: 'syntax.json' },
+    landmarks: recipe.landmarks.map(({ probe, ...rest }) => rest),
+    assets: [asset(ASSETS, recipe.hero.file), ...fontAssets],
+  };
+
+  // Nothing above this line has touched disk. Every gate — recipe validation,
+  // the build-time AA refusal, the landmark probe assertion — has now passed,
+  // so the three files are written together, all-or-nothing.
+  writeFileSync(OUT + 'theme.css', css.replace(/\r?\n/g, '\n'));
+  writeFileSync(OUT + 'syntax.json', JSON.stringify(syntax, null, 2).replace(/\r?\n/g, '\n') + '\n');
+  writeFileSync(OUT + 'manifest.json', JSON.stringify(manifest, null, 2).replace(/\r?\n/g, '\n') + '\n');
+
+  return { css, syntax, manifest, audit, dark, light };
+}
+
+// ── CLI ──────────────────────────────────────────────────────────────────────
+// `node tools/palette/emit-theme.mjs` with no arguments emits Captain's
+// Cabin; an optional single argument is a recipe id, loaded from
+// ./recipes/<id>.mjs.
+async function runCli(argv) {
+  const recipeId = argv[0] ?? 'captains-cabin';
+  const recipeUrl = new URL(`./recipes/${recipeId}.mjs`, import.meta.url);
+  let recipeModule;
+  try {
+    recipeModule = await import(recipeUrl.href);
+  } catch (err) {
+    throw new Error(`emit-theme: no recipe named ${JSON.stringify(recipeId)} at tools/palette/recipes/${recipeId}.mjs (${err.message})`);
+  }
+  const recipe = recipeModule.default;
+  const result = emitTheme(recipe);
+
+  console.log('theme.css + syntax.json + manifest.json written for ground', result.syntax.ground);
+  console.log(
+    `audit — dark ${result.audit.dark.checks - result.audit.dark.failed}/${result.audit.dark.checks} pass, ` +
+    `light ${result.audit.light.checks - result.audit.light.failed}/${result.audit.light.checks} pass`
+  );
+  console.log('dark surface', result.dark['background-surface'], '| brass', result.dark['background-button-primary']);
+  console.log('light surface', result.light['background-surface'], '| ink', result.light['text-primary']);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runCli(process.argv.slice(2)).catch((err) => {
+    console.error(err.message);
+    process.exitCode = 1;
+  });
+}
