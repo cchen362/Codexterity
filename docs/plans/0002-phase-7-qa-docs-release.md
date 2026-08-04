@@ -1,6 +1,6 @@
 # Plan 0002 — Phase 7: QA, update resilience, docs, release
 
-**Status:** **OPEN, not started. Opened 2026-08-04.** This plan closes the last roadmap phase of
+**Status:** **OPEN. Opened 2026-08-04. M1 DONE 2026-08-04; M2–M6 not started.** This plan closes the last roadmap phase of
 [Plan 0001](0001-captains-cabin-architecture.md) §11. Plan 0001 stays the architecture authority;
 this plan owns only the work that turns a finished, owner-verified product into a released one.
 **Phases 1–6 are COMPLETE** (Phase 4 M1–M4 landed 2026-08-02/03; Phases 5 and 6 are satisfied by
@@ -78,8 +78,9 @@ platform branches for the launchers.
 Ordered so each one is verifiable on Windows, and so the only milestone that spends an owner
 launch (M3) runs once, with everything it must observe decided beforehand.
 
-- **M1 — the documentation truth pass.** Fix text that contradicts shipped reality. This is first
-  because every later milestone reads these files, and because the Phase 7 gate itself is wrong.
+- **M1 — the documentation truth pass.** ✅ **DONE 2026-08-04.** Fix text that contradicts shipped
+  reality. This is first because every later milestone reads these files, and because the Phase 7
+  gate itself is wrong.
 
   Exact list, each verified against live files on 2026-08-04:
   - [`docs/plans/0001-captains-cabin-architecture.md:618`](0001-captains-cabin-architecture.md) —
@@ -107,6 +108,29 @@ launch (M3) runs once, with everything it must observe decided beforehand.
   file; no claim of "verified" that has no run behind it.
 
   **Not claimed:** a docs pass proves nothing about the product.
+
+  **Outcome, 2026-08-04.** All seven listed items were still at the stated lines and all seven are
+  fixed. `git diff --check` is clean; a script resolved **all 99 relative markdown links** across
+  `DECISIONS.md`, `ENGINEERING.md` and both plans — **zero dead**. The one number that could not be
+  taken on trust was re-measured rather than copied: `npm test` was run for this milestone and
+  reported **181/181**, which is what `ENGINEERING.md` now states.
+
+  Two changes beyond the list, both the same defect class in the same edit region:
+  - `docs/ENGINEERING.md:7` described Captain's Cabin as a *"dark-wood"* aesthetic, which the same
+    file contradicts eighty lines later (D-0001-6, Phase 2: navy ground, no wood, no texture).
+  - `docs/ENGINEERING.md:9` still named Plan 0001 as the active plan.
+
+  Two judgement calls worth recording:
+  - **The `!important` amendment was annotated, never edited.** Per the "never delete an entry"
+    rule, the D-0001-1 amendment's *"no `!important` is required anywhere"* text stands where it
+    is, with a superseding note pointing at D-0001-12 and D-0001-18, plus the first row in
+    `DECISIONS.md`'s previously empty **"Superseded or hollowed-out"** table. Only that clause is
+    superseded — the amendment's actual ruling (the `executeJavaScript` style-tag API, no debug
+    port) is untouched.
+  - **Plan 0001 §12's `*(pending)*` marks on D-0001-2/3/4 were not rewritten in place**, because
+    §12 is the Phase 1 sign-off record and rewriting history there would be the same mistake as
+    deleting a decision. The status header now states they are superseded and shipped, and points
+    at `DECISIONS.md` as the current ledger.
 
 - **M2 — the recorded green baseline.** Re-run `npm test` and `node tools/palette/audit.mjs` on a
   machine that can see the installed `OpenAI.Codex` MSIX package, and record the numbers with the

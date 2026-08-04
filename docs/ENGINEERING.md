@@ -4,9 +4,9 @@
 
 ## What This Is
 
-Codexterity is a **non-destructive theming engine for OpenAI's Codex Desktop app** (Windows + macOS). It reskins the app at runtime by injecting CSS through the app's own official Electron APIs — never by modifying, patching, or re-signing Codex's files. The engine hosts installable theme packages; the first is **Captain's Cabin** (a premium dark-wood/brass/candlelight aesthetic). CLI command: `cdx`.
+Codexterity is a **non-destructive theming engine for OpenAI's Codex Desktop app** (Windows + macOS). It reskins the app at runtime by injecting CSS through the app's own official Electron APIs — never by modifying, patching, or re-signing Codex's files. The engine hosts installable theme packages; the first is **Captain's Cabin** (a premium deep-navy/brass/candlelight aesthetic — see the Design rules below; the original dark-wood brief was superseded in Phase 2). CLI command: `cdx`.
 
-Living specs: `docs/specs/` (customizable-ui-inventory, css-architecture, asset-manifest). Evidence base: `docs/research/phase1-research-findings.md`. Active plan: `docs/plans/0001-captains-cabin-architecture.md`.
+Living specs: `docs/specs/` (customizable-ui-inventory, css-architecture, asset-manifest). Evidence base: `docs/research/phase1-research-findings.md`. Active plan: `docs/plans/0002-phase-7-qa-docs-release.md`; `docs/plans/0001-captains-cabin-architecture.md` is the architecture authority and the Phase 1–4 record.
 
 ## Source-of-Truth Order
 
@@ -19,7 +19,7 @@ When documents disagree, use this order:
 5. Completed implementation plans for decision history and feature-specific detail.
 6. Open implementation plans for intended future behavior only.
 
-Do not describe planned work as shipped. Always read a plan's status header before treating it as fact. **Phases 1–3 are COMPLETE and the theme is owner-verified in the running app; Phase 4 (packaging) is in progress** — M1 (theme loader + safe-CSS validation) has landed. Phases 5–7 are planned, not built.
+Do not describe planned work as shipped. Always read a plan's status header before treating it as fact. **Roadmap Phases 1–6 are COMPLETE.** The theme is owner-verified in the running app; **Phase 4 (packaging) closed 2026-08-03 with M1–M4**, and Phases 5 and 6 are satisfied by M4 — the Windows installer is built and verified end to end from the built artifact, and the macOS installer is **built and documented unverified**, which is its finished state (D-0001-16 as amended). **Phase 7 (cross-platform QA, update resilience, docs, release) is the remaining work** and is owned by [Plan 0002](plans/0002-phase-7-qa-docs-release.md).
 
 ## Settled Decisions — how they are marked
 
@@ -110,7 +110,7 @@ Directory roles are visible from the tree (see Plan 0001 §folder-structure). Th
 
 ## Verification Expectations
 
-**The repo has a test harness as of Phase 4 M1**, and it covers the theme loader, the `.ccskin` writer, and the packer — nothing else in the repo is under test. `node:test` and `node:assert/strict`, no dependencies:
+**The repo has a test harness as of Phase 4 M1**, grown once per Phase 4 milestone. It now covers the theme loader (manifest, safe-CSS, zip reader), the `.ccskin` writer, the packer, the `cdx` CLI, and both package builders (`tests/packaging/windows.test.js`, `tests/packaging/macos.test.js`) — nine files, **181 tests**, last run green on this machine 2026-08-04. Nothing else in the repo is under test: the injector core, the launchers and the palette tooling have no unit coverage and are proven by the running app and by `audit.mjs` instead. `node:test` and `node:assert/strict`, no dependencies:
 
 ```bash
 npm test
@@ -118,7 +118,7 @@ npm test
 
 Note the script is `node --test "tests/**/*.test.js"`, an explicit glob, not `node --test tests/`. That is not a style choice: on Node v22.14.0 (this machine) a bare directory argument is resolved as a *module to run* and fails with `Cannot find module '...\tests'` before the runner starts. The glob and the bare `node --test` both work; the glob is used because it states the harness's scope instead of inferring it from the working directory.
 
-**What a green run does and does not establish.** It establishes the loader's own contract (manifest validation, the safe-CSS allowlist, zip parsing, the size cap) and, since M2, the packer's (round-trip fidelity, byte-reproducibility, and that only manifest-declared files reach a package). It establishes nothing about how the theme looks. **M1 and M2 are the only Phase 4 milestones a unit test can honestly close** — both are build-time machinery with no user-visible surface. From M3 on, `apply`/`restore` must be proven in the running app.
+**What a green run does and does not establish.** It establishes the loader's own contract (manifest validation, the safe-CSS allowlist, zip parsing, the size cap) and, since M2, the packer's (round-trip fidelity, byte-reproducibility, and that only manifest-declared files reach a package); the M3/M4 tests cover the CLI's argument and state handling and the two package builders' output structure. It establishes nothing about how the theme looks, and nothing about whether an installed package starts — see D-0001-29, where the suite was 180/180 green while the installed product could not launch at all. **M1 and M2 are the only Phase 4 milestones a unit test can honestly close** — both are build-time machinery with no user-visible surface. From M3 on, `apply`/`restore` must be proven in the running app.
 
 **Building the package.** `node tools/pack-ccskin.js` writes `dist/<id>.ccskin`. It is reproducible build output — `dist/` and `*.ccskin` are gitignored deliberately, so **never commit the binary and never "fix" the gitignore**. Regenerating `theme.css` first (`node tools/palette/emit-theme.mjs`) is what changes a package's bytes; the packer only ever copies the emitter's output verbatim.
 

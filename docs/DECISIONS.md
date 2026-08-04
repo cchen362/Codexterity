@@ -70,6 +70,18 @@ Two costs, both real, both commented at the code:
   specificity. Verified in the running app — **no `!important` is required anywhere**
   ([phase3-inventory-findings §1](research/phase3-inventory-findings.md)). A stock author rule
   marked `!important` would still win, and none currently is.
+
+  > **That last claim is SUPERSEDED by D-0001-12 — every declaration in `theme.css` now carries
+  > `!important`, and must.** The paragraph above is kept, not corrected, because its reasoning
+  > is still sound and still true *about the cascade*: an unlayered author rule does beat Codex's
+  > layered `@layer utilities` definitions. What it did not account for is a second mechanism
+  > entirely — Codex writes 67 custom properties as an **inline style on `<html>`** shortly after
+  > boot, and inline beats any non-important author rule regardless of layering. So the theme
+  > applied at `dom-ready` and was then silently reverted — measured, not inferred. This is the
+  > project's recurring lesson in its cleanest form: *winning the contest you measured does not
+  > mean you measured the contest that decides.* See **D-0001-12** in the table above, and
+  > **D-0001-18** for the same shape one level down (tokens Codex sets on `<body>`, which
+  > `!important` on `<html>` cannot win at all, because inheritance is not a specificity contest).
 - **It is a DOM node**, so the app could in principle re-render it away, where an inserted
   stylesheet could not. The stable id makes re-application idempotent, and the injector
   re-applies on `dom-ready`, `did-navigate` and `did-navigate-in-page`.
@@ -80,7 +92,7 @@ Anchor: [`injector/core/inject.js`](../injector/core/inject.js) (`applyThemeViaS
 
 | Decision | Status |
 |---|---|
-| _None yet._ | |
+| **D-0001-1 amendment (2026-08-01), the clause "no `!important` is required anywhere"** | **SUPERSEDED by D-0001-12, 2026-08-01.** That clause only — the amendment's ruling (the primary API is `executeJavaScript` style-tag injection, no debug port) stands in full. Codex writes 67 custom properties inline on `<html>`, which beats any non-important author rule, so every declaration in `theme.css` is `!important`. Text kept in place with the reasoning; see the note under the amendment. |
 
 ## Open — reopened by the owner, not yet settled
 
