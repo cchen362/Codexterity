@@ -1,6 +1,10 @@
 # Plan 0002 — Phase 7: QA, update resilience, docs, release
 
-**Status:** **OPEN. Opened 2026-08-04. M1 and M2 DONE 2026-08-04; M3–M6 not started.** M3 is next and it needs an owner launch. This plan closes the last roadmap phase of
+**Status:** **OPEN. Opened 2026-08-04. M1, M2 and M3 DONE 2026-08-04; M4–M6 not started.** M3 ran the
+full Windows round trip from the built artifact and **passed its gate** — but it found **three real
+defects, none of them fixed** (this was an OPS+QA session that changed no code). One of them,
+**D-0001-32**, makes the documented "go back to stock" path fail with an error dialog, and it must be
+resolved before M6 can release. M4 is next and now inherits all three. This plan closes the last roadmap phase of
 [Plan 0001](0001-captains-cabin-architecture.md) §11. Plan 0001 stays the architecture authority;
 this plan owns only the work that turns a finished, owner-verified product into a released one.
 **Phases 1–6 are COMPLETE** (Phase 4 M1–M4 landed 2026-08-02/03; Phases 5 and 6 are satisfied by
@@ -172,7 +176,8 @@ launch (M3) runs once, with everything it must observe decided beforehand.
   what makes that gate *checkable* at M6 rather than asserted — re-hash and compare, and note that
   only `emit-theme.mjs` may legitimately change them (the packer copies its output verbatim).
 
-- **M3 — Windows end-to-end QA from the built artifact.** The only proof that counts. Build the
+- **M3 — Windows end-to-end QA from the built artifact.** ✅ **DONE 2026-08-04** (see "The outcome"
+  below). The only proof that counts. Build the
   package the way a recipient gets it, install it, use it, remove it.
 
   Sequence, one pass: `node tools/pack-ccskin.js` → `node tools/build-windows-package.js` →
@@ -250,7 +255,208 @@ launch (M3) runs once, with everything it must observe decided beforehand.
   Codex with no injector and see whether it reproduces), not an audit of the CSS — that is exactly
   how D-0001-26 was resolved.
 
+  ### The outcome, 2026-08-04
+
+  **The round trip completed and the gate is met.** Built → installed → launched → used → light/dark
+  → restored → uninstalled → nothing residual, on this machine, from the built artifact, against
+  Codex `26.727.6591.0`. **This session changed no application code, no token value and no test**, so
+  every defect below is reported and none is fixed.
+
+  **The environment was proved capable first** (M2's rule): `Get-AppxPackage -Name OpenAI.Codex`
+  returned `OpenAI.Codex_26.727.6591.0_x64__2p2nqsd0c76g0` before anything was believed.
+
+  #### Part A — build and install (agent alone)
+
+  | | |
+  |---|---|
+  | `node tools/pack-ccskin.js` | `dist/captains-cabin.ccskin`, **681,124 bytes** |
+  | `node tools/build-windows-package.js` | `dist/Codexterity-Windows`, 19 files, 969,989 bytes |
+  | `git status --porcelain` | **empty** — build output stayed untracked, as intended |
+  | `theme.css` SHA-256 | `731CC9…4286E` — **identical to M2's baseline** |
+  | `syntax.json` SHA-256 | `36DAD6…211FEB` — **identical to M2's baseline** |
+
+  **681,124 bytes is the same figure D-0001-23 recorded** against an independent .NET zip parser.
+  Byte-reproducibility held across a rebuild on a different day, which is the whole point of pinning
+  the writer's timestamps and zlib parameters — it makes "did anything really change?" answerable.
+
+  **The prior install was removed first**, so this was a genuine clean install rather than an
+  upgrade-in-place. That also exercised `Uninstall.ps1` an extra time for free, and its four checks
+  were confirmed **independently** afterwards rather than taken from its own report.
+
+  Install ran from the extracted folder as a recipient would, **with no elevation** (verified: the
+  shell was confirmed non-Administrator via `WindowsPrincipal.IsInRole`, and the install still
+  succeeded). Post-install, pre-launch state: install root `C:\Users\<u>\Codexterity` present
+  (D-0001-29's `%USERPROFILE%` root, not `%LOCALAPPDATA%`), both shortcuts present, shortcut target
+  `bin\Codexterity.exe` (the GUI stub, D-0001-27), and `state.json` naming `captains-cabin`.
+
+  **`logs\` did not exist before the first launch.** That is deliberate evidence hygiene, and it is
+  why the log quoted below can only describe this launch: the most common way this kind of QA lies to
+  itself is reading a previous run's log.
+
+  #### Part B — the owner launch
+
+  All four questions answered from **one** start of the Start-menu shortcut, as budgeted.
+
+  | # | Result |
+  |---|---|
+  | B1 | **PASS — no console window**, no taskbar blip. D-0001-27's GUI-subsystem stub does what it was measured to do |
+  | B2 | **PASS** — themed (navy ground, brass accent), navigation and use normal |
+  | B3 | **PASS** — light and dark both themed and readable across the toggle |
+  | B4 | One observation, **since excluded by control** — see F4 below |
+
+  **What the log established** (`logs\injector.log`, 24,894 bytes, 212 lines, this launch only):
+
+  ```
+  [codexterity] theme package loaded from C:\Users\<u>\Codexterity\dist\captains-cabin.ccskin
+                (ccskin) — id=captains-cabin  475958 bytes of CSS  6 landmark(s) declared
+  [codexterity] injected OK via executeJavaScript style tag on webContents#1
+                — 475810 chars, lastChildOfHead=true
+  [codexterity]   --color-background-surface: #0E141F
+  [codexterity]   --color-text-primary: #F4EAD4
+  [codexterity]   --color-background-button-primary: #C0A454
+  [codexterity]   fonts loadable: Literata=YES  Fraunces=YES  Monaspace Neon=YES
+  ```
+
+  Counts from that launch: `theme package loaded` **1**, `preload loaded` **8**, `STARTUP FAILED` **7**,
+  `injected OK` **4**, `settled token re-check` **0**.
+
+  **The 7 "STARTUP FAILED" lines are expected and are not a defect** — `NODE_OPTIONS` is inherited by
+  every process Codex spawns, and only one is an Electron main process. The number that matters is
+  **`theme package loaded` = 1**: the seven processes that structurally cannot theme anything did not
+  pay the measured 27 ms to inflate and safe-CSS-scan the package. Phase 4 M3's dependency-ordered
+  guards are working.
+
+  **`settled token re-check` = 0 is the finding, not a detail** — see F1.
+
+  #### The settled landmark verdict — measured on a second launch, no owner time
+
+  M3's gate wants `sidebar-panel` **present**, and the owner launch could not show it (F1). This was
+  settled by relaunching with `CDX_VERIFY_AT=8000,15000,25000` — an agent-only launch, because the
+  settled check is automatic and needs nobody watching. `launch.ps1` copies the whole environment into
+  Codex's process, so the variable reaches it.
+
+  Identical verdict at all three offsets, on **webContents#1**, the main window (`app://-/index.html`):
+
+  ```
+  settled token re-check on webContents#1 (+15000ms):
+    landmark PRESENT: sidebar-panel        (1 match)  [D-0001-13]   ← the only required:true one
+    landmark PRESENT: sidebar-active-row   (1 match)  [D-0001-14]
+    landmark absent (optional, screen-dependent): terminal          [D-0001-19]
+    landmark PRESENT: heading-display      (1 match)  [D-0001-7]
+    landmark absent (optional, screen-dependent): code-surfaces     [D-0001-7]
+    landmark PRESENT: home-hero            (1 match)  [D-0001-9]
+  ```
+
+  **The gate is met:** the required landmark is present on a settled DOM in the real running app, and
+  the two absent ones are the screen-dependent pair with no terminal and no code block on screen — an
+  unrun measurement, not a negative result.
+
+  **A trap this milestone walked into and caught, worth recording because it is the project's own
+  recurring lesson turned on the QA rather than the code.** The first pass filtered the log for lines
+  containing `settled` — which matches every failure line and **no** `landmark PRESENT` line, because
+  those do not carry the word. The filtered view showed the required landmark missing everywhere and
+  looked like a serious defect. *A negative result must name its query*, and here the query was the
+  fault. F2 below survived the correction; the headline did not.
+
+  #### Part C — teardown (agent alone, plus one owner control run)
+
+  `cdx restore` cleared `state.json` **and** removed `~/.codexterity` itself, leaving nothing residual
+  (D-0001-24's promise, confirmed by `Test-Path`, not by its own output). **The relaunch after restore
+  failed — that is F3.** `Uninstall.ps1` then reported **four PASS lines**, and all four were
+  re-checked independently afterwards: install root, state directory, Start-menu shortcut and desktop
+  shortcut all gone. **Codex itself is untouched** — `Get-AppxPackage` still returns
+  `OpenAI.Codex_26.727.6591.0_x64__2p2nqsd0c76g0`, `Status: Ok`, and `~/.codex` was never touched.
+  Repo clean, no build output tracked.
+
+  ### Defects found. None fixed — this was an OPS+QA session.
+
+  **F1 — the settled landmark check never runs in the shipped product. Severity: MEDIUM.**
+  `scheduleSettledVerification` returns early unless `CDX_VERIFY_AT` is set
+  ([`injector/core/inject.js`](../../injector/core/inject.js), `verifySchedule`), and nothing in the
+  installed launch path sets it — not `Codexterity.cs`, not `cli.js`, not `launch.ps1`. So every real
+  launch logs `landmark not yet present: sidebar-panel … the settled check (CDX_VERIFY_AT) is what
+  convicts it` and **no verdict ever arrives.**
+  *Root cause:* the variable was introduced as a debugging aid; when the settled sample later became
+  the **only** check able to adjudicate a required landmark (the comment on
+  `scheduleSettledVerification` records that change), it was never promoted into the shipped path.
+  *Why it matters beyond tidiness:* this plan's own update-resilience ruling declines a version gate
+  **because** "what protects the user is the landmark report". In the shipped configuration that
+  report never reaches a verdict on the one landmark that is required.
+
+  **F2 — the required-landmark verdict is applied per-webContents, and accuses a window that cannot
+  have a sidebar. Severity: MEDIUM.** Codex opens a second window,
+  `app://-/index.html?initialRoute=%2Favatar-overlay` (`webContents#3`). The theme applies to it
+  correctly. But its settled check reports, at all three offsets:
+
+  ```
+  landmark MISSING (REQUIRED): sidebar-panel  (selector ".app-shell-left-panel" matched nothing
+    at settled +15000ms)  [D-0001-13] — REQUIRED and absent on a settled DOM. This is a real defect.
+  ```
+
+  It is not a defect. *Root cause:* `reportLandmarks` decides `required` severity from the manifest
+  alone, with no notion of whether this webContents is the main application shell. The earlier fix
+  recorded in that function's own comment corrected **when** the verdict is taken (dom-ready →
+  settled); it did not address **which windows** it applies to.
+  *F1 and F2 are two halves of one problem:* switched off, nothing is adjudicated; switched on, it
+  cries wolf on every launch. Either way the landmark report does not currently work end to end — and
+  a required alarm that always fires is the exact failure that function was written to prevent.
+
+  **F3 — after `cdx restore`, the Codexterity shortcut fails with an error dialog instead of
+  launching stock Codex. Severity: HIGH (user-visible; breaks the documented "back to stock" path).**
+  Reported by the owner from the desktop icon; reproduced deterministically by running the shortcut's
+  exact command:
+
+  ```
+  $ node %USERPROFILE%\Codexterity\injector\cli.js        # no arguments — the shortcut's command line
+  cdx: no theme is applied. Run "cdx apply <theme>" first, then "cdx" to launch it.
+  exit code: 1
+  ```
+
+  The dialog the owner saw reads *"Codex did not start cleanly (exit code 1). (No launcher log was
+  found at …\launcher.log.)"* — because the GUI stub has no console for that stderr line, and
+  `launch.ps1` never ran, so the log the stub truncates at startup stayed 0 bytes and `ReadTail`
+  returned nothing. The stub's behaviour is correct; the message is uninformative through no fault of
+  its own.
+  *Root cause:* [`injector/cli.js`](../../injector/cli.js) `cmdLaunch` treats "no theme applied" as an
+  error (`return 1`), while `cmdRestore` in the same file prints **"Cleared the active theme. Future
+  launches through Codexterity start stock Codex."** One file promises a behaviour another function in
+  it forbids. This plan's own Part C text expected the same thing the restore message does.
+  *Settled by the owner 2026-08-04 and recorded as **D-0001-32*** (see
+  [`docs/DECISIONS.md`](../DECISIONS.md)): **the icon should open plain Codex.** Not implemented here.
+  Note the fix is real work, not a one-liner — `launch.ps1` requires `-ThemePackage` today, so a
+  theme-less launch path does not yet exist.
+
+  **F4 — pasting from a code block keeps code-block formatting. NOT OURS — excluded by control.**
+  Observed by the owner in themed Codex (B4). Settled the way D-0001-26 was: Codex was launched from
+  **its own icon**, with no injector in the process at all, and **it reproduces identically**. One
+  variable changed and the behaviour did not, so the theme is excluded. Supporting but *not*
+  load-bearing: `theme.css` contains no `user-select`, no `white-space`, and exactly one
+  `pointer-events` (`none`, on a 2 px marker). **Do not re-investigate this as a theming defect.**
+
+  **F5 — `Install.ps1`'s `.DESCRIPTION` header says the payload is copied into
+  `%LOCALAPPDATA%\Codexterity`. Severity: LOW (documentation only).** The code is correct and installs
+  under `%USERPROFILE%`, with D-0001-29's full measured reasoning ~100 lines below in the same file.
+  *Root cause:* the install root was moved during Phase 4 M4 and the file's own summary was not moved
+  with it. Same defect class M1 swept for, one layer deeper — inside a code comment rather than a doc.
+
+  ### What M3 does and does not establish
+
+  **Establishes:** the built artifact installs without elevation, applies the theme, keeps Codex fully
+  usable in both modes, is confirmed attached *by the log rather than by a clean start*, has its one
+  required landmark genuinely present on a settled DOM, and removes itself completely while leaving
+  Codex untouched.
+
+  **Does not establish:** that the theme survives a Codex update (M4 simulates that), that the
+  landmark safety net reports usefully to a real user (F1/F2 say it does not), or that `restore`
+  returns a user to a working stock launch (F3 says it does not). **Nothing here is verified on
+  macOS**, and per D-0001-16 as amended that is not a gap to close.
+
 - **M4 — update resilience, proved by simulation.** Two parts, one small.
+
+  **M3 handed M4 three defects (F1, F2, F5) plus the D-0001-32 ruling (F3).** F1 and F2 are squarely
+  this milestone's subject — part (b) below proves the degradation path, and the degradation path *is*
+  the landmark report. Proving it while it is switched off in the shipped configuration would prove
+  the wrong thing, so **F1 and F2 should be fixed before (b) is written, not after.**
 
   **(a) Record the ruling.** Stamp **D-0001-31** at the `targetVersionRange` / `verifiedAgainst`
   validation in [`injector/theme-loader/manifest.js`](../../injector/theme-loader/manifest.js),
