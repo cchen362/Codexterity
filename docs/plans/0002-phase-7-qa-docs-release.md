@@ -190,6 +190,66 @@ launch (M3) runs once, with everything it must observe decided beforehand.
   **Gate:** the full round trip completes, and the injector log is quoted for the launch — a clean
   start does not by itself prove the injector attached.
 
+  ### The observation list — written 2026-08-04, BEFORE the launch
+
+  The milestone says "prepare the observation list before launching; do not launch to explore."
+  This is that list. It is split by **who has to be present**, because owner time is the scarce
+  resource and most of this milestone does not need any.
+
+  Paths are read from the code, not assumed: install root `%USERPROFILE%\Codexterity`
+  (D-0001-29 — **never** `%LOCALAPPDATA%`), state `%USERPROFILE%\.codexterity\state.json`
+  (D-0001-24), logs `%USERPROFILE%\Codexterity\logs\injector.log` and `…\launcher.log`
+  (written by the shortcut stub, D-0001-27), Start-menu shortcut `Codexterity.lnk` under
+  `[Environment]::GetFolderPath('Programs')`.
+
+  **Part A — the agent does this alone, no owner present.** Build, install, and verify everything
+  the filesystem and the logs can answer.
+
+  1. `node tools/pack-ccskin.js` → `node tools/build-windows-package.js`. Record the `.ccskin` byte
+     size and confirm it matches the packer's report. Confirm `dist/` and `*.ccskin` stay
+     untracked (`git status --porcelain` shows nothing new) — build output is gitignored on
+     purpose and must not be committed.
+  2. Install from `dist/Codexterity-Windows/` by running `Install.ps1` the way a recipient would,
+     from the extracted folder. It must need **no elevation**.
+  3. Before any launch, capture the "before" state: `Test-Path` on the install root, both
+     shortcuts, and `state.json`; and confirm `state.json` names `captains-cabin` (the installer
+     runs `cdx apply`, which only *persists* the choice — it never launches or paints anything).
+
+  **Part B — the single owner launch.** Everything below is answered from **one** start of the
+  Start-menu shortcut. Ask all of it up front; do not launch to explore.
+
+  | # | What the owner reports | Why it is on the list |
+  |---|---|---|
+  | B1 | **No console window and no taskbar blip** at any point during startup | The whole reason the shortcut targets a compiled GUI-subsystem stub (D-0001-27). A `.lnk` with `WindowStyle=7` was measured leaving a ~100–170 ms blip |
+  | B2 | Codex opens **themed** — navy ground, brass accent — and is **fully usable** (type a message, open a conversation) | "Applies" and "does not break the app" are different claims and both are required |
+  | B3 | Toggle Codex's appearance setting to **light**, then back to **dark**. Both look themed and readable | Both modes ship; the audit proves contrast arithmetic, not that the right sheet is live |
+  | B4 | Anything that looks unstyled, half-styled, or wrong | The one open-ended question. Kept last so it cannot displace the specific ones |
+
+  **What the agent measures from the same launch, needing no owner input:** quote
+  `logs\injector.log` — it must show the theme loaded, the package path, and the **six** manifest
+  landmarks with `sidebar-panel` (the only `required: true` one, D-0001-13) present. **A clean
+  start does not prove the injector attached**; the log is the only thing that does. Also confirm
+  `logs\launcher.log` is non-empty, because D-0001-28 fixed silent line loss there and the failure
+  dialog quotes it.
+
+  **Part C — teardown, agent alone.** `cdx restore` → relaunch the shortcut → Codex must come up
+  **stock** (this second launch is cheap and needs no owner; the injector log tells us what
+  happened). Then run `Uninstall.ps1` and confirm its four PASS/FAIL checks: install root gone,
+  Start-menu shortcut gone, desktop shortcut gone, `~/.codexterity` gone. Finally confirm **Codex
+  itself is untouched** — `Get-AppxPackage -Name OpenAI.Codex` still returns
+  `26.727.6591.0` and Codex launches normally from its own icon.
+
+  **Do not re-litigate on this launch** (already settled by the owner): the theme looks correct in
+  ordinary daily use, and launching from **Codex's own** icon gives **stock** Codex — expected and
+  inherent, D-0001-30. Neither is a defect and neither needs owner time.
+
+  **A trap worth naming, because this project has hit it repeatedly.** If something appears
+  missing or unstyled, the honest report names the query before the conclusion — a "NOT FOUND"
+  here has usually been a fact about the probe, not about the screen. And if the theme is
+  suspected of causing a behavioural bug, the settling move is a **stock control run** (launch
+  Codex with no injector and see whether it reproduces), not an audit of the CSS — that is exactly
+  how D-0001-26 was resolved.
+
 - **M4 — update resilience, proved by simulation.** Two parts, one small.
 
   **(a) Record the ruling.** Stamp **D-0001-31** at the `targetVersionRange` / `verifiedAgainst`
