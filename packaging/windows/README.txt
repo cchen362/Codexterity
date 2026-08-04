@@ -4,7 +4,7 @@ Codexterity for Windows — Captain's Cabin
 What this is
 ------------
 Codexterity reskins OpenAI's Codex Desktop app with the "Captain's Cabin"
-theme — a dark-wood-and-brass, chart-room aesthetic — without modifying a
+theme — a deep-navy-and-brass chart-room-at-night aesthetic — without modifying a
 single file inside Codex itself. Nothing here patches, replaces, or
 re-signs any Codex file, on this machine or any other.
 
@@ -25,7 +25,7 @@ How to install
    - copy Codexterity into your own user folder (no admin prompt — it
      never asks for one, and never needs one),
    - apply the Captain's Cabin theme,
-   - create a Start Menu shortcut named "Codex (Captain's Cabin)",
+   - create a Start Menu shortcut named "Codexterity",
    - optionally offer to add a Desktop shortcut too.
 3. Launch Codex from that new shortcut, exactly like you'd launch any
    other app. There is nothing to type, ever, after this point.
@@ -52,5 +52,5 @@ Something not working?
   rather than silently doing nothing. It will name the problem (for
   example, Codex not being installed, or Codex already running).
 - Codex looks unthemed after installing — make sure you launched it from
-  the "Codex (Captain's Cabin)" shortcut, not Codex's own icon. Codex's own
-  icon always launches the stock, unthemed app.
+  the "Codexterity" shortcut, not Codex's own icon. Codex's own icon always
+  launches the stock, unthemed app.

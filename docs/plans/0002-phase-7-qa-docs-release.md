@@ -1,6 +1,10 @@
 # Plan 0002 — Phase 7: QA, update resilience, docs, release
 
-**Status:** **OPEN. Opened 2026-08-04. M1, M2, M3 and M4 DONE 2026-08-04; M5 and M6 remain, and are scoped to run as ONE session (see the note above M5).** M3 ran
+**Status:** **CLOSED. Opened 2026-08-04, closed 2026-08-05 at tag `v0.1.0`. All six milestones DONE —
+M1–M4 on 2026-08-04, M5 and M6 as one session across the night of 2026-08-04/05.** Phase 7 is
+complete, and with it every roadmap phase of Plan 0001. Final numbers, re-measured against the tagged
+tree: `npm test` **196/196**, `audit.mjs` **272/272**, `theme.css` and `syntax.json` byte-identical to
+M2's baseline. Release notes: [`docs/releases/v0.1.0.md`](../releases/v0.1.0.md). M3 ran
 the full Windows round trip from the built artifact, **passed its gate**, and found **three real
 defects (F1, F2, F3) plus one documentation defect (F5)**; the QA pass was recorded first, unchanged,
 in commit `226a40e`, and all four are fixed and verified in the running app. **M4 then stamped
@@ -8,12 +12,12 @@ D-0001-31 (the manifest's version range is declarative metadata and is deliberat
 and proved the degradation path** — a theme with all six landmark selectors broken was loaded into
 the real running app, which stayed fully functional and fully themed while naming every missing
 landmark and still convicting the required one on the main window. Suite **196/196**,
-`audit.mjs` **272/272**, `theme.css`/`syntax.json` still byte-identical to M2's baseline. M5 is next.
-This plan closes the last roadmap phase of
+**M5 then added the five missing user-facing sections to the README, each of its commands run once as
+written, and M6 tagged `v0.1.0`.** This plan closes the last roadmap phase of
 [Plan 0001](0001-captains-cabin-architecture.md) §11. Plan 0001 stays the architecture authority;
 this plan owns only the work that turns a finished, owner-verified product into a released one.
 **Phases 1–6 are COMPLETE** (Phase 4 M1–M4 landed 2026-08-02/03; Phases 5 and 6 are satisfied by
-M4). The numbers above were taken on this machine on 2026-08-04 against installed Codex
+M4). The numbers above were taken on this machine on 2026-08-04/05 against installed Codex
 `OpenAI.Codex_26.727.6591.0_x64`; the suite was 181 when this plan opened and is 196 after M4's
 tests. **Confirm `Get-AppxPackage -Name OpenAI.Codex` returns the package before believing any test
 count** — a shell that cannot see it reports 150 passed / 31 failed where the 31 never ran, which is
@@ -667,7 +671,7 @@ launch (M3) runs once, with everything it must observe decided beforehand.
      Codex. This is expected and inherent, and it is the single most likely "why is my theme gone?"
      question a user will have.
 
-- **M5 — user-facing documentation.** Keep the root [`README.md`](../../README.md) lean and add
+- **M5 — user-facing documentation.** ✅ **DONE 2026-08-05** (see "The outcome" below). Keep the root [`README.md`](../../README.md) lean and add
   what a user actually needs: install, launch, switch back to stock, uninstall, and **what to
   expect when Codex updates** (the theme keeps applying; if a surface looks unstyled, the injector
   log names the landmark that stopped matching). State plainly that macOS is built and unverified.
@@ -675,7 +679,62 @@ launch (M3) runs once, with everything it must observe decided beforehand.
 
   **Gate:** every command in the README is run once, as written, and produces what the README says.
 
-- **M6 — release.** Set a version, tag it, and write release notes that separate **verified** from
+  ### The outcome, 2026-08-05
+
+  **All five gaps are filled and the gate is met — every command in the README was run once, as
+  written, on this machine, and produced what the README says it does.** Four new sections were added
+  and one paragraph inserted into the existing Windows section; nothing was restructured, nothing was
+  removed, and no engineering guidance moved into the README.
+
+  | README command | Run | Result |
+  |---|---|---|
+  | `npm test` | yes | **196/196 pass**, 0 fail |
+  | `node tools/palette/audit.mjs` | yes | **272/272 pass** |
+  | `node "$env:USERPROFILE\Codexterity\injector\cli.js" restore` | yes | exit 0; printed the sentence the README quotes; `state.json` **and** `~/.codexterity` both gone (`Test-Path` false) |
+  | `node "$env:USERPROFILE\Codexterity\injector\cli.js" apply captains-cabin` | yes | exit 0; state rewritten naming `captains-cabin`; printed its own "this does not launch or repaint" warning |
+  | `powershell -ExecutionPolicy Bypass -File Uninstall.ps1` | yes | **four `PASS` lines**, all four re-checked independently afterwards; Codex still `26.727.6591.0`, `~/.codex` untouched |
+  | `Get-Content …\logs\injector.log -Tail 40 -Encoding UTF8` | yes | 266-line log from a single launch; the theming record the README describes |
+  | `Get-Content …\logs\launcher.log -Tail 40 -Encoding UTF8` | yes | 133,525 bytes from the same launch |
+
+  **The uninstall was a real teardown, not a dry run.** Codex was quit, `Uninstall.ps1` was run from
+  the freshly built `dist/Codexterity-Windows`, removal was verified independently, and Codexterity
+  was then reinstalled with `-NoDesktop` (the owner's Start-menu-only setup) and **launched**, leaving
+  the machine themed and running as it was found. That launch also re-confirmed the installed build on
+  its own log: `theme package loaded` 1, `injected OK` 4, **zero** probe failures, all three fonts
+  loadable, and the settled verdict on the main window reporting `landmark PRESENT: sidebar-panel` —
+  the only `required: true` one.
+
+  **Two corrections the drafting turned up, both the same class: a documented command a user cannot
+  actually run.**
+
+  - **`cdx` is not a command on this machine and the README must not pretend otherwise.** `package.json`
+    declares a `cdx` bin, but the repo is `private` and the Windows installer copies a payload rather
+    than linking anything onto `PATH` — `Get-Command cdx` finds nothing. Every README instruction
+    therefore spells the CLI out as `node "$env:USERPROFILE\Codexterity\injector\cli.js" <verb>`. The
+    plan's own prose (and the CLI's own output) says "run `cdx restore`", which is right as a name and
+    wrong as a command line.
+  - **`Get-Content` needs `-Encoding UTF8` here.** The injector writes UTF-8; Windows PowerShell 5.1
+    reads as ANSI by default, so every em-dash in the log renders as `â€"`. Measured both ways before
+    the flag went into the README.
+
+  **One defect found and fixed outside the listed five, in the file M5 is about.**
+  `packaging/windows/README.txt` — the user-facing text that ships **inside the Windows package** —
+  told recipients to look for a Start-menu shortcut named **"Codex (Captain's Cabin)"**, twice,
+  including in the troubleshooting line for *"Codex looks unthemed"*. `Install.ps1` has created a
+  shortcut named **"Codexterity"** since Phase 4 M4 (its `$ShortcutName` default, which
+  `tests/packaging/windows.test.js` pins against `Uninstall.ps1`'s). So the one instruction a confused
+  user follows named a thing that does not exist. The same file also still described the theme as
+  *"dark-wood-and-brass"*, the Phase 2 contradiction M1 swept for elsewhere. Both fixed, and the
+  Windows package rebuilt so the shipped copy carries the correction.
+
+  **One claim in the README rests on M3's recorded evidence rather than a fresh run**, and is flagged
+  rather than quietly inherited: *"the Codexterity shortcut keeps working after restore — it simply
+  starts plain Codex."* That is D-0001-32, verified in the running app during M3's fix pass (the
+  shortcut's exact command line launched stock Codex and exited 0, with no injector log written at
+  all). This session ran `restore` and confirmed its output and its filesystem effect, but did not
+  re-launch the shortcut in the theme-less state.
+
+- **M6 — release.** ✅ **DONE 2026-08-05** (see "The outcome" below). Set a version, tag it, and write release notes that separate **verified** from
   **built but unverified**. List the artifacts and how to rebuild them
   (`node tools/pack-ccskin.js`, `node tools/build-windows-package.js`,
   `node packaging/macos/build-macos-package.js`). Build output stays gitignored — **do not commit
@@ -698,6 +757,48 @@ launch (M3) runs once, with everything it must observe decided beforehand.
     treated as a reproducibility failure.
   - **Bumping the theme version is optional.** The simplest correct release tags the tree as it
     stands, with both numbers left at `0.1.0`.
+
+  ### The outcome, 2026-08-05
+
+  **Tagged `v0.1.0` — an annotated tag, the repository's first.** Release notes:
+  [`docs/releases/v0.1.0.md`](../releases/v0.1.0.md).
+
+  **Neither version number was bumped, and that was the deliberate choice the trap above describes.**
+  `package.json` stays `0.1.0` and the theme's generated `manifest.json` stays `0.1.0`. Nothing was
+  hand-edited in `manifest.json`, `emit-theme.mjs` was not touched, and `emit-theme.mjs` was not
+  re-run — so `theme.css` and `syntax.json` could not move, and the `.ccskin` stayed at **681,124
+  bytes**, still the figure D-0001-23 recorded against an independent zip parser. A version bump would
+  have bought a different number and no new information.
+
+  **The numbers, re-measured on the exact tree this tag points at** (`dist/` is untracked, so the
+  working tree and the tagged commit are byte-identical in everything measured):
+
+  | | |
+  |---|---|
+  | `npm test` | **196/196 pass**, 0 fail, 0 skipped |
+  | `node tools/palette/audit.mjs` | **272/272 pass** |
+  | `theme.css` SHA-256 | `731CC9…4286E` — identical to M2's baseline |
+  | `syntax.json` SHA-256 | `36DAD6…211FEB` — identical to M2's baseline |
+  | Codex | `OpenAI.Codex_26.727.6591.0_x64__2p2nqsd0c76g0` |
+
+  **The environment was proved capable first**, per M2's rule: `Get-AppxPackage -Name OpenAI.Codex`
+  returned the package before any count was believed.
+
+  **All three build commands were run this session and their outputs measured**, so the release notes
+  quote sizes rather than asserting the commands work: `node tools/pack-ccskin.js` → 681,124 bytes;
+  `node tools/build-windows-package.js` → 20 files, 983,258 bytes; `node
+  packaging/macos/build-macos-package.js` → 17 files, 911,958 bytes. The macOS builder **runs on
+  Windows by design** — a `.app` is a directory tree, and the parts that genuinely need macOS
+  (ad-hoc codesigning, the `.dmg`) live in `build-dmg.sh`, which has never been run at all. That
+  distinction is stated in the notes rather than blurred into "macOS package builds fine".
+  `git status --porcelain` showed no build output at any point: `dist/` and `*.ccskin` stayed
+  untracked, and nothing was committed that a rebuild produces.
+
+  **What the notes deliberately do NOT claim.** That the theme has survived a real Codex update —
+  M4 simulated the failure mode because the installed version cannot be moved on demand, and the notes
+  say exactly that. That anything works on macOS — the package is listed under **"Built but
+  unverified"** with the `.dmg` step marked never-run, which is its finished state under D-0001-16 as
+  amended, not a caveat and not an open task.
 
 ---
 
