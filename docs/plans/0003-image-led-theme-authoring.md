@@ -207,6 +207,21 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   **byte-identical** to `731CC9…4286E` and `36DAD6…211FEB`, and `audit.mjs` stays 272/272. This gate
   is the whole point of the milestone: generalisation is not permission to redesign the shipped theme.
 
+  **Two corrections to this gate, measured during M1 — read before starting M2:**
+
+  - **The emitter writes THREE tracked files, not two.** `manifest.json` is emitted alongside
+    `theme.css` and `syntax.json`, is tracked in git, and is equally capable of silently changing —
+    it carries the landmark list and the asset byte counts (D-0001-21). Its digest at this point is
+    SHA-256 **`0E44FF6D00FEFE2A4274DDFF05F1F94F8DD16AC200C3EA9736039BABBDAD5DB5`**. The gate covers
+    all three, and a refactor that keeps the stylesheet identical while quietly reshaping the
+    manifest has still failed.
+  - **`audit.mjs` is a BUILD-TIME REFUSAL inside the emitter, not merely a separate script.**
+    `emit-theme.mjs` imports `run`/`runSyntax` and **throws before writing a byte** if either mode
+    fails AA (its lines 19–22). That is the mechanism that makes "palette values are derived, not
+    hand-picked" enforceable rather than aspirational, and a generic emitter must keep it: any theme
+    the new path emits must be unable to reach disk while failing AA. Do not demote it to a
+    post-hoc check the author is trusted to run.
+
 - **M3 — the recommender: an image in, recipe inputs out.** The pipeline step the owner asked for.
   Given a hero, propose the palette inputs that suit it — ground hue and chroma per mode, accent
   hue — and run them through `palette-engine.mjs` unchanged so every value is still solved for WCAG AA.
