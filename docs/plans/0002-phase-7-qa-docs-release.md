@@ -1,6 +1,6 @@
 # Plan 0002 — Phase 7: QA, update resilience, docs, release
 
-**Status:** **OPEN. Opened 2026-08-04. M1 DONE 2026-08-04; M2–M6 not started.** This plan closes the last roadmap phase of
+**Status:** **OPEN. Opened 2026-08-04. M1 and M2 DONE 2026-08-04; M3–M6 not started.** M3 is next and it needs an owner launch. This plan closes the last roadmap phase of
 [Plan 0001](0001-captains-cabin-architecture.md) §11. Plan 0001 stays the architecture authority;
 this plan owns only the work that turns a finished, owner-verified product into a released one.
 **Phases 1–6 are COMPLETE** (Phase 4 M1–M4 landed 2026-08-02/03; Phases 5 and 6 are satisfied by
@@ -132,7 +132,8 @@ launch (M3) runs once, with everything it must observe decided beforehand.
     deleting a decision. The status header now states they are superseded and shipped, and points
     at `DECISIONS.md` as the current ledger.
 
-- **M2 — the recorded green baseline.** Re-run `npm test` and `node tools/palette/audit.mjs` on a
+- **M2 — the recorded green baseline.** ✅ **DONE 2026-08-04** (see "The baseline" below). Re-run
+  `npm test` and `node tools/palette/audit.mjs` on a
   machine that can see the installed `OpenAI.Codex` MSIX package, and record the numbers with the
   Codex version they were taken against.
 
@@ -146,6 +147,30 @@ launch (M3) runs once, with everything it must observe decided beforehand.
 
   **Gate:** 181/181 and 272/272 recorded here with the host version, and re-run once more after
   M4, since M4 is the only milestone that adds code.
+
+  ### The baseline, taken 2026-08-04
+
+  | | |
+  |---|---|
+  | `npm test` | **181/181 pass**, 0 fail, 0 skipped, 0 todo (~0.93 s) |
+  | `node tools/palette/audit.mjs` | **272/272 pass** — navy/dark 68, navy/light 68, oak/dark 68, oak/light 68 |
+  | Codex package | `OpenAI.Codex_26.727.6591.0_x64__2p2nqsd0c76g0` (version `26.727.6591.0`) |
+  | Node | v22.14.0, Windows 11 Pro 26200 |
+  | Tree | `48caa35`, `themes/` clean against HEAD |
+  | `theme.css` SHA-256 | `731CC9CA073220A724ABE92B7C764E35DEEE0314066D6C96F88927049754286E` |
+  | `syntax.json` SHA-256 | `36DAD638BD053F6E246B77C14FDF5D27ADB36234E5082EC18BC2DDC1FC211FEB` |
+
+  **The environment was proved capable before the numbers were believed**, which is the entire
+  point of this milestone: `Get-AppxPackage -Name OpenAI.Codex` returned the package above, so the
+  MSIX is visible to this shell and `tests/packaging/windows.test.js`'s suite-level `before()` hook
+  can resolve Codex through `tools/make-ico.mjs`. A run that cannot do that reports **150 passed /
+  31 failed** and the 31 never executed — **that is an unusable measurement, not a regression.**
+  Check the package is visible *first*; a bare test count carries no evidence of which case it is.
+
+  **The two hashes are not decoration.** This plan's own constraint is that `theme.css` and
+  `syntax.json` are byte-identical at the end of Phase 7. Recording the digests at the baseline is
+  what makes that gate *checkable* at M6 rather than asserted — re-hash and compare, and note that
+  only `emit-theme.mjs` may legitimately change them (the packer copies its output verbatim).
 
 - **M3 — Windows end-to-end QA from the built artifact.** The only proof that counts. Build the
   package the way a recipient gets it, install it, use it, remove it.
