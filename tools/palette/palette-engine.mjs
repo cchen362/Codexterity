@@ -55,12 +55,22 @@ export function oklchToHex({ L, C, H }) {
 }
 
 // ── WCAG ─────────────────────────────────────────────────────────────────────
+// The relative-luminance formula lives here ONCE, taking a byte triple. `luminance(hex)`
+// and hero-scrim.mjs's pixel-domain callers both funnel through this rather than each
+// carrying their own copy of the coefficients.
+export function luminanceRgb([r, g, b]) {
+  const [R, G, B] = [r, g, b].map((v) => fInv(v / 255));
+  return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+}
 export function luminance(hex) {
-  const [r, g, b] = hexToRgb(hex).map((v) => fInv(v / 255));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminanceRgb(hexToRgb(hex));
 }
 export function ratio(a, b) {
   const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+export function ratioRgb(a, b) {
+  const [x, y] = [luminanceRgb(a), luminanceRgb(b)].sort((p, q) => q - p);
   return (x + 0.05) / (y + 0.05);
 }
 

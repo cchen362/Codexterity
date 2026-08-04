@@ -1,3 +1,10 @@
+# Phase 3 reference implementation — kept as the historical record of how the
+# shipped Captain's Cabin scrim (milder B, 5.99:1) was first solved. The LIVE
+# instrument is tools/palette/hero-scrim.mjs (Node, zero dependencies, per the
+# repo's D-0001-20 dependency rule); this script needs Python + Pillow, which
+# the repo does not otherwise use anywhere else. The first evaluate() row below
+# used to be labelled 'current (shipped calc)' — that label was stale, since
+# that candidate was never shipped. What actually ships is milder B at 5.99:1.
 from PIL import Image
 im = Image.open('themes/captains-cabin/assets/hero-empty-state.webp').convert('RGB')
 W, H = im.size
@@ -31,7 +38,7 @@ def evaluate(stops, label):
           % (label, worst[0], worst[1]*100, visible*100, 'OK' if worst[0]>=4.5 else 'FAILS'))
     return worst[0]
 
-evaluate([(0,0),(.30,.10),(.45,.45),(.58,.86),(.68,1),(1,1)],       'current (shipped calc)')
+evaluate([(0,0),(.30,.10),(.45,.45),(.58,.86),(.68,1),(1,1)],       'earlier attempt (NOT shipped)')
 evaluate([(0,0),(.35,.06),(.50,.30),(.64,.70),(.78,.95),(1,1)],     'milder A')
 evaluate([(0,0),(.40,.05),(.55,.25),(.70,.62),(.86,.92),(1,1)],     'milder B')
 evaluate([(0,0),(.42,.04),(.58,.20),(.74,.55),(.90,.88),(1,.97)],   'milder C (most image)')

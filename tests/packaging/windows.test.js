@@ -460,6 +460,158 @@ test('decodePng() round-trips a real RGBA image through encodePng()', () => {
   assert.deepEqual(Uint8Array.prototype.slice.call(decoded.rgba), Uint8Array.prototype.slice.call(rgba));
 });
 
+// Colour type 2 (RGB, no alpha) — added to the decoder in Plan 0003 M1 for the
+// hero-image pipeline, which is the decoder's SECOND consumer alongside the
+// icon builder. The tests live here with the rest of the decoder's coverage
+// rather than beside the pipeline: the unit under test is png-decode.mjs, and
+// splitting its cases across two files is how one half later goes unmaintained.
+//
+// The encoder helper below is local because make-ico.mjs's encodePng() writes
+// colour type 6 only, and it should stay that way — the icon builder has no
+// use for a type-2 path, and adding an unused branch to a shipped tool to make
+// a test easier is the wrong trade.
+function encodeRgbPng(width, height, rgb) {
+  const stride = width * 3;
+  const raw = Buffer.alloc((stride + 1) * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * (stride + 1)] = 0; // filter type 0 (None)
+    rgb.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // colour type 2 (RGB)
+  const chunk = (type, data) => {
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0);
+    out.write(type, 4, 'ascii');
+    data.copy(out, 8);
+    out.writeUInt32BE(zlib.crc32(Buffer.concat([Buffer.from(type, 'ascii'), data])), 8 + data.length);
+    return out;
+  };
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+test('decodePng() decodes a colour-type-2 (RGB) image and expands it to opaque RGBA', () => {
+  const width = 5;
+  const height = 4;
+  const rgb = Buffer.alloc(width * height * 3);
+  for (let i = 0; i < width * height; i++) {
+    rgb[i * 3] = (i * 37) % 256;
+    rgb[i * 3 + 1] = (i * 91) % 256;
+    rgb[i * 3 + 2] = (i * 149) % 256;
+  }
+
+  const decoded = decodePng(encodeRgbPng(width, height, rgb));
+
+  assert.equal(decoded.width, width);
+  assert.equal(decoded.height, height);
+  // The decoder's contract is that it ALWAYS returns RGBA, whichever colour
+  // type came in, so neither the icon builder nor hero-scrim.mjs has to branch.
+  assert.equal(decoded.rgba.length, width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    assert.deepEqual(
+      [decoded.rgba[i * 4], decoded.rgba[i * 4 + 1], decoded.rgba[i * 4 + 2]],
+      [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]],
+      `pixel ${i} channel values`
+    );
+    assert.equal(decoded.rgba[i * 4 + 3], 255, `pixel ${i} alpha is opaque`);
+  }
+});
+
+test('decodePng() applies the Sub/Paeth filters at a THREE-byte pixel stride on colour type 2', () => {
+  // The trap this closes: PNG's Sub/Average/Paeth predictors reference "the
+  // pixel to the left", which is bytes-per-pixel bytes back — 3 here, not 4.
+  // A decoder that kept the RGBA constant would still produce a full-size
+  // buffer of plausible-looking garbage rather than throwing, so the only way
+  // to catch it is to decode filtered rows and compare actual values.
+  const width = 6;
+  const height = 4;
+  const rgb = Buffer.alloc(width * height * 3);
+  for (let i = 0; i < rgb.length; i++) rgb[i] = (i * 53 + 11) % 256;
+
+  const stride = width * 3;
+  const raw = Buffer.alloc((stride + 1) * height);
+  const filtersUsed = [1, 4, 2, 3]; // Sub, Paeth, Up, Average — one per row
+  for (let y = 0; y < height; y++) {
+    const filterType = filtersUsed[y];
+    raw[y * (stride + 1)] = filterType;
+    for (let x = 0; x < stride; x++) {
+      const cur = rgb[y * stride + x];
+      const a = x >= 3 ? rgb[y * stride + x - 3] : 0;
+      const b = y > 0 ? rgb[(y - 1) * stride + x] : 0;
+      const c = (x >= 3 && y > 0) ? rgb[(y - 1) * stride + x - 3] : 0;
+      let predictor;
+      switch (filterType) {
+        case 1: predictor = a; break;
+        case 2: predictor = b; break;
+        case 3: predictor = Math.floor((a + b) / 2); break;
+        case 4: {
+          const p = a + b - c;
+          const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+          predictor = (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+          break;
+        }
+        default: predictor = 0;
+      }
+      raw[y * (stride + 1) + 1 + x] = (cur - predictor) & 0xff;
+    }
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const chunk = (type, data) => {
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0);
+    out.write(type, 4, 'ascii');
+    data.copy(out, 8);
+    out.writeUInt32BE(zlib.crc32(Buffer.concat([Buffer.from(type, 'ascii'), data])), 8 + data.length);
+    return out;
+  };
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+
+  const decoded = decodePng(png);
+  for (let i = 0; i < width * height; i++) {
+    assert.deepEqual(
+      [decoded.rgba[i * 4], decoded.rgba[i * 4 + 1], decoded.rgba[i * 4 + 2]],
+      [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]],
+      `pixel ${i} survived filtered round-trip`
+    );
+  }
+});
+
+test('decodePng() reports the colour type it actually got when a type-2 stream is truncated', () => {
+  const width = 4;
+  const height = 3;
+  const png = encodeRgbPng(width, height, Buffer.alloc(width * height * 3, 0x40));
+  // Re-declare a larger height so the inflated data no longer matches the
+  // expected size; the message must name RGB, not RGBA, or a future reader
+  // debugging a hero image is sent looking for a channel the file never had.
+  const mutated = Buffer.from(png);
+  mutated.writeUInt32BE(height + 1, 8 + 8 + 4);
+  const ihdrLen = mutated.readUInt32BE(8);
+  mutated.writeUInt32BE(
+    zlib.crc32(mutated.subarray(12, 12 + 4 + ihdrLen)),
+    12 + 4 + ihdrLen
+  );
+
+  assert.throws(() => decodePng(mutated), /8-bit RGB image/);
+});
+
 test('decodePng() decodes correctly when the compressed data is split across MULTIPLE IDAT chunks', () => {
   // The real Codex asset carries its zlib stream split across two IDAT
   // chunks (8192 + 982 bytes) -- a decoder that inflates only the first
@@ -541,7 +693,13 @@ test('decodePng() throws BY NAME on an unsupported colour type', () => {
   const png = encodePng(size, size, Buffer.alloc(size * size * 4, 0x80));
   const mutated = Buffer.from(png);
   const ihdrDataStart = 8 + 8;
-  mutated[ihdrDataStart + 9] = 2; // colour type 2 (RGB, no alpha), not 6
+  // Colour type 3 (palette). This test used to mutate to colour type 2, but
+  // type 2 (RGB, no alpha) became SUPPORTED in Plan 0003 M1 — hero photographs
+  // are exported without an alpha channel. Palette is still refused, and this
+  // test is re-aimed at it rather than deleted: the claim being proved is that
+  // an unsupported colour type fails BY NAME, and that claim still needs a
+  // genuinely unsupported type to prove it against.
+  mutated[ihdrDataStart + 9] = 3;
   const ihdrLen = mutated.readUInt32BE(8);
   const body = mutated.subarray(12, 12 + 4 + ihdrLen);
   const crc = zlib.crc32(body);

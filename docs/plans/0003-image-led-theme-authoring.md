@@ -1,10 +1,12 @@
 # Plan 0003 — Image-led theme authoring: the hero-to-palette pipeline
 
-**Status:** **OPEN. Opened 2026-08-05, no milestone started.** This is the first plan of the post-Phase-7
-era; [Plan 0002](0002-phase-7-qa-docs-release.md) closed the roadmap at tag `v0.1.0` and is the
-release baseline this plan builds on. Nothing here is implemented. Numbers to beat, measured at the
-tag: `npm test` **196/196**, `node tools/palette/audit.mjs` **272/272**,
-`themes/captains-cabin/theme.css` SHA-256 `731CC9…4286E`, `syntax.json` `36DAD6…211FEB`.
+**Status:** **OPEN. Opened 2026-08-05. M1 DONE (2026-08-05); M2–M5 not started.** This is the first
+plan of the post-Phase-7 era; [Plan 0002](0002-phase-7-qa-docs-release.md) closed the roadmap at tag
+`v0.1.0` and is the release baseline this plan builds on. Numbers at the tag were: `npm test`
+**196/196**, `node tools/palette/audit.mjs` **272/272**, `themes/captains-cabin/theme.css` SHA-256
+`731CC9…4286E`, `syntax.json` `36DAD6…211FEB`. **After M1, measured on this machine 2026-08-05:**
+`npm test` **230/230**, `audit.mjs` still **272/272**, and both theme digests **unchanged** — M1 moved
+no token and no theme file.
 
 **Depends on:** [Plan 0001](0001-captains-cabin-architecture.md) (architecture authority),
 [Plan 0002](0002-phase-7-qa-docs-release.md) (the release baseline and the five review findings under
@@ -108,6 +110,19 @@ it; the only Jisoo bytes present are the copy embedded inside
 finish** — and its exact PNG shape (bit depth, colour type, interlace) is unknown, so whether
 `png-decode.mjs` reads it at all is an open measurement, not an assumption.
 
+> **RESOLVED during M1, 2026-08-05.** The owner supplied the file and it now lives at
+> **`assets/hero-sources/BW_Jisoo.png`**. Measured: **1672×941, 8-bit, colour type 2 (RGB, no alpha),
+> non-interlaced, 23 `IDAT` chunks**, plus one ancillary `caBX` chunk the decoder's chunk loop already
+> skips. The decoder did **not** read it as shipped (it accepted colour type 6 only) and was extended
+> to colour type 2 — see M1's outcome below.
+>
+> **That directory is deliberately git-ignored.** Owner ruling 4 makes this theme private and local,
+> and committing the photograph would put it into git history, where removing it later means
+> rewriting history rather than deleting a file. Keeping it out is trivially reversible; putting it in
+> is not, so the asymmetry decides it. **Nothing in the repo may depend on that file existing** — the
+> tests build their own inputs, and the calibration fixture is derived from an image the repo already
+> ships. A fresh clone runs green with `assets/hero-sources/` absent.
+
 **The oak ground already exists and ships in nothing.** `audit.mjs` loops a `GROUNDS` registry of navy
 and oak: 68 checks × 2 modes × 2 grounds = 272. **136 of today's 272 checks prove a ground no theme
 uses.** Review finding #3 is the consequence: a theme that reuses an existing ground adds **no**
@@ -140,6 +155,47 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   **Gate:** re-solving Captain's Cabin's shipped hero with Captain's Cabin's ground and ink reproduces
   **5.99:1** and identifies milder B; the stale "current (shipped calc)" label is corrected; the suite
   grows and stays green. **Not claimed:** nothing about `BW_Jisoo.png` until the owner supplies it.
+
+  **DONE 2026-08-05. Gate met.** [`tools/palette/hero-scrim.mjs`](../../tools/palette/hero-scrim.mjs)
+  reproduces all four reference rows exactly — 8.68 / 6.72 / **5.99** / 5.73, each at 43%, image
+  visible over 58 / 73 / **83** / 90% of the panel — and names the shipped row `milder B (SHIPPED)`.
+  The stale label is corrected in both the Node port and the Python original, which is retained as the
+  historical record with a header pointing at its replacement. `npm test` **230/230** (196 → +31
+  hero-scrim, +3 PNG decoder), `audit.mjs` 272/272, both theme digests unchanged.
+
+  **What M1 settled that the scoping did not anticipate — four measured facts:**
+
+  1. **The shipped hero cannot be decoded in Node, and this is not fixable here.** It is **lossy
+     WebP** (`VP8 ` sub-chunk, read from the container header) — a video-codec intra frame, not a
+     container quirk. A zero-dependency decoder for it is a project, not a milestone. `loadHeroImage`
+     therefore **refuses WebP by name** and points at
+     **`tests/fixtures/hero-empty-state.png`**, a PNG copy of the same image, verified **pixel-identical**
+     to the WebP, which is what the calibration actually runs against. That fixture is ~1 MB and is
+     tracked deliberately; without it the 5.99:1 gate is not reproducible from a clone.
+  2. **`BW_Jisoo.png` is colour type 2 (RGB, no alpha), 1672×941, 8-bit, non-interlaced, 23 `IDAT`
+     chunks.** The repo's decoder accepted only colour type 6 (RGBA), so M1 took option (a) and
+     **extended `png-decode.mjs` to colour type 2**, expanding to opaque RGBA on output so no caller
+     branches. Verified against an independent decoder (Pillow) at five sampled coordinates — the
+     same cross-check discipline as D-0001-23. An existing test that proved colour type 2 was
+     *refused* is re-aimed at colour type 3 (palette), which genuinely still is.
+  3. **The reference script had a latent wrong answer that a general instrument would have hit.**
+     Python's `alpha(f)` returned the **last** stop's alpha for any unbracketed fraction, so a
+     position **above** the first stop reported fully opaque where it should report fully
+     transparent. Unreachable there because all four stop sets begin at fraction 0; reachable the
+     moment a theme authors stops beginning higher. `scrimAlphaAt` clamps to the first stop instead,
+     and says why at the code. Same shape as D-0001-23: behaviour that was safe only because of its
+     inputs.
+  4. **The new hero is high-key and the shipped scrim fails on it in both modes — measured, and it is
+     M4's problem, not a defect.** `BW_Jisoo.png` has mean relative luminance **0.657** against the
+     Captain's Cabin hero's **0.025** (~27× brighter) and mean OKLCH chroma **0.001** — near-perfectly
+     neutral, which is exactly the "this image names no hue for you" signal `tonalSummary` exists to
+     report to M3. Re-solved with Captain's Cabin's own stops it lands at **1.03:1 dark** and
+     **1.02:1 light** against a 4.5:1 requirement. **The scrim must be re-solved from scratch for this
+     image**, far more aggressively, and the two modes must be solved independently. Recorded here as
+     a measurement; no stop set is proposed until M4.
+
+  **Not claimed, still:** nothing about how Deep Navy Portrait should look. M1 built the instrument
+  and pointed it at the image; every design decision remains M3's and M4's.
 
 - **M2 — the recipe-driven emitter, proved by byte-equivalence.** Split
   `tools/palette/emit-theme.mjs` into a generic emitter plus a Captain's Cabin *recipe* carrying only

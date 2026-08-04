@@ -10,6 +10,16 @@ out/
 # Per-machine launch config — holds absolute scratchpad paths, never shared
 .claude/launch.json
 
+# Owner-supplied hero source photographs (Plan 0003). Deliberately NOT tracked.
+# Owner ruling 4 on that plan makes the theme built from them private and local
+# only; committing the source would put the photograph into git history, where
+# removing it later means rewriting history rather than deleting a file. The
+# asymmetry decides it: keeping it out is trivially reversible, putting it in is
+# not. Nothing in the repo may depend on these files existing — tests build
+# their own inputs, and the calibration fixture under tests/fixtures/ is a
+# derived copy of an image the repo already ships.
+assets/hero-sources/
+
 # Scratch / temp
 scratchpad/
 *.log

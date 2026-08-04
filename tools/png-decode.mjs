@@ -8,6 +8,16 @@
  * 256x256, 8-bit depth, colour type 6 (RGBA), non-interlaced, filter
  * method 0, split across TWO `IDAT` chunks (8192 + 982 bytes).
  *
+ * GREW ONCE, for a second real input (Plan 0003 M1): colour type 2 (RGB, no
+ * alpha channel). Hero photographs are opaque, so an exporter has no reason to
+ * store an alpha channel and generally does not — `BW_Jisoo.png`, measured, is
+ * 1672x941 8-bit colour type 2 across 23 `IDAT` chunks. Only the pixel STRIDE
+ * changes (3 bytes per pixel instead of 4); the filter maths is byte-wise and
+ * identical, and the decoder still RETURNS RGBA in both cases — a type-2 image
+ * is expanded with alpha 255 on the way out — so no caller has to know or ask
+ * which shape came in. That uniform output is the point: `tools/make-ico.mjs`
+ * and `tools/palette/hero-scrim.mjs` both consume `rgba` and neither branches.
+ *
  * Every other combination is REJECTED BY NAME rather than guessed at —
  * this is not a general-purpose PNG decoder, and pretending otherwise by
  * silently reading whatever bytes show up is exactly the kind of guess
@@ -27,9 +37,16 @@ import zlib from 'node:zlib';
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+const COLOR_TYPE_RGB = 2;
 const COLOR_TYPE_RGBA = 6;
 const BIT_DEPTH_8 = 8;
 const BYTES_PER_PIXEL_RGBA8 = 4;
+
+// Source bytes per pixel, by colour type. Deliberately a lookup rather than a
+// boolean: adding greyscale (0) or palette (3) later would mean adding a real
+// entry here and a real expansion below, not flipping a flag that silently
+// makes the stride arithmetic wrong for the case nobody tested.
+const SOURCE_CHANNELS = { [COLOR_TYPE_RGB]: 3, [COLOR_TYPE_RGBA]: 4 };
 
 function paeth(a, b, c) {
   const p = a + b - c;
@@ -114,8 +131,10 @@ export function decodePng(buf) {
   if (ihdr.bitDepth !== BIT_DEPTH_8) {
     throw new Error(`png-decode: unsupported bit depth ${ihdr.bitDepth} (only 8-bit is supported)`);
   }
-  if (ihdr.colorType !== COLOR_TYPE_RGBA) {
-    throw new Error(`png-decode: unsupported colour type ${ihdr.colorType} (only colour type 6 / RGBA is supported)`);
+  if (!Object.hasOwn(SOURCE_CHANNELS, ihdr.colorType)) {
+    throw new Error(
+      `png-decode: unsupported colour type ${ihdr.colorType} (only colour type 2 / RGB and colour type 6 / RGBA are supported)`
+    );
   }
   if (ihdr.compressionMethod !== 0) {
     throw new Error(`png-decode: unsupported compression method ${ihdr.compressionMethod} (only method 0 / deflate is supported)`);
@@ -130,16 +149,23 @@ export function decodePng(buf) {
   const raw = zlib.inflateSync(Buffer.concat(idatChunks));
 
   const { width, height } = ihdr;
-  const stride = width * BYTES_PER_PIXEL_RGBA8;
+  // `channels` is the SOURCE stride unit and is what the filters operate on.
+  // PNG's Sub/Average/Paeth predictors reference "the pixel to the left", which
+  // means bytes-per-pixel bytes back — 3 on a type-2 image, 4 on type 6. Using
+  // 4 unconditionally would decode a type-2 image into plausible-looking
+  // garbage rather than failing, so the offset below is `channels`, never the
+  // RGBA constant.
+  const channels = SOURCE_CHANNELS[ihdr.colorType];
+  const stride = width * channels;
   const expectedRawLength = (stride + 1) * height;
   if (raw.length !== expectedRawLength) {
     throw new Error(
       `png-decode: decompressed size ${raw.length} does not match the expected ${expectedRawLength} ` +
-        `for a ${width}x${height} 8-bit RGBA image (corrupt or truncated file)`
+        `for a ${width}x${height} 8-bit ${channels === 4 ? 'RGBA' : 'RGB'} image (corrupt or truncated file)`
     );
   }
 
-  const rgba = Buffer.alloc(stride * height);
+  const pixels = Buffer.alloc(stride * height);
   for (let y = 0; y < height; y++) {
     const filterType = raw[y * (stride + 1)];
     const srcStart = y * (stride + 1) + 1;
@@ -147,9 +173,9 @@ export function decodePng(buf) {
     const prevRowStart = rowStart - stride;
     for (let x = 0; x < stride; x++) {
       const rawByte = raw[srcStart + x];
-      const a = x >= BYTES_PER_PIXEL_RGBA8 ? rgba[rowStart + x - BYTES_PER_PIXEL_RGBA8] : 0;
-      const b = y > 0 ? rgba[prevRowStart + x] : 0;
-      const c = (x >= BYTES_PER_PIXEL_RGBA8 && y > 0) ? rgba[prevRowStart + x - BYTES_PER_PIXEL_RGBA8] : 0;
+      const a = x >= channels ? pixels[rowStart + x - channels] : 0;
+      const b = y > 0 ? pixels[prevRowStart + x] : 0;
+      const c = (x >= channels && y > 0) ? pixels[prevRowStart + x - channels] : 0;
       let value;
       switch (filterType) {
         case 0: // None
@@ -170,9 +196,23 @@ export function decodePng(buf) {
         default:
           throw new Error(`png-decode: row ${y} declares unsupported filter type ${filterType}`);
       }
-      rgba[rowStart + x] = value;
+      pixels[rowStart + x] = value;
     }
   }
 
+  if (channels === BYTES_PER_PIXEL_RGBA8) {
+    return { width, height, rgba: pixels };
+  }
+
+  // Expand RGB to RGBA so every caller gets one shape. A type-2 PNG carries no
+  // transparency at all, so the alpha it lacks is opaque by definition — this
+  // is the format's meaning, not a default being chosen on the file's behalf.
+  const rgba = Buffer.alloc(width * height * BYTES_PER_PIXEL_RGBA8);
+  for (let p = 0, src = 0, dst = 0; p < width * height; p++, src += channels, dst += BYTES_PER_PIXEL_RGBA8) {
+    rgba[dst] = pixels[src];
+    rgba[dst + 1] = pixels[src + 1];
+    rgba[dst + 2] = pixels[src + 2];
+    rgba[dst + 3] = 255;
+  }
   return { width, height, rgba };
 }
