@@ -507,7 +507,17 @@ launch (M3) runs once, with everything it must observe decided beforehand.
   theme whose landmark selectors cannot match anything, load it, and confirm three things: Codex
   stays **fully functional**; the injector **names** each missing landmark; and a missing
   **required** landmark is reported differently from an absent optional one. Cover it in the suite,
-  and confirm it once in the running app if M3's launch can carry it without extra owner time.
+  and confirm it once in the running app.
+
+  **That confirmation needs NO owner time and must not be deferred for want of it.** M3 established
+  that an agent can drive this end of the loop alone: `Start-Process
+  "$env:USERPROFILE\Codexterity\bin\Codexterity.exe"`, wait ~25 s, and read
+  `%USERPROFILE%\Codexterity\logs\injector.log`. The settled check now fires on its own (D-0001-33),
+  so the landmark verdicts appear without setting anything. An owner is needed only to **judge how
+  something looks** — which this milestone never asks. Two cautions, both measured in M3: quit Codex
+  first (it is **`ChatGPT.exe`**, not `codex`; `launch.ps1` refuses to launch over a running instance,
+  and a 0-byte `injector.log` usually means that guard fired), and remember `cdx apply` only persists
+  the choice — it repaints nothing.
 
   **Why simulate rather than wait:** the installed Codex is in range today and its version cannot
   be moved on demand. The failure mode a future update would cause — landmarks stop matching — can
