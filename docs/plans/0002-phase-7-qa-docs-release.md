@@ -1,6 +1,6 @@
 # Plan 0002 — Phase 7: QA, update resilience, docs, release
 
-**Status:** **OPEN. Opened 2026-08-04. M1, M2, M3 and M4 DONE 2026-08-04; M5–M6 not started.** M3 ran
+**Status:** **OPEN. Opened 2026-08-04. M1, M2, M3 and M4 DONE 2026-08-04; M5 and M6 remain, and are scoped to run as ONE session (see the note above M5).** M3 ran
 the full Windows round trip from the built artifact, **passed its gate**, and found **three real
 defects (F1, F2, F3) plus one documentation defect (F5)**; the QA pass was recorded first, unchanged,
 in commit `226a40e`, and all four are fixed and verified in the running app. **M4 then stamped
@@ -644,6 +644,29 @@ launch (M3) runs once, with everything it must observe decided beforehand.
   answer for that screen, not a regression. `theme.css` is byte-identical and the landmark array has
   no effect on styling in either direction.
 
+- **M5 + M6 run as ONE session.** Scoping decision by the owner, 2026-08-04, after M4: the README
+  is already lean and largely accurate, so M5 is a short additive pass rather than a rewrite, and
+  **M5's gate and M6's overlap almost exactly** — M5 requires every README command to be run once as
+  written, M6 requires M2's numbers re-run against the tagged tree. Splitting them means running the
+  same commands twice for no extra evidence. **Run M5 to completion first, then M6**, so the tag is
+  cut over a tree whose documentation is already true; do not interleave them.
+
+  **What the README actually lacks — audited against the live file 2026-08-04, do not re-derive.**
+  The existing file is correct as far as it goes (safety-by-design, requirements, per-OS launch,
+  macOS honestly marked unverified). Five gaps, all additive:
+  1. **No way back to stock.** `cdx restore` is not mentioned anywhere — and it is now the
+     user-visible path D-0001-32 was written to fix.
+  2. **No uninstall.** `Uninstall.ps1` ships in the package and the README never names it.
+  3. **Nothing about a Codex update**, which is the whole point of Phase 7's middle: the theme keeps
+     applying, because token overrides do not depend on Codex's markup; if a surface ever looks
+     unstyled, the injector log **names the landmark that stopped matching** (proved by simulation in
+     M4).
+  4. **The logs are never located.** `%USERPROFILE%\Codexterity\logs\injector.log` and `launcher.log`
+     — needed for (3) to be actionable rather than reassuring.
+  5. **D-0001-30 is not stated for users.** Launching from **Codex's own icon** gives **stock**
+     Codex. This is expected and inherent, and it is the single most likely "why is my theme gone?"
+     question a user will have.
+
 - **M5 — user-facing documentation.** Keep the root [`README.md`](../../README.md) lean and add
   what a user actually needs: install, launch, switch back to stock, uninstall, and **what to
   expect when Codex updates** (the theme keeps applying; if a surface looks unstyled, the injector
@@ -660,6 +683,21 @@ launch (M3) runs once, with everything it must observe decided beforehand.
 
   **Gate:** the tag exists, the notes make no claim that no run supports, and M2's numbers are
   re-run once more against the tagged tree.
+
+  **The version-bump trap, measured 2026-08-04 — read this before setting a version.** There are two
+  independent version numbers and they are set in different ways:
+  - **The project's** version is `package.json:4` (`0.1.0`), a plain hand-edited field.
+  - **The theme's** version is `themes/captains-cabin/manifest.json`, which is **generated output**.
+    Its literal lives at [`tools/palette/emit-theme.mjs:713`](../../tools/palette/emit-theme.mjs).
+    **Hand-editing `manifest.json` is wrong** — the next `emit-theme.mjs` run silently reverts it,
+    and the file's own header says it is generated. Change the emitter, then regenerate.
+  - If the theme version is bumped, **re-hash `theme.css` and `syntax.json` immediately** and confirm
+    they still match M2's baseline (`731CC9…4286E`, `36DAD6…211FEB`). Only `manifest.json` may
+    change. A bumped theme version DOES change the `.ccskin` bytes, so D-0001-23's 681,124-byte
+    figure stops being the expected size — that is legitimate, but it must be re-recorded rather than
+    treated as a reproducibility failure.
+  - **Bumping the theme version is optional.** The simplest correct release tags the tree as it
+    stands, with both numbers left at `0.1.0`.
 
 ---
 
