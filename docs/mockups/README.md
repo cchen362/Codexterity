@@ -8,7 +8,7 @@ Each mockup is a self-contained HTML file — fonts embedded as data URIs, no ex
 |---|---|---|
 | [`0001-captains-cabin-palette-approval.html`](0001-captains-cabin-palette-approval.html) | 2026-07-31 | The Phase 2 approval sheet. Ground, palette, typography and the asset set. |
 | [`0002-captains-cabin-character-pass.html`](0002-captains-cabin-character-pass.html) | 2026-07-31 (built), **2026-08-01 (decided)** | Layer 2 chrome detailing. **Approved and shipped** — see below for what shipped vs what stayed a mockup-only demonstration. |
-| [`0005-jisoo-palette-directions.html`](0005-jisoo-palette-directions.html) | 2026-08-04 | Design exploration for the next portrait-led theme: four dark/light palette directions using the shipped typography roles and character treatment. No direction is approved or implemented. |
+| [`0005-jisoo-palette-directions.html`](0005-jisoo-palette-directions.html) | 2026-08-04 | Design exploration for the next portrait-led theme: four dark/light palette directions using the shipped typography roles and character treatment. **Decided 2026-08-05:** the owner chose **Deep Navy Portrait** — but *not* as this sheet renders it. Dark mode keeps the shipped navy exactly; **light mode is to be re-derived cooler**, because the shipped parchment reads too warm under a cold monochrome portrait. The other three directions are rejected. See [Plan 0003](../plans/0003-image-led-theme-authoring.md); nothing is implemented yet. |
 
 ## About `0002-captains-cabin-character-pass.html`
 

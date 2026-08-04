@@ -1,7 +1,27 @@
 # Multi-theme authoring, packaging, and switching — exploration
 
 **Date:** 2026-08-04
-**Status:** Research input for independent review. No implementation is scheduled or authorised by this document.
+**Status:** Research input. **Superseded in part on 2026-08-05 — read this note before acting on anything below.**
+
+> **Update, 2026-08-05.** This memo is a dated record and is left unedited; three things in it are now
+> out of date, and one is wrong.
+>
+> - **§7 and §8 are closed.** Phase 7 is complete — [Plan 0002](../plans/0002-phase-7-qa-docs-release.md)
+>   closed at tag `v0.1.0`. §8's caveat was acted on: the suite was re-run in an environment that can
+>   see the installed `OpenAI.Codex` package and is **196/196**, not 181.
+> - **The work IS now scheduled**, as [Plan 0003 — Image-led theme authoring](../plans/0003-image-led-theme-authoring.md),
+>   which is the authority. Plan 0003 reframes the goal on the owner's instruction: the deliverable is a
+>   **hero-image-to-palette pipeline**, with Deep Navy Portrait as its first output rather than its
+>   purpose. It also settles §9's open questions 1, 3, 6 and 7, and narrows §4: dark mode keeps the
+>   shipped navy exactly, **light mode is re-derived cooler** because the shipped parchment is too warm
+>   under a cold monochrome portrait.
+> - **§3 / the review's "no contrast instrument exists" claim is wrong.**
+>   [`tools/palette/solve-hero-scrim.py`](../../tools/palette/solve-hero-scrim.py) has been in the repo
+>   since Phase 3 and was run on 2026-08-05, reproducing the shipped 5.99:1 exactly. Its real problems
+>   are different ones — Python + Pillow, hardcoded ground/ink, dark-mode-only — and Plan 0003 records
+>   them precisely.
+> - **Distribution is settled: Deep Navy Portrait is private/local only** and is never shared, so §4's
+>   rights question (§9 q6) does not gate the work.
 **Scope:** What a second Codexterity theme actually costs after Phase 4, what remains Captain's-Cabin-specific, how multiple themes should be packaged and selected, and the current shortlisted second-theme direction.
 
 ## Verdict
