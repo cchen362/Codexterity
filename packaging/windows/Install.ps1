@@ -6,7 +6,9 @@
     Installs Codexterity for the CURRENT USER ONLY -- never elevates, never
     writes to a protected directory (no admin prompt, no UAC). Copies the
     payload built by tools/build-windows-package.js into
-    %LOCALAPPDATA%\Codexterity, applies the Captain's Cabin theme once
+    %USERPROFILE%\Codexterity -- NOT %LOCALAPPDATA%, which MSIX redirects
+    away from Codex's view; see step 3's D-0001-29 block for the
+    measurement -- applies the Captain's Cabin theme once
     (cdx apply captains-cabin), and creates a Start Menu shortcut whose
     target is the argument-free "cdx" entry point (D-0001-24/D-0001-25) via
     the GUI-subsystem stub (Codexterity.exe, D-0001-27) -- so double-

@@ -434,11 +434,18 @@ function cmdLaunch(ctx) {
     ctx.stderr(err.message + '\n');
     return 1;
   }
-  if (!state || !state.activeTheme || !state.activeTheme.source) {
-    ctx.stderr('cdx: no theme is applied. Run "cdx apply <theme>" first, then "cdx" to launch it.\n');
-    return 1;
-  }
-  const themePackage = state.activeTheme.source;
+  const hasActiveTheme = Boolean(state && state.activeTheme && state.activeTheme.source);
+  const themePackage = hasActiveTheme ? state.activeTheme.source : null;
+
+  // D-0001-32 (settled 2026-08-04, Plan 0002 M3 §F3) -- "no theme applied"
+  // is NOT a launch failure. cmdRestore (above) promises "future launches
+  // through Codexterity start stock Codex"; before this branch existed,
+  // cmdLaunch instead returned 1 with a stderr-only message that the
+  // installed shortcut's GUI-subsystem stub (packaging/windows/Codexterity.cs)
+  // has no console to show, so the user saw an opaque "did not start
+  // cleanly" dialog. The Codexterity icon is a launcher FOR CODEX
+  // (D-0001-24/30's theme-neutrality), so the owner's ruling is: fall
+  // through to a theme-less launch, never refuse.
 
   // The one irreducible platform branch in this file. It SELECTS the
   // OS-specific launcher component; it does not contain OS-specific
@@ -451,7 +458,15 @@ function cmdLaunch(ctx) {
   if (ctx.platform === 'win32') {
     const script = path.join(ctx.repoRoot, 'launcher', 'windows', 'launch.ps1');
     command = 'powershell.exe';
-    spawnArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-ThemePackage', themePackage];
+    if (hasActiveTheme) {
+      spawnArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-ThemePackage', themePackage];
+    } else {
+      ctx.stdout(
+        'cdx: no theme is applied — starting Codex unthemed. Run "cdx apply captains-cabin" ' +
+          '(then "cdx") to bring the theme back.\n'
+      );
+      spawnArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-NoTheme'];
+    }
     // D-0001-27 (Phase 4 M4) -- the log fork lives in the ENVIRONMENT, not a
     // new CLI flag: the argument-free entry point (see this file's header,
     // point 2) must stay argument-free, so a developer terminal and the
@@ -460,11 +475,25 @@ function cmdLaunch(ctx) {
     // (packaging/windows/Codexterity.cs) sets it before spawning this
     // process; an ordinary developer shell leaves it unset, and launch.ps1's
     // behaviour is then byte-for-byte what it always was (its own -LogFile
-    // parameter default is empty).
+    // parameter default is empty). This plumbing is identical on the
+    // theme-less path -- a shortcut launched with no theme applied is still
+    // the shortcut, with the same no-console problem D-0001-32 exists to fix.
     if (ctx.env && ctx.env.CDX_LAUNCHER_LOG) {
       spawnArgs.push('-LogFile', ctx.env.CDX_LAUNCHER_LOG);
     }
   } else if (ctx.platform === 'darwin') {
+    if (!hasActiveTheme) {
+      // launcher/macos/launch.sh is documented UNVERIFIED (D-0001-16 as
+      // amended) and is out of scope for D-0001-32: it has no theme-less
+      // mode today, and inventing incoherent behaviour for an unverified
+      // script is worse than refusing plainly. Name the limitation instead
+      // of pretending a theme-less macOS launch exists.
+      ctx.stderr(
+        'cdx: no theme is applied, and launcher/macos/launch.sh has no theme-less launch mode yet ' +
+          '(it is documented UNVERIFIED, D-0001-16). Run "cdx apply captains-cabin" first, then "cdx".\n'
+      );
+      return 1;
+    }
     const script = path.join(ctx.repoRoot, 'launcher', 'macos', 'launch.sh');
     command = 'bash';
     spawnArgs = [script, '--theme-package', themePackage];

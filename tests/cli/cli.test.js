@@ -388,19 +388,64 @@ test('main(["list"]) marks the active theme', () => {
 });
 
 // ---------------------------------------------------------------------
-// main(): launch requires an active theme, and never spawns Codex/PowerShell
-// in this suite -- only the "no theme applied" refusal path is exercised.
+// main(): launch with no active theme, per D-0001-32, launches Codex
+// UNTHEMED via -NoTheme rather than refusing -- it never spawns a REAL
+// Codex/PowerShell process in this suite (see makeCtxOverrides' default
+// spawnSync, which throws on an un-faked spawn).
 // ---------------------------------------------------------------------
 
-test('main([]) (bare) refuses to launch when no theme is applied', () => {
+test('main([]) (bare) launches Codex unthemed (-NoTheme) when no theme is applied, and returns the launcher exit status', () => {
   const home = tempHome();
   const repoRoot = tempRepo();
-  const { ctx, stderrLines } = makeCtxOverrides({ home, repoRoot, platform: 'win32' });
+
+  let capturedCommand = null;
+  let capturedArgs = null;
+  const fakeSpawnSync = (command, args) => {
+    capturedCommand = command;
+    capturedArgs = args;
+    return { status: 7, error: null };
+  };
+
+  const { ctx, stdoutLines } = makeCtxOverrides({ home, repoRoot, platform: 'win32', spawnSync: fakeSpawnSync });
 
   const code = main([], ctx);
 
-  assert.equal(code, 1);
-  assert.ok(stderrLines.some((line) => line.includes('no theme is applied')));
+  // The launcher's own exit status is returned verbatim -- not a hardcoded
+  // 1 for "refused" (there is no more refusal on this path).
+  assert.equal(code, 7);
+  assert.ok(stdoutLines.some((line) => line.includes('no theme is applied')));
+  assert.equal(capturedCommand, 'powershell.exe');
+  assert.ok(capturedArgs.includes('-File'));
+  assert.ok(capturedArgs.includes(path.join(repoRoot, 'launcher', 'windows', 'launch.ps1')));
+  assert.ok(capturedArgs.includes('-NoTheme'));
+  assert.ok(!capturedArgs.includes('-ThemePackage'));
+});
+
+test('main([]) (bare) with no active theme still plumbs -LogFile through when CDX_LAUNCHER_LOG is set', () => {
+  const home = tempHome();
+  const repoRoot = tempRepo();
+
+  let capturedArgs = null;
+  const fakeSpawnSync = (command, args) => {
+    capturedArgs = args;
+    return { status: 0, error: null };
+  };
+
+  const { ctx } = makeCtxOverrides({
+    home,
+    repoRoot,
+    platform: 'win32',
+    spawnSync: fakeSpawnSync,
+    env: { CDX_LAUNCHER_LOG: 'C:\\fake\\codexterity-launcher.log' },
+  });
+
+  const code = main([], ctx);
+
+  assert.equal(code, 0);
+  assert.ok(capturedArgs.includes('-NoTheme'));
+  assert.ok(!capturedArgs.includes('-ThemePackage'));
+  assert.ok(capturedArgs.includes('-LogFile'));
+  assert.ok(capturedArgs.includes('C:\\fake\\codexterity-launcher.log'));
 });
 
 test('main(["launch"]) refuses an unsupported platform', () => {

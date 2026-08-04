@@ -28,6 +28,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { URL } = require('url');
 const { runProbe } = require('./probe.js');
 const { loadTheme, ThemeLoadError } = require('../theme-loader/index.js');
 
@@ -904,8 +905,22 @@ function scheduleProbes(webContents) {
  * reach them, and reading it as a finding would be the same mistake as Gate 0's
  * invalid measurement in the opposite direction.
  *
- * Set CDX_VERIFY_AT=<ms> to take a second reading after the app has settled.
- * That is the one that tells you whether the theme reached what Codex paints.
+ * The settled check ALWAYS runs — set CDX_VERIFY_AT=<ms> only to override
+ * WHEN it samples. Unset (or empty), it takes a single reading 15000ms after
+ * dom-ready, which is the default schedule DEFAULT_VERIFY_SCHEDULE below.
+ * That default is not arbitrary: Plan 0002 M3 measured all four
+ * screen-relevant landmarks PRESENT and stable at +8000, +15000 and +25000ms
+ * on the main window, so 15000ms sits inside a window that was actually
+ * observed settled, with margin on both sides for a slower launch.
+ *
+ * This is load-bearing, not a convenience default. F1 (Plan 0002 M3): with no
+ * default, verifySchedule() returned [] for every real install — nothing in
+ * the shipped launch path (packaging/windows/Codexterity.cs, injector/cli.js,
+ * launcher/windows/launch.ps1) ever sets CDX_VERIFY_AT — so the one
+ * required:true landmark (sidebar-panel, D-0001-13) was NEVER adjudicated
+ * for a real user. Every launch logged "not yet present … the settled check
+ * (CDX_VERIFY_AT) is what convicts it" and no verdict ever arrived. The
+ * settled check must be on by default for the safety net it exists to be.
  *
  * SEVERAL offsets may be given, comma-separated, exactly as CDX_PROBE_AT
  * already accepts them. This is not symmetry for its own sake. Half of what the
@@ -918,9 +933,15 @@ function scheduleProbes(webContents) {
  * launch cover several screens, which is the difference between one owner
  * interaction and three.
  */
+const DEFAULT_VERIFY_SCHEDULE = [15000];
+
 function verifySchedule() {
   const raw = process.env.CDX_VERIFY_AT;
-  if (!raw) return [];
+  // Unset AND explicitly empty (CDX_VERIFY_AT="") both mean "use the
+  // default" — they are indistinguishable from each other in a shell, and
+  // treating either as "disabled" would silently switch off the one
+  // required-landmark safety net this project has (see F1 above).
+  if (!raw || !raw.trim()) return DEFAULT_VERIFY_SCHEDULE;
   const parsed = [];
   for (const part of String(raw).split(',')) {
     const trimmed = part.trim();
@@ -935,6 +956,11 @@ function verifySchedule() {
     }
     parsed.push(ms);
   }
+  // Deliberately NOT falling back to the default here. The caller supplied
+  // an explicit, non-empty list — if every entry in it was invalid, that is
+  // the user's typo, not an absent setting, and quietly substituting the
+  // default would hide it. The per-entry log lines above already said why
+  // each sample was dropped; an empty result here says so too.
   return parsed;
 }
 
@@ -976,6 +1002,41 @@ async function reportLandmarks(webContents, phase) {
   // third call site later cannot silently inherit the authoritative verdict
   // just by being named something the check did not anticipate.
   const settled = phase.startsWith('settled');
+
+  // D-0001-33 — a required landmark's MISSING verdict is gated on the URL of
+  // the webContents being adjudicated, not on the manifest alone. F2 (Plan
+  // 0002 M3): Codex opens a second window for `?initialRoute=%2Favatar-overlay`
+  // (an overlay, not the app shell) — the theme applies there correctly, but
+  // that window can never contain `.app-shell-left-panel`, so treating its
+  // absence as a defect logged a false "REQUIRED and absent" alarm on every
+  // healthy launch. Measured on two independent launches: the MAIN window is
+  // `app://-/index.html` with no query string; every secondary window carries
+  // an `initialRoute` query parameter.
+  //
+  // The gate is on the URL, not on the DOM (e.g. "only judge windows that
+  // contain some `.app-shell*` ancestor"), deliberately:
+  //   - A DOM-based gate is near-circular, because `.app-shell-left-panel` IS
+  //     the landmark. If Codex renamed that whole family, a DOM gate would
+  //     silently stop adjudicating and the alarm would go quiet exactly when
+  //     it was needed — the same silent-success failure that killed the four
+  //     pre-Gate-0 landmarks.
+  //   - The URL gate fails in the NOISY direction instead: if Codex changes
+  //     its routing scheme, the false alarm of today returns — visible and
+  //     recoverable, never a silent miss. That asymmetry is the whole reason
+  //     for the choice.
+  //
+  // A URL that fails to parse is treated as PRIMARY (still adjudicated) —
+  // deliberately the opposite failure mode from a missing query param, since
+  // an unparseable URL must never silently switch off the required-landmark
+  // alarm.
+  const windowUrl = webContents.getURL();
+  let isSecondaryWindow = false;
+  try {
+    isSecondaryWindow = new URL(windowUrl).searchParams.has('initialRoute');
+  } catch {
+    isSecondaryWindow = false; // unparseable URL => adjudicate as primary
+  }
+
   await reportRootEnvironment(webContents);
   try {
     const results = await webContents.executeJavaScript(buildLandmarkProbeScript(), true);
@@ -995,7 +1056,18 @@ async function reportLandmarks(webContents, phase) {
         // required landmark must be louder: it names its own severity so the
         // owner does not have to cross-reference the manifest to know whether
         // to worry.
-        if (declared.required) {
+        if (declared.required && settled && isSecondaryWindow) {
+          // D-0001-33 — this webContents carries an `initialRoute` query
+          // param, so it is a secondary/overlay window, not the app shell,
+          // and can never contain the sidebar. Informational only; naming
+          // the window's own URL is what lets the reader confirm the gate
+          // fired for the right reason instead of trusting the label.
+          log(
+            `  landmark absent (secondary window, not the app shell): ${declared.name}  ` +
+              `(selector "${declared.selector}" matched nothing at ${phase}; this window is ${windowUrl} ` +
+              `and has no app shell — not a defect)${governedBy}`
+          );
+        } else if (declared.required) {
           // A required landmark absent at dom-ready is EXPECTED, not a
           // finding — Codex has not built its shell yet. Only the settled
           // reading can convict it, so the early one says so in the line

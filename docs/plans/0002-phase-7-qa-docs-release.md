@@ -1,10 +1,12 @@
 # Plan 0002 — Phase 7: QA, update resilience, docs, release
 
 **Status:** **OPEN. Opened 2026-08-04. M1, M2 and M3 DONE 2026-08-04; M4–M6 not started.** M3 ran the
-full Windows round trip from the built artifact and **passed its gate** — but it found **three real
-defects, none of them fixed** (this was an OPS+QA session that changed no code). One of them,
-**D-0001-32**, makes the documented "go back to stock" path fail with an error dialog, and it must be
-resolved before M6 can release. M4 is next and now inherits all three. This plan closes the last roadmap phase of
+full Windows round trip from the built artifact, **passed its gate**, and found **three real defects
+(F1, F2, F3) plus one documentation defect (F5)**. The QA pass was recorded first, unchanged, in
+commit `226a40e`; **the owner then authorised the fixes in the same session and all four are now fixed
+and verified in the running app** — see "The fixes" at the end of M3. Suite **182/182**,
+`audit.mjs` **272/272**, `theme.css`/`syntax.json` still byte-identical to M2's baseline. M4 is next.
+This plan closes the last roadmap phase of
 [Plan 0001](0001-captains-cabin-architecture.md) §11. Plan 0001 stays the architecture authority;
 this plan owns only the work that turns a finished, owner-verified product into a released one.
 **Phases 1–6 are COMPLETE** (Phase 4 M1–M4 landed 2026-08-02/03; Phases 5 and 6 are satisfied by
@@ -451,12 +453,49 @@ launch (M3) runs once, with everything it must observe decided beforehand.
   returns a user to a working stock launch (F3 says it does not). **Nothing here is verified on
   macOS**, and per D-0001-16 as amended that is not a gap to close.
 
+  ### The fixes, 2026-08-04 — authorised by the owner after the QA pass was recorded
+
+  **Sequencing was deliberate: the QA record was committed FIRST and unchanged (`226a40e`), before a
+  line of code was touched.** A verification record edited after the fact to match the fix is not
+  evidence, and the two must be separable in the history.
+
+  All four are fixed and **verified in the running app**, not by a green suite:
+
+  | | Fix | Proof |
+  |---|---|---|
+  | **F1** | The settled check now runs **by default** (`DEFAULT_VERIFY_SCHEDULE = [15000]`). `CDX_VERIFY_AT` still overrides *when* it samples. **D-0001-33** | Launched with **no environment variable set at all** — the log shows `settled token re-check on webContents#1 (+15000ms)` |
+  | **F2** | The `MISSING (REQUIRED)` verdict is gated on the window's URL carrying no `initialRoute`. **D-0001-33** | Same launch: `webContents#3` now logs `landmark absent (secondary window, not the app shell)… — not a defect`, naming its own URL |
+  | **F3** | `cmdLaunch` falls through to a theme-less launch; `launch.ps1` gains `-NoTheme`. **D-0001-32** | With no theme applied, the shortcut's exact command launched stock Codex and **exited 0** (was 1). **No injector log was written at all** — the injector genuinely did not attach |
+  | **F5** | `Install.ps1`'s `.DESCRIPTION` now names `%USERPROFILE%` and points at the D-0001-29 block | Read back; `Install.ps1` parses |
+
+  Verified on the **rebuilt, reinstalled artifact**, not on the working tree. The settled verdict on
+  the main window is unchanged from the QA pass — `sidebar-panel`, `sidebar-active-row`,
+  `heading-display` and `home-hero` all **PRESENT**, `terminal` and `code-surfaces` absent with no
+  terminal or code block on screen.
+
+  **One defect was found in the fix itself, in review, and fixed before commit.** The first `-NoTheme`
+  implementation copied the parent environment and then merely *declined to add* `NODE_OPTIONS`. An
+  inherited `NODE_OPTIONS` — from a developer's shell, or another tool — would therefore have loaded
+  the preload anyway and the "unthemed" launch would have come up **silently themed**, with nothing in
+  the log to explain it. It now **removes** `NODE_OPTIONS` and `CDX_THEME_PACKAGE` from the child
+  environment. *Not adding a variable is not the same as guaranteeing its absence*, and
+  `docs/ENGINEERING.md` requires the code to make the violation impossible rather than merely avoid it.
+
+  **A QA-technique correction worth keeping: `Get-Process -Name codex` is the WRONG QUERY for "is
+  Codex running".** The Electron app's executable is **`ChatGPT.exe`** (`…\OpenAI.Codex_…\app\ChatGPT.exe`);
+  `codex` matches only some auxiliary processes. Two launches in this session were refused by
+  `launch.ps1`'s own single-instance guard while that query reported zero processes. **The guard was
+  right and the query was wrong** — and the guard is the reliable instrument, because it refuses
+  rather than handing off to a running copy and leaving the theme silently unapplied. Match on
+  `Get-Process -Name ChatGPT`, or on `$_.Path -like '*OpenAI.Codex*'`.
+
 - **M4 — update resilience, proved by simulation.** Two parts, one small.
 
-  **M3 handed M4 three defects (F1, F2, F5) plus the D-0001-32 ruling (F3).** F1 and F2 are squarely
-  this milestone's subject — part (b) below proves the degradation path, and the degradation path *is*
-  the landmark report. Proving it while it is switched off in the shipped configuration would prove
-  the wrong thing, so **F1 and F2 should be fixed before (b) is written, not after.**
+  **M3's F1 and F2 are fixed, which unblocks part (b) rather than merely preceding it.** Part (b)
+  proves the degradation path, and the degradation path *is* the landmark report. Proving it while the
+  report was switched off in the shipped configuration (F1) or crying wolf on every launch (F2) would
+  have proved the wrong thing. **The simulation in (b) must now assert the D-0001-33 gate too:** a
+  broken landmark on the MAIN window must still convict, or the fix would have bought silence.
 
   **(a) Record the ruling.** Stamp **D-0001-31** at the `targetVersionRange` / `verifiedAgainst`
   validation in [`injector/theme-loader/manifest.js`](../../injector/theme-loader/manifest.js),

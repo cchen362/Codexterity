@@ -52,6 +52,21 @@ param(
     # while themes/captains-cabin always does.
     [string]$ThemePackage,
 
+    # D-0001-32 (settled 2026-08-04) — start Codex with NO injector attached
+    # at all. This is a SWITCH, deliberately not "pass an empty
+    # -ThemePackage": an unset $ThemePackage already means "use the default
+    # theme" per its own comment above (it falls back to
+    # themes/captains-cabin), so overloading emptiness would make "launch
+    # plain" and "launch the default theme" the same value and
+    # indistinguishable from each other. Passing both -NoTheme and
+    # -ThemePackage together is a caller bug, not a preference to resolve
+    # quietly -- see the guard right after param() below. When this is set,
+    # theme-package resolution is skipped entirely and neither NODE_OPTIONS
+    # nor CDX_THEME_PACKAGE is set on the child process, so the injector
+    # preload never loads and Codex starts exactly as it would from its own
+    # icon.
+    [switch]$NoTheme,
+
     # D-0001-27 (Phase 4 M4) — the log fork. Unset (the default), this
     # script's behaviour is byte-for-byte what it was before this parameter
     # existed: every line still goes to the console via Write-Host, nothing
@@ -99,21 +114,41 @@ function Write-Info($Message) {
     Write-Log $line
 }
 
+# D-0001-32 -- a caller passing both switches has contradicted themselves
+# (one says "start with no theme", the other names one to use); fail loudly
+# rather than silently picking a winner. $PSBoundParameters, not a truthiness
+# check on $ThemePackage, because the caller may have explicitly passed an
+# empty string -- ContainsKey is the only test that means "was this argument
+# actually supplied".
+if ($NoTheme -and $PSBoundParameters.ContainsKey('ThemePackage')) {
+    Write-Fail "-NoTheme and -ThemePackage are mutually exclusive -- pass one or the other, not both."
+}
+
 # ---------------------------------------------------------------------------
 # 1. Resolve the theme package (read-only; ours, not Codex's). Accepts either
 #    a theme DIRECTORY or a .ccskin FILE -- injector/theme-loader/index.js
 #    tells them apart with statSync, never by extension, so this launcher does
 #    not need to know or guess which kind it was handed.
+#
+#    D-0001-32 -- when -NoTheme is set, this whole step is skipped: there is
+#    no package to resolve, no NODE_OPTIONS, no CDX_THEME_PACKAGE, and no
+#    injector preload loaded (step 3 and the environment block in step 4
+#    below both branch on $NoTheme too). Codex starts exactly as it would
+#    from its own icon.
 # ---------------------------------------------------------------------------
-if ([string]::IsNullOrWhiteSpace($ThemePackage)) {
-    $ThemePackage = Join-Path $PSScriptRoot '..\..\themes\captains-cabin'
+if ($NoTheme) {
+    Write-Info 'Unthemed launch (-NoTheme): no injector will be attached.'
+} else {
+    if ([string]::IsNullOrWhiteSpace($ThemePackage)) {
+        $ThemePackage = Join-Path $PSScriptRoot '..\..\themes\captains-cabin'
+    }
+    $ThemePackage = [System.IO.Path]::GetFullPath($ThemePackage)
+    if (-not (Test-Path -LiteralPath $ThemePackage -PathType Container) -and
+        -not (Test-Path -LiteralPath $ThemePackage -PathType Leaf)) {
+        Write-Fail "Theme package not found at '$ThemePackage'. Pass -ThemePackage explicitly if Captain's Cabin has moved -- it may be a theme directory or a .ccskin file."
+    }
+    Write-Info "Theme package: $ThemePackage"
 }
-$ThemePackage = [System.IO.Path]::GetFullPath($ThemePackage)
-if (-not (Test-Path -LiteralPath $ThemePackage -PathType Container) -and
-    -not (Test-Path -LiteralPath $ThemePackage -PathType Leaf)) {
-    Write-Fail "Theme package not found at '$ThemePackage'. Pass -ThemePackage explicitly if Captain's Cabin has moved -- it may be a theme directory or a .ccskin file."
-}
-Write-Info "Theme package: $ThemePackage"
 
 # ---------------------------------------------------------------------------
 # 2. Resolve the installed Codex package -- version-independent.
@@ -190,13 +225,16 @@ if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
 Write-Info "Resolved executable: $exePath"
 
 # ---------------------------------------------------------------------------
-# 3. Locate the shared injector preload (platform-agnostic core).
+# 3. Locate the shared injector preload (platform-agnostic core). Skipped
+#    entirely under -NoTheme (D-0001-32) -- there is nothing to require.
 # ---------------------------------------------------------------------------
-$preloadPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\injector\core\preload.js'))
-if (-not (Test-Path -LiteralPath $preloadPath -PathType Leaf)) {
-    Write-Fail "Injector preload not found at '$preloadPath'."
+if (-not $NoTheme) {
+    $preloadPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\injector\core\preload.js'))
+    if (-not (Test-Path -LiteralPath $preloadPath -PathType Leaf)) {
+        Write-Fail "Injector preload not found at '$preloadPath'."
+    }
+    Write-Info "Injector preload: $preloadPath"
 }
-Write-Info "Injector preload: $preloadPath"
 
 # ---------------------------------------------------------------------------
 # 4. Launch Codex directly as a child process, with NODE_OPTIONS and the
@@ -213,28 +251,46 @@ $psi.RedirectStandardError = $true
 $psi.CreateNoWindow = $false
 $psi.WorkingDirectory = $package.InstallLocation
 
-# Start from the current environment, then layer in our two variables.
+# Start from the current environment, then layer in our two variables --
+# unless -NoTheme is set (D-0001-32), in which case NEITHER is set and the
+# child inherits a plain environment, exactly as if launched from Codex's
+# own icon.
 foreach ($entry in [System.Environment]::GetEnvironmentVariables().GetEnumerator()) {
     $psi.EnvironmentVariables[$entry.Key] = $entry.Value
 }
-# NODE_OPTIONS is tokenized by Node's own CLI-option parser, which treats
-# backslashes inside a quoted value as escape characters (e.g. "\U", "\D",
-# "\C" are not recognized escapes and get silently dropped) -- this was
-# discovered during Gate 0 testing, where a backslash-separated Windows path
-# arrived in the child process as "C:Userscchen362Desktop...", an unresolvable
-# module specifier. Node accepts forward slashes in paths on Windows, so use
-# those for the NODE_OPTIONS value specifically; CDX_THEME_PACKAGE below is
-# read via fs, not Node's option parser, so it keeps native backslashes.
-$preloadPathForNodeOptions = $preloadPath -replace '\\', '/'
-$psi.EnvironmentVariables['NODE_OPTIONS'] = "--require `"$preloadPathForNodeOptions`""
-# D-0001-25 -- CDX_THEME_PACKAGE replaces CDX_THEME_CSS_PATH. This one is read
-# by the injector via plain fs (statSync/readFileSync inside the theme
-# loader), not by Node's own CLI-option tokenizer, so it keeps native
-# backslashes -- only NODE_OPTIONS above needs the forward-slash rewrite.
-$psi.EnvironmentVariables['CDX_THEME_PACKAGE'] = $ThemePackage
+if ($NoTheme) {
+    # D-0001-32 -- REMOVE these rather than merely declining to set them. The
+    # loop above copies the WHOLE parent environment, so a NODE_OPTIONS
+    # inherited from the calling shell (a developer's own, or one left over
+    # from another tool) would still load the injector preload and this
+    # "unthemed" launch would come up silently THEMED -- the exact opposite of
+    # what was asked for, with nothing in the log to say why. Not adding a
+    # variable is not the same as guaranteeing its absence, and
+    # docs/ENGINEERING.md's standard is that the code make the violation
+    # impossible rather than merely avoid it.
+    $psi.EnvironmentVariables.Remove('NODE_OPTIONS')
+    $psi.EnvironmentVariables.Remove('CDX_THEME_PACKAGE')
+    Write-Info 'Launching with NODE_OPTIONS / CDX_THEME_PACKAGE removed from the child environment (unthemed).'
+} else {
+    # NODE_OPTIONS is tokenized by Node's own CLI-option parser, which treats
+    # backslashes inside a quoted value as escape characters (e.g. "\U", "\D",
+    # "\C" are not recognized escapes and get silently dropped) -- this was
+    # discovered during Gate 0 testing, where a backslash-separated Windows path
+    # arrived in the child process as "C:Userscchen362Desktop...", an unresolvable
+    # module specifier. Node accepts forward slashes in paths on Windows, so use
+    # those for the NODE_OPTIONS value specifically; CDX_THEME_PACKAGE below is
+    # read via fs, not Node's option parser, so it keeps native backslashes.
+    $preloadPathForNodeOptions = $preloadPath -replace '\\', '/'
+    $psi.EnvironmentVariables['NODE_OPTIONS'] = "--require `"$preloadPathForNodeOptions`""
+    # D-0001-25 -- CDX_THEME_PACKAGE replaces CDX_THEME_CSS_PATH. This one is read
+    # by the injector via plain fs (statSync/readFileSync inside the theme
+    # loader), not by Node's own CLI-option tokenizer, so it keeps native
+    # backslashes -- only NODE_OPTIONS above needs the forward-slash rewrite.
+    $psi.EnvironmentVariables['CDX_THEME_PACKAGE'] = $ThemePackage
 
-Write-Info "Launching with NODE_OPTIONS=--require `"$preloadPathForNodeOptions`""
-Write-Info "Launching with CDX_THEME_PACKAGE=$ThemePackage"
+    Write-Info "Launching with NODE_OPTIONS=--require `"$preloadPathForNodeOptions`""
+    Write-Info "Launching with CDX_THEME_PACKAGE=$ThemePackage"
+}
 
 $process = New-Object System.Diagnostics.Process
 $process.StartInfo = $psi
