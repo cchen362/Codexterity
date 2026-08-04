@@ -1,20 +1,26 @@
 # Plan 0002 — Phase 7: QA, update resilience, docs, release
 
-**Status:** **OPEN. Opened 2026-08-04. M1, M2 and M3 DONE 2026-08-04; M4–M6 not started.** M3 ran the
-full Windows round trip from the built artifact, **passed its gate**, and found **three real defects
-(F1, F2, F3) plus one documentation defect (F5)**. The QA pass was recorded first, unchanged, in
-commit `226a40e`; **the owner then authorised the fixes in the same session and all four are now fixed
-and verified in the running app** — see "The fixes" at the end of M3. Suite **182/182**,
-`audit.mjs` **272/272**, `theme.css`/`syntax.json` still byte-identical to M2's baseline. M4 is next.
+**Status:** **OPEN. Opened 2026-08-04. M1, M2, M3 and M4 DONE 2026-08-04; M5–M6 not started.** M3 ran
+the full Windows round trip from the built artifact, **passed its gate**, and found **three real
+defects (F1, F2, F3) plus one documentation defect (F5)**; the QA pass was recorded first, unchanged,
+in commit `226a40e`, and all four are fixed and verified in the running app. **M4 then stamped
+D-0001-31 (the manifest's version range is declarative metadata and is deliberately never enforced)
+and proved the degradation path** — a theme with all six landmark selectors broken was loaded into
+the real running app, which stayed fully functional and fully themed while naming every missing
+landmark and still convicting the required one on the main window. Suite **196/196**,
+`audit.mjs` **272/272**, `theme.css`/`syntax.json` still byte-identical to M2's baseline. M5 is next.
 This plan closes the last roadmap phase of
 [Plan 0001](0001-captains-cabin-architecture.md) §11. Plan 0001 stays the architecture authority;
 this plan owns only the work that turns a finished, owner-verified product into a released one.
 **Phases 1–6 are COMPLETE** (Phase 4 M1–M4 landed 2026-08-02/03; Phases 5 and 6 are satisfied by
-M4). The suite is **181/181** and `node tools/palette/audit.mjs` is **272/272**, both re-run and
-green on this machine on 2026-08-04 against installed Codex `OpenAI.Codex_26.727.6591.0_x64`.
+M4). The numbers above were taken on this machine on 2026-08-04 against installed Codex
+`OpenAI.Codex_26.727.6591.0_x64`; the suite was 181 when this plan opened and is 196 after M4's
+tests. **Confirm `Get-AppxPackage -Name OpenAI.Codex` returns the package before believing any test
+count** — a shell that cannot see it reports 150 passed / 31 failed where the 31 never ran, which is
+an unusable measurement rather than a regression (M2).
 
 **Depends on:** [Plan 0001](0001-captains-cabin-architecture.md) (architecture, Phase 4 record,
-roadmap), [`docs/DECISIONS.md`](../DECISIONS.md) (30 settled decisions, D-0001-1 … D-0001-30),
+roadmap), [`docs/DECISIONS.md`](../DECISIONS.md) (33 settled decisions, D-0001-1 … D-0001-33),
 and [`docs/research/multi-theme-authoring-and-switching-exploration.md`](../research/multi-theme-authoring-and-switching-exploration.md)
 (what comes after this plan). Where documents disagree, the later one wins.
 
@@ -489,7 +495,7 @@ launch (M3) runs once, with everything it must observe decided beforehand.
   rather than handing off to a running copy and leaving the theme silently unapplied. Match on
   `Get-Process -Name ChatGPT`, or on `$_.Path -like '*OpenAI.Codex*'`.
 
-- **M4 — update resilience, proved by simulation.** Two parts, one small.
+- **M4 — update resilience, proved by simulation.** ✅ **DONE 2026-08-04** (see "The outcome" below). Two parts, one small.
 
   **M3's F1 and F2 are fixed, which unblocks part (b) rather than merely preceding it.** Part (b)
   proves the degradation path, and the degradation path *is* the landmark report. Proving it while the
@@ -525,6 +531,118 @@ launch (M3) runs once, with everything it must observe decided beforehand.
 
   **Gate:** the suite grows and stays green; the app stays usable with every landmark broken; the
   decision is stamped in code and in `DECISIONS.md` in the same commit.
+
+  ### The outcome, 2026-08-04
+
+  **Both parts are done and the gate is met.** The suite grew from **182 to 196** and is green;
+  `audit.mjs` is **272/272**; `theme.css` and `syntax.json` are **byte-identical to M2's baseline**
+  (`731CC9…4286E` and `36DAD6…211FEB` re-hashed this milestone). No token changed — M4 touched the
+  injector, the loader's comments, the decisions ledger and the tests, and nothing else.
+
+  **(a) D-0001-31 is stamped**, at the `targetVersionRange` / `verifiedAgainst` validation in
+  [`injector/theme-loader/manifest.js`](../../injector/theme-loader/manifest.js), with a pointer row
+  in [`docs/DECISIONS.md`](../DECISIONS.md) and a second short marker on `isVersionInRange` —
+  because that exported function *has no caller*, which is precisely the shape a later agent would
+  read as an oversight and "fix". The reserved-number note at the top of `DECISIONS.md` now records
+  the number as stamped rather than reserved.
+
+  #### (b) The degradation path, proved twice: in the suite and in the running app
+
+  **A new module was extracted first, and that is the load-bearing part of this milestone.** The
+  landmark probe-and-verdict logic lived inside `inject.js`'s `reportLandmarks()`, where it closed
+  over the module-private `activeTheme` slot and could only be reached through a live Electron
+  `webContents`. So the one mechanism this project relies on to survive a Codex update was
+  **testable only by launching the real app** — which is why F1 and F2 both shipped. It now lives in
+  [`injector/core/landmarks.js`](../../injector/core/landmarks.js), taking the manifest's landmarks
+  and a webContents-shaped object as explicit arguments. The move was verbatim: every log-line
+  string, and every explanatory comment, is unchanged, so M3's quoted evidence still matches the
+  code. `inject.js`'s `reportLandmarks()` is now a wrapper — root environment, then verdicts.
+
+  **The suite (14 new tests, `tests/injector/landmarks.test.js`).** A theme whose every landmark
+  selector cannot match is built in a temp directory and **loaded through the real loader** — it
+  loads cleanly, which is the first claim: rotted landmarks are a *degradation* case, never a load
+  failure. The generated probe script is then **evaluated as real JavaScript** against a stub
+  `document` rather than eyeballed, because this project has shipped a runtime string that parses
+  and misbehaves before. The verdicts are then driven through a fake `webContents` and asserted:
+  every landmark named, required convicted on the main window, optional worded differently, the
+  secondary window excused by name, `dom-ready` not convicting, an unparseable URL still convicting,
+  and a rejected `executeJavaScript` **resolving** rather than throwing out into an Electron event
+  handler.
+
+  **The running app, with all six landmarks broken** (agent-only, no owner time — the settled check
+  fires by itself under D-0001-33). Codex was launched through `launcher/windows/launch.ps1` against
+  a copy of Captain's Cabin whose six selectors were rewritten to `.cdx-update-simulation-broken-N`:
+
+  ```
+  settled token re-check on webContents#1 (+15000ms):          ← app://-/index.html, the MAIN window
+    landmark MISSING (REQUIRED): sidebar-panel  (selector ".cdx-update-simulation-broken-0"
+      matched nothing at settled +15000ms)  [D-0001-13] — REQUIRED and absent on a settled DOM.
+      This is a real defect.
+    landmark absent (optional, screen-dependent): sidebar-active-row … [D-0001-14]
+    …and terminal, heading-display, code-surfaces, home-hero, each named with its own selector
+
+  settled token re-check on webContents#3 (+15000ms):          ← ?initialRoute=%2Favatar-overlay
+    landmark absent (secondary window, not the app shell): sidebar-panel … — not a defect
+  ```
+
+  **All three things M4(b) had to show are shown.** Every missing landmark is **named**, with its
+  selector and its governing decision. The **required** one reads differently from the **optional**
+  ones. And **the D-0001-33 gate still convicts** — this is the assertion the milestone existed to
+  make, because M3's F2 fix could otherwise have bought silence instead of accuracy; a broken
+  required landmark on the main window is still called a real defect, while the overlay window that
+  can never hold a sidebar is excused *by name and by its own URL*.
+
+  **Codex stayed fully functional and fully themed throughout.** With every landmark broken, the log
+  shows `theme package loaded` **1**, `injected OK` **4** across both windows, and **zero** probe
+  failures; the main window reported `Responding=True`; the parchment light-mode tokens were live
+  (`--color-background-surface: #F0E7D5`, `--color-text-primary: #182336`), all three fonts loadable,
+  and the heading and body faces painting Fraunces and Literata. **That is the whole point of the
+  landmark layer: it is a report, not a styling input.** Token overrides do not depend on any
+  selector matching, so a Codex update that renamed every landmark would cost the app *nothing
+  visible* and would still be named, precisely, in the log.
+
+  **The rebuilt artifact was reinstalled and re-verified on the healthy theme**, because M4 changed
+  shipped code and the installed copy would otherwise have lagged the repo. The new module is picked
+  up by the packager automatically (`payload/injector/core/landmarks.js`; the Windows package went
+  from 19 to 20 files), and the real Captain's Cabin still reports its landmarks **PRESENT** on the
+  installed build. That reading, taken from `%USERPROFILE%\Codexterity\logs\injector.log` after
+  deleting it first so the log could only describe this launch, is **identical to M3's** — which is
+  what establishes that the extraction changed no behaviour:
+
+  ```
+  settled token re-check on webContents#1 (+15000ms):
+    landmark PRESENT: sidebar-panel        (1 match)  [D-0001-13]   ← the only required:true one
+    landmark PRESENT: sidebar-active-row   (1 match)  [D-0001-14]
+    landmark absent (optional, screen-dependent): terminal          [D-0001-19]
+    landmark PRESENT: heading-display      (1 match)  [D-0001-7]
+    landmark absent (optional, screen-dependent): code-surfaces     [D-0001-7]
+    landmark PRESENT: home-hero            (1 match)  [D-0001-9]
+  ```
+
+  `launcher.log` was non-empty (130,663 bytes), which is D-0001-28's own check — the failure dialog
+  quotes that file, so an empty one would turn a real failure into an unexplained one.
+
+  **The whole settled block was read, not a keyword filter.** M3 recorded why: filtering the log on
+  the word `settled` matches every failure line and **no** `landmark PRESENT` line, which manufactures
+  a false alarm out of a healthy launch. A negative result must name its query.
+
+  #### What M4 does and does not establish
+
+  **Establishes:** that a theme whose landmarks have completely rotted still loads, still applies,
+  and leaves Codex fully functional and fully themed; that the injector names every landmark that
+  stopped matching, with its selector; that a missing **required** landmark is still convicted on the
+  main window while an overlay window is excused by name; and that the version range's
+  non-enforcement is now recorded where the next reader of that field will find it.
+
+  **Does not establish:** anything about a *real* Codex update — the installed version cannot be
+  moved on demand, which is why this is a simulation of the failure mode rather than a wait for it.
+  It also says nothing about macOS, and per D-0001-16 as amended that is not a gap to close.
+
+  **One observation that is not a finding, recorded so it is not re-investigated.** The log line
+  `hero: container present, NO background-image` appeared on this launch. The hero rule is scoped to
+  `.electron-dark` in `theme.css`, and the launch came up in **light** mode — so that is the correct
+  answer for that screen, not a regression. `theme.css` is byte-identical and the landmark array has
+  no effect on styling in either direction.
 
 - **M5 — user-facing documentation.** Keep the root [`README.md`](../../README.md) lean and add
   what a user actually needs: install, launch, switch back to stock, uninstall, and **what to

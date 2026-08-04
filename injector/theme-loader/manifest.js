@@ -68,6 +68,9 @@ function fail(message) {
  * as semver would assert a structure the data does not have. This is
  * exported so a later milestone's `cdx verify` can reuse the exact
  * comparison this loader used to validate `targetVersionRange`.
+ *
+ * D-0001-31 — it has NO caller today and that is deliberate; see the marker at
+ * the `targetVersionRange` validation below before adding one.
  */
 function compareDottedVersions(a, b) {
   const partsA = a.split('.').map(Number);
@@ -226,6 +229,25 @@ function validateManifest(manifest) {
     fail(`manifest.json: "version" must be dotted-numeric with 1-4 components (got ${JSON.stringify(manifest.version)})`);
   }
 
+  // D-0001-31 (Plan 0002 M4) — `targetVersionRange` and `verifiedAgainst` are
+  // DECLARATIVE METADATA. Their SHAPE is validated here and their VALUES are
+  // deliberately never compared against the installed Codex version, anywhere
+  // in this codebase. That is a settled owner decision, not an omission:
+  // refusing to apply a theme because a version number moved would remove a
+  // working theme from a working app on a routine Store update, and Codex
+  // updates itself on its own schedule. The project's rule is to degrade when
+  // a theme CANNOT APPLY CLEANLY — which is what the landmark report in
+  // injector/core/landmarks.js actually measures, version-independently — not
+  // when a string changed. `isVersionInRange` below is exported and currently
+  // has no caller for exactly this reason; it is the comparison a future
+  // `cdx verify` would reuse, kept beside the fields it describes rather than
+  // wired into the launch path. DO NOT "fix" this by adding an enforcement
+  // gate, and do not add a warn-only one either. If it is ever reopened the
+  // shape is already fixed: the launcher exports CDX_HOST_VERSION (only the
+  // launchers may read the host version — the layer rule in
+  // docs/ENGINEERING.md), the injector core compares and LOGS, and it never
+  // refuses. Full reasoning: docs/plans/0002-phase-7-qa-docs-release.md
+  // §"The update-resilience ruling".
   checkDottedVersionField(manifest.verifiedAgainst, 'verifiedAgainst');
 
   const range = manifest.targetVersionRange;

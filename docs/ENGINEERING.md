@@ -110,7 +110,7 @@ Directory roles are visible from the tree (see Plan 0001 §folder-structure). Th
 
 ## Verification Expectations
 
-**The repo has a test harness as of Phase 4 M1**, grown once per Phase 4 milestone. It now covers the theme loader (manifest, safe-CSS, zip reader), the `.ccskin` writer, the packer, the `cdx` CLI, and both package builders (`tests/packaging/windows.test.js`, `tests/packaging/macos.test.js`) — nine files, **181 tests**, last run green on this machine 2026-08-04. Nothing else in the repo is under test: the injector core, the launchers and the palette tooling have no unit coverage and are proven by the running app and by `audit.mjs` instead. `node:test` and `node:assert/strict`, no dependencies:
+**The repo has a test harness as of Phase 4 M1**, grown once per Phase 4 milestone. It now covers the theme loader (manifest, safe-CSS, zip reader), the `.ccskin` writer, the packer, the `cdx` CLI, and both package builders (`tests/packaging/windows.test.js`, `tests/packaging/macos.test.js`) — plus, since Plan 0002 M4, the injector's **landmark degradation reporting** (`tests/injector/landmarks.test.js`, covering a theme whose selectors have all stopped matching). Ten files, **196 tests**, last run green on this machine 2026-08-04. The rest of the injector core, the launchers and the palette tooling have no unit coverage and are proven by the running app and by `audit.mjs` instead. `node:test` and `node:assert/strict`, no dependencies:
 
 ```bash
 npm test
