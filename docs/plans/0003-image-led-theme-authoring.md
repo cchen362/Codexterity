@@ -527,8 +527,8 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
 
   | | Captain's Cabin | Deep Navy Portrait |
   |---|---|---|
-  | emitted `theme.css` | 475,958 | **4,301,572** (9.0×) |
-  | packaged `.ccskin` | 681,124 | **4,894,864** (7.2×) |
+  | emitted `theme.css` | 475,958 | **4,302,325** (9.0×) |
+  | packaged `.ccskin` | 681,124 | **4,895,132** (7.2×) |
 
   Two causes, both M6's: the duplicate embed above (1,993,928 bytes), and the source photograph
   itself, which is a **1,495,444-byte lossless PNG** against Captain's Cabin's 124,134-byte lossy
@@ -557,26 +557,50 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
      case and the "any band could land anywhere" worst case are the **same** figure (5.53:1 dark).
      `background-size: cover` makes panel and image coordinates disagree on any panel shape but one,
      so a ramp's proof quietly depends on the window. See D-0003-5(a).
-  4. **The solved figures, and the owner moved them BELOW AA on purpose (D-0003-7).** Both modes are
+  4. **The solved figures, and the threshold that actually governs them (D-0003-7).** Both modes are
      solved independently, because the method inverts — dark's brightest pixel governs, light's
-     darkest does — and dark genuinely needs *more* veil than light at any given target (0.632 vs
-     0.591 at the AA floor), which is the opposite of the intuition and is why neither is ever
-     derived from the other. The first build shipped a 5.5:1 target (0.69 / 0.66) for headroom
-     nobody had asked for. Shown a rendered ladder of four veils per mode, the owner asked for the
-     portrait clearer *including below 4.5:1*; they were told plainly that 4.5:1 is AA for
-     normal-size text and that this project's first design law is "readability outranks aesthetics",
-     and chose **4:1 knowingly**. Shipped: **dark plateau 0.60 at 4.04:1, light plateau 0.56 at
-     4.07:1.** The heading is large text (AA threshold 3:1) and still clears; what goes under the
-     line is the secondary line, the card labels and the composer placeholder. Scoped to this
-     private theme, not a precedent — see the ruling for why, and note that **nothing in the build
-     gates scrim contrast**, so this is held by the record rather than by a check.
+     darkest does — and dark genuinely needs *more* veil than light at any given target, which is the
+     opposite of the intuition and is why neither is ever derived from the other. Shipped: **dark
+     plateau 0.51 at 3.01:1, light plateau 0.47 at 3.06:1**, solved against **3:1 — WCAG AA for
+     LARGE text**, which is the threshold that applies because the only text over the photograph is
+     the empty state's heading. See fact 5 for how that was established, and the ruling for the
+     trip-wire that puts 4.5:1 back in charge.
+
+  5. **THE OWNER'S OBSERVATION IN THE RUNNING APP CORRECTED A RULING THIS MILESTONE HAD ALREADY
+     WRITTEN DOWN — and the correction went in the *permissive* direction, which is the rarer and
+     more instructive case.** The veil went through three values here. First 0.69/0.66 at a 5.5:1
+     target (headroom nobody asked for). The owner asked for the portrait clearer *including below
+     4.5:1*; shown a rendered ladder and told plainly that 4.5:1 is AA and that this project's first
+     design law is "readability outranks aesthetics", they chose 4:1 knowingly, and that was recorded
+     as a deliberate sub-AA exception. **Then they looked at the real app and pointed out that
+     Codex's four suggestion cards and its composer are opaque** — *"not translucent so I don't think
+     it has any issue even if there's NO scrim"* — which is true, and checkable: those surfaces paint
+     `--color-background-elevated-primary`/`-secondary`, opaque hexes the palette audit already
+     covers. So no normal-size text is over the image at all; only the large heading is, and **3:1 is
+     its threshold**. The theme was never below the bar that applies. **Where the error came from is
+     the reusable part:** the mockup used to judge the scrim invented a secondary line under the
+     heading that Codex does not render, and reasoned about card labels as though they floated on the
+     image. A mock that is wrong about *which elements are opaque* produces a contrast conclusion that
+     is wrong in both directions at once — it over-veiled the picture and mis-recorded the reason.
+     Same family as fact 2: the measurement was fine, its subject was not.
 
   **THE DARK-MODE PANEL SITS BRIGHTER THAN THE APP AROUND IT, AND THAT IS INHERENT TO THIS IMAGE.**
   The portrait's mean luminance is 0.657 against a ground at ~0.007, so at any veil that still shows
   a face the empty-state panel reads lighter than the navy sidebar and title bar. That was put to the
   owner as its own question with a three-rung ladder (0.69 / 0.78 / 0.86); they went the other way
-  entirely and asked for *more* portrait, which settles it — the luminous panel is wanted, not
+  entirely and asked for *more* portrait, twice, which settles it — the luminous panel is wanted, not
   tolerated. **Do not re-raise it as a defect.**
+
+  **THE HERO IS ANCHORED AT `68% center`, NOT `center`, AND THAT IS A MEASURED CHOICE.** Reported by
+  the owner from the running app: in a half-width window with the sidebar open the face was off-frame.
+  `background-size: cover` crops horizontally once the panel is narrower than the image's aspect, and
+  this subject sits right of centre, so centring slices the face off — while anchoring hard `right`
+  overshoots into hair and shoulder just as badly. Five anchors were rendered side by side in a
+  tall/narrow panel and **68%** is the one that holds the whole face. It is free on wide panels: when
+  the panel is wider than the image's aspect, `cover` scales by width, there is no horizontal
+  overflow, and the horizontal position has no effect. It also cannot disturb the contrast proof —
+  `bandImage()` takes the worst pixel across each band's **full width**, so every horizontal crop was
+  already accounted for.
 
 - **M5 — install it privately and record what was settled.** Apply it locally through the existing
   `cdx apply`, confirm the theme-neutral shortcut carries it with no packaging change (the runtime is

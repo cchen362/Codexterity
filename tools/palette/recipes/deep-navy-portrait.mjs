@@ -86,10 +86,11 @@ const SHAPE = {
 //     tools/palette/hero-scrim.mjs's solveScrimStops(), a new capability
 //     this milestone added specifically because the old solveScrim() could
 //     only VERIFY a stop set a human had already guessed. The stops below
-//     are that solver's own output at target 4.0:1, textFrom 0, precision 2 —
-//     do not re-solve them by hand and do not round them differently. That
-//     target is deliberately below WCAG AA and is governed by D-0003-7; read
-//     the prose below before touching it.
+//     are that solver's own output at target 3.0:1, textFrom 0, precision 2 —
+//     do not re-solve them by hand and do not round them differently. 3:1 is
+//     WCAG AA for LARGE text, which is the only kind that sits on this image;
+//     that is governed by D-0003-7, whose trip-wire says when 4.5:1 takes over
+//     instead. Read the prose below before touching either number.
 //
 // D-0003-5 — WHY THE SCRIM IS FLAT AND HAS NO CLEAR TOP. This looks like a
 // scrim nobody bothered to shape, and it is the opposite: it is the shape the
@@ -97,15 +98,27 @@ const SHAPE = {
 const HERO = {
   file: 'assets/hero-empty-state.png',
   mime: 'image/png',
-  position: 'center',
+  // Not 'center', and the reason is this photograph's composition. The subject
+  // sits RIGHT OF CENTRE, so on a panel narrower than the image's 16:9 aspect
+  // — a half-width window with the sidebar open, which is a shape the owner
+  // actually uses — `cover` crops horizontally about the centre and slices the
+  // face off, leaving hair and shoulder. Anchoring hard 'right' overshoots it
+  // just as badly in the other direction. 68% was picked by rendering five
+  // anchors side by side in a tall/narrow panel and looking. This costs
+  // nothing on wide panels: when the panel is WIDER than the image's aspect,
+  // `cover` scales by width, there is no horizontal overflow, and the
+  // horizontal position has no effect at all. It also cannot touch the
+  // contrast proof — bandImage() takes the worst pixel across each band's FULL
+  // width, so the scrim is solved against every horizontal crop already.
+  position: '68% center',
   modes: ['dark', 'light'],
-  // D-0003-7 — these two alphas sit BELOW WCAG AA for normal-size text, by an
-  // explicit owner decision taken from a rendered comparison. Solved at a
-  // 4.0:1 target, they verify at 4.04:1 dark and 4.07:1 light. Do not "fix"
-  // them upward and do not copy them into another theme; see the ruling.
+  // D-0003-7 — solved against the LARGE-TEXT threshold (3:1), not 4.5:1,
+  // because the only text over this image is the empty state's heading. Verify
+  // at 3.01:1 dark and 3.06:1 light. The margin is thin on purpose; read the
+  // ruling before changing either number, and note the trip-wire it names.
   scrim: {
-    dark: [[0, 0.60], [1, 0.60]],
-    light: [[0, 0.56], [1, 0.56]],
+    dark: [[0, 0.51], [1, 0.51]],
+    light: [[0, 0.47], [1, 0.47]],
   },
   prose:
     `/*
@@ -122,24 +135,36 @@ const HERO = {
  * Dark mode lays LIGHT ink over the image, so the BRIGHTEST pixel in a band
  * is the worst case; light mode lays DARK ink over the image, so the
  * DARKEST pixel is the worst case instead. Solved by
- * tools/palette/hero-scrim.mjs's solveScrimStops(): dark verified at 4.04:1
- * worst-case, light at 4.07:1.
+ * tools/palette/hero-scrim.mjs's solveScrimStops(): dark verified at 3.01:1
+ * worst-case, light at 3.06:1.
  *
- * D-0003-7 — THOSE TWO FIGURES ARE BELOW WCAG AA FOR NORMAL-SIZE TEXT (4.5:1)
- * AND THAT IS DELIBERATE. This is the only place in Codexterity where a
- * measured contrast figure is knowingly under the project's own first design
- * law, and it is an owner decision taken on sight from a rendered ladder of
- * four veils per mode, not an oversight and not a rounding error. What it
- * costs is precise: the empty state's HEADING is large text, whose AA
- * threshold is 3:1, so the heading remains compliant with room to spare; what
- * falls below the line is the normal-size text over the image — the secondary
- * line under the heading, the suggestion-card labels and the composer
- * placeholder. What it buys is the portrait, which is this theme's entire
- * reason to exist. The trade only makes sense because THIS THEME IS PRIVATE
- * AND LOCAL ONLY (owner ruling 4): it is never shared, so nobody but its
- * owner is subject to the choice, and the owner made it with the number in
- * front of them. It is NOT a precedent — Captain's Cabin and any shareable
- * theme stay at AA, and no future recipe may cite this one as licence.
+ * D-0003-7 — THOSE FIGURES ARE SOLVED AGAINST 3:1, NOT 4.5:1, AND THAT IS
+ * CORRECT RATHER THAN A CONCESSION. WCAG AA is 4.5:1 for normal-size text and
+ * 3:1 for LARGE text, and on this screen the only thing sitting on the
+ * photograph is the empty state's heading, which is large. Everything else
+ * that looks like it is over the image is not: Codex's four suggestion cards
+ * and its composer paint OPAQUE surfaces — --color-background-elevated-primary
+ * (#FFF6E4 light) and --color-background-elevated-secondary — so their labels
+ * sit on flat theme colour whose contrast the palette audit already proves,
+ * with no pixel of the photograph behind them. That was confirmed in the
+ * running app by the owner and then checked against the emitted token values
+ * rather than taken on sight.
+ *
+ * THE TRIP-WIRE, because this reasoning is contingent on Codex's layout and
+ * not on anything this repo controls. If Codex ever puts NORMAL-SIZE text over
+ * the empty-state background — a subtitle under the heading, a caption, a hint
+ * line — or makes those card and composer surfaces translucent, then 4.5:1
+ * becomes the governing threshold and BOTH scrims must be re-solved at that
+ * target (dark 0.60, light 0.56 were measured for exactly that case). The
+ * heading is large today at roughly 30px; large text is 24px regular or
+ * 18.66px bold, so a heading that shrinks past 24px also trips this. Re-solve
+ * with solveScrimStops(); do not nudge the alphas by hand.
+ *
+ * WHY THE MARGIN IS DELIBERATELY THIN. The owner asked twice for more of the
+ * photograph, was shown rendered ladders both times, and chose this veil
+ * knowing it sits just above the bar rather than comfortably above it. The
+ * portrait is the entire reason this theme exists; spending contrast the
+ * standard does not ask for would be spending the only thing it is for.
  *
  * ONE CONSTANT ALPHA OVER THE WHOLE PANEL, in each mode, with NO clear band
  * at the top. That is deliberate and it was measured, not defaulted to.
