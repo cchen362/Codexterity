@@ -346,4 +346,4 @@ The orchestrator should challenge this memo rather than treat it as an implement
 - [`packaging/macos/build-macos-package.js`](../../packaging/macos/build-macos-package.js) — single-theme macOS payload build.
 - [`packaging/macos/install.sh`](../../packaging/macos/install.sh) — Captain's Cabin initial selection.
 - [`tests/packaging/windows.test.js`](../../tests/packaging/windows.test.js) — suite-level icon-module setup that caused the environment-limited 31-test cascade.
-- [`docs/mockups/0005-jisoo-palette-directions.html`](../mockups/0005-jisoo-palette-directions.html) — dark/light palette exploration containing the shortlisted Deep Navy Portrait direction.
+- `docs/mockups/0005-jisoo-palette-directions.html` — dark/light palette exploration containing the shortlisted Deep Navy Portrait direction. **Untracked since 2026-08-05 (D-0003-10); not present in a clone.**

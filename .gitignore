@@ -48,6 +48,17 @@ themes/deep-navy-portrait/
 docs/mockups/0006-palette-recommendation.html
 docs/mockups/0007-palette-directions.html
 
+# D-0003-10 — 0005 was TRACKED AND PUSHED before the rule above existed, and it
+# embeds the same private photograph as a base64 PNG. The sheet went public on
+# 2026-08-04; D-0003-3 and D-0003-6 were written on 2026-08-05 and nobody
+# re-checked the sheet already published the day before. Untracked 2026-08-05
+# by owner decision so it stops being served at HEAD and no future clone
+# carries it. Read the decision row before acting on this: the file REMAINS IN
+# GIT HISTORY and reachable by old commit URLs — that was accepted knowingly,
+# not overlooked, and it is why this entry exists instead of a history rewrite.
+# The local copy is deliberately kept on disk as a design record.
+docs/mockups/0005-jisoo-palette-directions.html
+
 # Scratch / temp
 scratchpad/
 *.log

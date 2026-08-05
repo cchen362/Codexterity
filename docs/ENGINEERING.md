@@ -125,7 +125,7 @@ so a single plateau solved against that lamp over-veils everything else — meas
 4.5:1 target, i.e. the picture erased to buy contrast nobody asked for. Its ramp is correct. A
 solver is better for the images whose shape it assumes, not better in general.
 
-**HOW A PALETTE-OPTIONS SHEET MUST BE PRESENTED (D-0003-4, owner ruling 2026-08-05).** Any sheet that asks the owner to choose between palettes follows [`docs/mockups/0005-jisoo-palette-directions.html`](mockups/0005-jisoo-palette-directions.html)'s shape, which is the one they have twice confirmed they can decide from:
+**HOW A PALETTE-OPTIONS SHEET MUST BE PRESENTED (D-0003-4, owner ruling 2026-08-05).** Any sheet that asks the owner to choose between palettes follows `docs/mockups/0005-jisoo-palette-directions.html`'s shape, which is the one they have twice confirmed they can decide from (that sheet is **untracked** — D-0003-10 — so it is not in a clone; the four clauses below are the binding record of its shape, not the file):
 
 - **The hero image appears IN each option**, rendered where it actually lives — behind the empty state — not beside it as a reference thumbnail. `0007` showed it alongside because the portrait's scrim was unsolved; that was a dodge, and the fix is to **solve a provisional scrim per option** with [`tools/palette/hero-scrim.mjs`](../tools/palette/hero-scrim.mjs), which exists precisely for this. If a scrim genuinely cannot reach AA for an option, say so in words on that option — never silently show text over an unproven image, and never quietly drop the hero.
 - **One dark/light toggle**, not two panels side by side. The owner compares options against each other, so the mode is a state of the whole sheet.

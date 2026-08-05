@@ -64,7 +64,9 @@ Codex itself, your account, your conversations and everything under Codex's own 
 
 Codex updates itself from the Microsoft Store on its own schedule, and the theme keeps applying. Codexterity styles Codex by overriding Codex's own colour, spacing and shadow variables rather than by matching its page structure, so an update that reorganises the interface generally costs nothing. Codexterity never checks which Codex version you have and never refuses to apply a theme because of one.
 
-If some surface ever looks unstyled after an update, the injector log names the exact piece of Codex's interface that stopped matching. This was proved by deliberately breaking every one of those references at once: Codex stayed fully usable and fully themed, and the log named each broken one individually.
+**This has now survived two real Codex updates with no change to Codexterity of any kind.** The stronger of the two carried a major browser-engine jump underneath Codex, not just new Codex code, and the theme still attached and painted every surface that was on screen. The weaker one changed only Codex itself. Neither needed a fix, a reinstall, or a re-apply.
+
+If some surface ever *does* look unstyled after an update, the injector log names the exact piece of Codex's interface that stopped matching. That path was proved by deliberately breaking every one of those references at once: Codex stayed fully usable and fully themed, and the log named each broken one individually.
 
 ## Where the logs are
 
@@ -89,6 +91,20 @@ node tools/palette/audit.mjs
 ```
 
 Project contributors should begin with the [engineering guide](docs/ENGINEERING.md), then read the [decision log](docs/DECISIONS.md). Implementation plans live in [`docs/plans/`](docs/plans/), exploratory work in [`docs/research/`](docs/research/), and release notes in [`docs/releases/`](docs/releases/) — the current release is [v0.1.0](docs/releases/v0.1.0.md).
+
+### Adding a theme
+
+A theme is generated from a **recipe** — a single file naming that theme's authored choices. The engine derives every colour from it in OKLCH and solves the contrast-critical ones against their WCAG AA target, so no colour in a shipped theme is hand-picked. Adding a theme writes a recipe; it never edits the emitter.
+
+```powershell
+node tools/mockup/build-palette-directions.mjs --hero <image>   # 1. render the options
+node tools/palette/emit-theme.mjs <theme-id>                    # 3. build the chosen one
+node tools/pack-ccskin.js themes/<theme-id>                     # 4. package it
+```
+
+Step 1 renders a chooser — several complete palettes, each shown as a full dark and light interface mock with the hero in place behind the empty state. Between steps 1 and 3 sits **step 2, which is authoring**: the chosen direction becomes `tools/palette/recipes/<theme-id>.mjs`, written by hand. The emitter then **refuses to write anything at all** if either mode fails AA, or if a landmark the recipe declares is absent from the stylesheet it just generated — so a failing theme cannot reach disk half-built.
+
+The standing set of palette directions lives in [`tools/palette/directions.mjs`](tools/palette/directions.mjs). A hero image contributes **one further direction** when the picture genuinely names a colour, and none when it does not; the creative direction itself comes from the person authoring the theme, not from the image.
 
 ## License
 

@@ -355,7 +355,8 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
 
   **DONE 2026-08-05. Gate met.** [`tools/palette/recommend-palette.mjs`](../../tools/palette/recommend-palette.mjs)
   proposes a ground hue/chroma and an accent hue and audits every proposal *inside itself* before
-  returning it; [`tools/mockup/build-palette-recommendation.mjs`](../../tools/mockup/build-palette-recommendation.mjs)
+  returning it; `tools/mockup/build-palette-recommendation.mjs` — the name it had at M3, renamed to
+  `build-palette-directions.mjs` by M3b, so this path no longer exists —
   renders `docs/mockups/0006-palette-recommendation.html` and **refuses to write it** if any proposal
   fails. `npm test` **240 → 257**, `audit.mjs` **272/272**, all three theme digests **unchanged**.
   Settled as **D-0003-2** (the recommender) and **D-0003-3** (the sheet is a build product).
