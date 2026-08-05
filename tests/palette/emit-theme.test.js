@@ -279,3 +279,148 @@ describe('validateRecipe (exercised through emitTheme) rejects a malformed recip
     );
   });
 });
+
+// =====================================================================
+// F. THE TWO-MODE HERO, GENERICALLY. Plan 0003 M4 needed the emitter to
+// render a hero in BOTH dark and light mode (Deep Navy Portrait's own
+// novelty), and the brief for that milestone said "you should need no
+// emitter change" -- buildHeroBlock() already maps over recipe.hero.modes.
+// This proves that claim against the GENERIC emitter using a synthetic
+// recipe and synthetic assets, entirely independent of any specific theme:
+// it must NOT reference deep-navy-portrait, BW_Jisoo.png, or
+// assets/hero-sources/ anywhere, so a fresh clone lacking that gitignored
+// directory still runs this green.
+// =====================================================================
+
+describe('a recipe declaring hero.modes = [dark, light] emits one hero rule per mode, generically', () => {
+  let tmpAssets;
+  let tmpOut;
+  let assetsDir;
+  let outDir;
+  let css;
+
+  before(() => {
+    tmpAssets = fs.mkdtempSync(path.join(os.tmpdir(), 'cdx-emit-theme-synth-assets-'));
+    assetsDir = tmpAssets + path.sep;
+    fs.mkdirSync(path.join(tmpAssets, 'assets', 'fonts'), { recursive: true });
+
+    // Synthetic font "files" -- the emitter base64-encodes whatever bytes
+    // are on disk without decoding them as fonts, so arbitrary content is
+    // sufficient to exercise buildFontFaces() without a real font asset.
+    fs.writeFileSync(path.join(tmpAssets, 'assets', 'fonts', 'synthetic-ui.woff2'), Buffer.from('synthetic-ui-face-bytes'));
+    fs.writeFileSync(path.join(tmpAssets, 'assets', 'fonts', 'synthetic-mono.woff2'), Buffer.from('synthetic-mono-face-bytes'));
+    fs.writeFileSync(path.join(tmpAssets, 'assets', 'fonts', 'synthetic-display.woff2'), Buffer.from('synthetic-display-face-bytes'));
+    fs.writeFileSync(path.join(tmpAssets, 'assets', 'fonts', 'Synthetic-OFL.txt'), Buffer.from('synthetic licence text'));
+
+    // A synthetic "hero" -- likewise never decoded as an image by the
+    // emitter, only base64-encoded, so arbitrary bytes prove the payload
+    // travels through unmodified without needing a real PNG/WebP.
+    fs.writeFileSync(path.join(tmpAssets, 'assets', 'hero-synthetic.bin'), Buffer.from('synthetic-hero-image-payload-bytes-0123456789'));
+
+    const syntheticRecipe = {
+      id: 'synthetic-two-mode-hero',
+      name: 'Synthetic Two-Mode Hero',
+      version: '0.0.0',
+      author: 'test',
+      license: 'MIT',
+      description: 'A synthetic recipe for exercising the two-mode hero path in isolation.',
+      targetApp: 'openai-codex-desktop',
+      targetVersionRange: { min: '26', max: '27' },
+      verifiedAgainst: '26.727.6591.0',
+      palette: { ground: 'navy' },
+      accent: { token: 'background-button-primary', label: 'test accent', name: 'Test' },
+      typography: {
+        faces: [
+          { family: 'Synthetic UI', file: 'synthetic-ui.woff2', licence: 'Synthetic-OFL.txt', extra: '  font-weight: 400;\n  font-style: normal;' },
+          { family: 'Synthetic Mono', file: 'synthetic-mono.woff2', licence: 'Synthetic-OFL.txt', extra: '  font-weight: 400;\n  font-style: normal;' },
+          { family: 'Synthetic Display', file: 'synthetic-display.woff2', licence: 'Synthetic-OFL.txt', extra: '  font-weight: 400;\n  font-style: normal;' },
+        ],
+        roles: {
+          ui: { stack: "'Synthetic UI', serif", variationSettings: 'normal' },
+          mono: { stack: "'Synthetic Mono', monospace", variationSettings: 'normal' },
+          display: { stack: "'Synthetic Display', serif", opticalSizing: 'auto', variationSettings: 'normal' },
+        },
+      },
+      shape: {
+        note: 'Synthetic shape.',
+        radii: { sm: '1px', md: '1px', lg: '1px', xl: '1px', '2xl': '1px', '3xl': '1px', '4xl': '1px', full: '9999px' },
+      },
+      hero: {
+        file: 'assets/hero-synthetic.bin',
+        mime: 'application/octet-stream',
+        position: 'center',
+        modes: ['dark', 'light'],
+        scrim: {
+          dark: [[0, 0], [0.3, 0.5], [1, 0.5]],
+          light: [[0, 0], [0.3, 0.4], [1, 0.4]],
+        },
+        prose: '/* synthetic hero prose, for the two-mode emitter test */',
+      },
+      syntax: { minimumContrast: 4.5, note: 'synthetic' },
+      voice: {
+        title: 'Synthetic Two-Mode Hero',
+        titleUnderline: '----------------------',
+        blurbLines: () => ['synthetic blurb line one', 'synthetic blurb line two'],
+        modeLabels: { dark: 'Dark', light: 'Light' },
+        typographyProse: '/* synthetic typography prose */',
+      },
+      // Codex's own selectors/classes are constant across every recipe
+      // (codex-surface.mjs), so Captain's Cabin's landmark list -- unchanged
+      // shape, only reused here -- probes rules this synthetic recipe also
+      // emits regardless of its own hero/typography content.
+      landmarks: captainsCabin.landmarks,
+    };
+
+    tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), 'cdx-emit-theme-synth-out-'));
+    outDir = tmpOut + path.sep;
+    const result = emitTheme(syntheticRecipe, { outDir, assetsDir });
+    css = result.css;
+  });
+
+  after(() => {
+    fs.rmSync(tmpAssets, { recursive: true, force: true });
+    fs.rmSync(tmpOut, { recursive: true, force: true });
+  });
+
+  test('a hero rule is emitted under BOTH .electron-dark and .electron-light', () => {
+    assert.match(css, /\.electron-dark \.\\\[container-name\\:home-main-content\\\]:has\(\.heading-xl\) \{/);
+    assert.match(css, /\.electron-light \.\\\[container-name\\:home-main-content\\\]:has\(\.heading-xl\) \{/);
+  });
+
+  test("each mode's own scrim stops appear in its own rule, and not the other mode's", () => {
+    const darkRuleStart = css.indexOf('.electron-dark .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    const lightRuleStart = css.indexOf('.electron-light .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    assert.ok(darkRuleStart >= 0 && lightRuleStart >= 0);
+
+    // Rules are emitted dark-then-light (recipe.hero.modes order), so the
+    // dark rule's own text is everything between the two rule starts.
+    const darkRuleText = css.slice(darkRuleStart, lightRuleStart);
+    const lightRuleText = css.slice(lightRuleStart, lightRuleStart + 1000);
+
+    // dark: [[0,0],[0.3,0.5],[1,0.5]] -> 50% alpha at the 30% and 100% stops.
+    assert.match(darkRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 50%, transparent\) 30%/);
+    assert.match(darkRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 50%, transparent\) 100%/);
+    // light's own 40% alpha must NOT appear in the dark rule.
+    assert.doesNotMatch(darkRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 40%, transparent\)/);
+
+    // light: [[0,0],[0.3,0.4],[1,0.4]] -> 40% alpha at the 30% and 100% stops.
+    assert.match(lightRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 40%, transparent\) 30%/);
+    assert.match(lightRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 40%, transparent\) 100%/);
+    // dark's own 50% alpha must NOT appear in the light rule.
+    assert.doesNotMatch(lightRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 50%, transparent\)/);
+  });
+
+  test("the image's base64 payload is identical in both mode rules -- ONE image, two rules", () => {
+    const expectedB64 = fs.readFileSync(path.join(tmpAssets, 'assets', 'hero-synthetic.bin')).toString('base64');
+    const escaped = expectedB64.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const payloadRegex = new RegExp(`url\\(data:application/octet-stream;base64,${escaped}\\)`, 'g');
+    const matches = css.match(payloadRegex) || [];
+    assert.equal(matches.length, 2, `expected the same base64 payload to appear in exactly 2 rules (one per mode), found ${matches.length}`);
+  });
+
+  test('the recipe fixture itself names no real theme -- guards this test against accidentally depending on deep-navy-portrait or its private hero source', () => {
+    assert.ok(!css.includes('BW_Jisoo'));
+    assert.ok(!css.includes('deep-navy-portrait'));
+    assert.ok(!css.includes('hero-sources'));
+  });
+});

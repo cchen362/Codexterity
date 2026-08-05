@@ -237,6 +237,148 @@ export function solveScrim({ image, bands, stops, ground, ink, mode, textFrom = 
   };
 }
 
+/**
+ * SOLVE a scrim for an image, rather than verifying one it is handed.
+ * Plan 0003 M4 — the capability this module was missing. D-0003-5.
+ *
+ * Until now this file could only answer "does this stop set clear AA?", so a
+ * scrim had to be guessed and re-guessed by hand until it did. That worked
+ * for one image whose stops were already known. It is not a pipeline, and
+ * this plan's whole purpose is that adding a theme does not feel like
+ * starting over.
+ *
+ * THE SHAPE IT PRODUCES, and why it is this shape rather than a ramp:
+ *
+ *     [[0, 0], [textFrom, a], [1, a]]     when textFrom > 0
+ *     [[0, a], [1, a]]                    when textFrom === 0
+ *
+ * a linear ramp from fully clear at the top of the panel down to the line
+ * where text can first sit, and then ONE CONSTANT alpha held to the bottom.
+ * One solved number either way.
+ *
+ * PASSING textFrom: 0 IS NOT A DEGENERATE CASE — IT IS THE RIGHT ANSWER FOR A
+ * HIGH-KEY IMAGE, and it was measured into existence. A clear top is only
+ * safe when the image is dark up there on its own: Captain's Cabin's hero is
+ * a night scene, so its unveiled top region carries text perfectly well and
+ * its scrim can afford to ramp. An evenly bright image has no such margin,
+ * and a fully transparent band is then a HOLE in the proof rather than a
+ * stylistic choice — text that lands in it is unveiled over near-white
+ * pixels. Rendering the empty state in full app chrome is what exposed this:
+ * with a ramped scrim the heading washed out completely, while the reported
+ * figure stayed a comfortable 5.53:1, because that figure only ever
+ * described the region BELOW textFrom. Nothing guarantees where the heading
+ * sits — it moves with the window's shape — so for such an image the veil
+ * must cover the whole panel. Note the solved NUMBER is identical either
+ * way (the search below already sweeps every band); only the shape changes.
+ *
+ * WHY THE PLATEAU IS SOLVED AGAINST EVERY BAND IN THE IMAGE, not only the
+ * bands that sit inside the text region. This is the load-bearing difference
+ * from solveScrim() and it buys a property Captain's Cabin's shipped scrim
+ * does not have. The stops are interpreted in PANEL coordinates by the CSS
+ * gradient, while the bands are IMAGE coordinates, and `background-size:
+ * cover` makes those two disagree the moment the panel is a different
+ * aspect ratio from the image — on a short panel cover crops top and bottom,
+ * so the image's middle lands where the heading is. A scrim solved only
+ * against co-located bands is therefore proven for exactly one window shape
+ * and merely hoped-for at every other. Taking the worst band anywhere in the
+ * image, and holding that alpha flat everywhere text can sit, makes the
+ * proof independent of the crop: whatever pixel the crop moves under the
+ * heading, it was already accounted for. Measured on BW_Jisoo.png — the
+ * in-place worst case and the any-band-anywhere worst case are the SAME
+ * figure, which is what "crop-immune" means here.
+ *
+ * NOTE THE DEFAULT, AND THAT IT DELIBERATELY DIFFERS FROM solveScrim()'s.
+ * solveScrim() verifies and defaults to textFrom 0.42, because that is the
+ * region Captain's Cabin's shipped calibration was measured over and its
+ * 5.99:1 gate depends on it. This function SOLVES, and defaults to 0 —
+ * protect the whole panel unless the caller can show text never reaches the
+ * top. The asymmetry is intentional: the failure modes are not symmetric. An
+ * over-covered scrim is a picture that reads a little quieter than it had to;
+ * an under-covered one is illegible text that still reports a healthy ratio,
+ * which is the worse failure and the harder one to notice. A tool whose
+ * default leaves a hole is a tool that will eventually be used to make one.
+ *
+ * The caller gets `plateauAlpha` back rather than a pass/fail, because a
+ * plateau near 1 is not a failure — it is an image that can only carry text
+ * by being erased, which is a thing to SAY IN WORDS on a decision surface
+ * (D-0003-4) rather than to report as a broken build.
+ *
+ * DO NOT RETRO-FIT THIS SHAPE ONTO CAPTAIN'S CABIN. A flat plateau is right
+ * for an EVENLY LIT image, where the worst band is representative of every
+ * band. Captain's Cabin's hero is the opposite: one bright lamp in a
+ * deliberately low-key frame, so solving a single plateau against that lamp
+ * over-veils everything else. Measured on the shipped hero at a 4.5:1
+ * target, this function returns a plateau of 0.503 and lands at 9.68:1 —
+ * i.e. it spends more than twice the required contrast and erases the
+ * picture to buy it. That is why the shipped scrim RAMPS, and the ramp is
+ * still the right answer there. A solver is not automatically better than
+ * the hand-tuned stops it can generalise; it is better for the images whose
+ * shape it assumes.
+ */
+export function solveScrimStops({ image, bands, ground, ink, mode, target = 4.5, textFrom = 0, bandCount, precision = 3 }) {
+  if (mode !== 'dark' && mode !== 'light') {
+    throw new Error(`hero-scrim: mode must be 'dark' or 'light', got ${JSON.stringify(mode)}`);
+  }
+  if (!Number.isFinite(target) || target <= 1) {
+    throw new Error(`hero-scrim: target contrast must be a number above 1, got ${JSON.stringify(target)}`);
+  }
+  if (!Number.isFinite(textFrom) || textFrom < 0 || textFrom >= 1) {
+    throw new Error(`hero-scrim: textFrom must be a number in [0, 1), got ${JSON.stringify(textFrom)}`);
+  }
+  if (!Number.isInteger(precision) || precision < 1 || precision > 6) {
+    throw new Error(`hero-scrim: precision must be an integer in [1, 6], got ${JSON.stringify(precision)}`);
+  }
+
+  const resolvedBands = bands ?? bandImage(image, { bands: bandCount ?? DEFAULT_BANDS });
+  const groundRgb = requireHex(ground, 'ground');
+  const inkRgb = requireHex(ink, 'ink');
+  const pixelKey = MODES[mode];
+
+  // The worst band ANYWHERE in the image (see the header). ratioRgb against a
+  // flat blend is monotonic in alpha — more ground mixed in always moves the
+  // pixel toward the ground, and the ground/ink pair is itself AA-audited —
+  // so a bisection on alpha is exact rather than a heuristic search.
+  let plateau = 0;
+  let governingBand = null;
+  for (const band of resolvedBands) {
+    const px = band[pixelKey];
+    let lo = 0, hi = 1;
+    // hi = 1 is the ground itself, whose contrast against the ink is the
+    // palette's own audited figure, so the search always brackets an answer.
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (ratioRgb(blend(px, mid, groundRgb), inkRgb) >= target) hi = mid; else lo = mid;
+    }
+    if (hi > plateau) { plateau = hi; governingBand = band; }
+  }
+
+  // Rounded UP, never to-nearest: rounding down would hand back stops whose
+  // re-verification falls a hair under the target the caller asked for, and a
+  // solver that cannot survive its own checker is worse than no solver.
+  const step = 10 ** precision;
+  const plateauAlpha = Math.min(1, Math.ceil(plateau * step) / step);
+
+  // textFrom === 0 means "text can sit anywhere", so there is no clear region
+  // to ramp out of and a [0,0] stop would re-open the very hole this case
+  // exists to close (scrimAlphaAt holds at the FIRST stop's alpha at or below
+  // its fraction, so [[0,0],[0,a],…] would report 0 at the top of the panel).
+  const stops = textFrom === 0
+    ? [[0, plateauAlpha], [1, plateauAlpha]]
+    : [[0, 0], [textFrom, plateauAlpha], [1, plateauAlpha]];
+  const verified = solveScrim({ bands: resolvedBands, stops, ground, ink, mode, textFrom });
+
+  return {
+    stops,
+    plateauAlpha,
+    target,
+    mode,
+    governingFraction: governingBand ? governingBand.fraction : null,
+    worstRatio: verified.worstRatio,
+    passes: verified.worstRatio >= target,
+    visibleFraction: verified.visibleFraction,
+  };
+}
+
 // The four candidate stop sets from the Phase 3 calibration run, kept
 // verbatim so this module and the Python script can be compared side by
 // side. The FIRST label is deliberately corrected here, not copied as-is:

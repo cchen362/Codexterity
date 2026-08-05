@@ -20,6 +20,20 @@ out/
 # derived copy of an image the repo already ships.
 assets/hero-sources/
 
+# D-0003-6 — the theme directory is build output; the recipe is the source.
+# Deep Navy Portrait (Plan 0003 M4) is private/local only, by owner ruling 4 on
+# that plan — the same ruling that keeps assets/hero-sources/ out of the repo
+# above. Its staged assets are a copy of a private photograph
+# (assets/hero-sources/BW_Jisoo.png), and its emitted theme.css embeds that
+# same photograph as a base64 data URI, so committing anything under this
+# directory — staged assets or emitted output alike — would put the
+# photograph into git history by the back door, exactly what the block above
+# exists to prevent. The recipe that describes this theme IS committed, at
+# tools/palette/recipes/deep-navy-portrait.mjs — only the theme directory
+# built from it is excluded. Rebuilding it is one command once the assets are
+# staged: node tools/palette/emit-theme.mjs deep-navy-portrait
+themes/deep-navy-portrait/
+
 # D-0003-3 — The palette-directions sheet is a BUILD PRODUCT, not a committed
 # mockup — the one file in docs/mockups/ that is generated rather than tracked.
 # It embeds the hero images it is judging, and one of those is a private

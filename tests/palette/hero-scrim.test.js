@@ -23,6 +23,7 @@ let bandImage;
 let MODES;
 let scrimAlphaAt;
 let solveScrim;
+let solveScrimStops;
 let CALIBRATION_STOPS;
 let SHIPPED_CAPTAINS_CABIN;
 let tonalSummary;
@@ -36,6 +37,7 @@ before(async () => {
     MODES,
     scrimAlphaAt,
     solveScrim,
+    solveScrimStops,
     CALIBRATION_STOPS,
     SHIPPED_CAPTAINS_CABIN,
     tonalSummary,
@@ -559,6 +561,289 @@ describe('solveScrim() when textFrom excludes every band', () => {
         assert.ok(err.message.startsWith('hero-scrim: '), `expected a "hero-scrim: " prefixed message, got: ${err.message}`);
         return true;
       }
+    );
+  });
+});
+
+// =====================================================================
+// J. solveScrimStops() — Plan 0003 M4's addition. Until now this module
+// could only VERIFY a stop set a human had already guessed; this is the
+// capability that SOLVES one, which is what made Deep Navy Portrait's two
+// scrims a two-line recipe entry instead of a hand-tuned guess-and-check.
+// =====================================================================
+
+describe('solveScrimStops() input validation', () => {
+  const baseArgs = () => ({
+    image: makeImage(8, 60, () => [128, 128, 128, 255]),
+    ground: '#0E141F',
+    ink: '#F4EAD4',
+    mode: 'dark',
+    target: 4.5,
+    textFrom: 0.42,
+    precision: 2,
+  });
+
+  test('an unknown mode is rejected by name', () => {
+    assert.throws(
+      () => solveScrimStops({ ...baseArgs(), mode: 'sepia' }),
+      (err) => {
+        assert.ok(err.message.startsWith('hero-scrim: '));
+        assert.match(err.message, /sepia/);
+        return true;
+      }
+    );
+  });
+
+  test('a non-numeric target is rejected by name', () => {
+    assert.throws(
+      () => solveScrimStops({ ...baseArgs(), target: 'high' }),
+      (err) => {
+        assert.ok(err.message.startsWith('hero-scrim: '));
+        assert.match(err.message, /target contrast/);
+        return true;
+      }
+    );
+  });
+
+  test('a target at or below 1 is rejected by name (contrast ratios bottom out at 1:1)', () => {
+    assert.throws(
+      () => solveScrimStops({ ...baseArgs(), target: 1 }),
+      (err) => {
+        assert.ok(err.message.startsWith('hero-scrim: '));
+        assert.match(err.message, /target contrast/);
+        return true;
+      }
+    );
+  });
+
+  test('a textFrom outside [0, 1) is rejected by name', () => {
+    assert.throws(
+      () => solveScrimStops({ ...baseArgs(), textFrom: 1 }),
+      (err) => {
+        assert.ok(err.message.startsWith('hero-scrim: '));
+        assert.match(err.message, /textFrom/);
+        return true;
+      }
+    );
+    assert.throws(
+      () => solveScrimStops({ ...baseArgs(), textFrom: -0.1 }),
+      (err) => {
+        assert.ok(err.message.startsWith('hero-scrim: '));
+        assert.match(err.message, /textFrom/);
+        return true;
+      }
+    );
+  });
+
+  test('an out-of-range precision is rejected by name', () => {
+    assert.throws(
+      () => solveScrimStops({ ...baseArgs(), precision: 0 }),
+      (err) => {
+        assert.ok(err.message.startsWith('hero-scrim: '));
+        assert.match(err.message, /precision/);
+        return true;
+      }
+    );
+    assert.throws(
+      () => solveScrimStops({ ...baseArgs(), precision: 7 }),
+      (err) => {
+        assert.ok(err.message.startsWith('hero-scrim: '));
+        assert.match(err.message, /precision/);
+        return true;
+      }
+    );
+    assert.throws(
+      () => solveScrimStops({ ...baseArgs(), precision: 2.5 }),
+      (err) => {
+        assert.ok(err.message.startsWith('hero-scrim: '));
+        assert.match(err.message, /precision/);
+        return true;
+      }
+    );
+  });
+});
+
+describe('solveScrimStops() solves a plateau that survives its own checker', () => {
+  // A busy synthetic image -- horizontal bands alternating light and dark
+  // grey, so the solver has real variation to search over rather than a
+  // single flat value it could trivially satisfy.
+  function makeBusyImage() {
+    return makeImage(8, 120, (x, y) => {
+      const band = Math.floor(y / 10);
+      const v = band % 2 === 0 ? 200 : 60;
+      return [v, v, v, 255];
+    });
+  }
+
+  test('returns the documented three-stop shape [[0,0],[textFrom,a],[1,a]]', () => {
+    const image = makeBusyImage();
+    const result = solveScrimStops({ image, ground: '#0E141F', ink: '#F4EAD4', mode: 'dark', target: 4.5, textFrom: 0.42, precision: 2 });
+    assert.equal(result.stops.length, 3);
+    assert.deepEqual(result.stops[0], [0, 0]);
+    assert.equal(result.stops[1][0], 0.42);
+    assert.equal(result.stops[2][0], 1);
+    assert.equal(result.stops[1][1], result.stops[2][1], 'the plateau alpha must be the same at textFrom and at 1');
+  });
+
+  for (const target of [4.5, 7]) {
+    test(`at target ${target}:1, the solved stops re-verify at or above ${target}:1 through solveScrim (the solver survives its own checker)`, () => {
+      const image = makeBusyImage();
+      const result = solveScrimStops({ image, ground: '#0E141F', ink: '#F4EAD4', mode: 'dark', target, textFrom: 0.42, precision: 2 });
+      assert.ok(result.passes, `solveScrimStops reported passes=false for its own solved stops at target ${target}`);
+      const reverified = solveScrim({
+        image,
+        stops: result.stops,
+        ground: '#0E141F',
+        ink: '#F4EAD4',
+        mode: 'dark',
+        textFrom: 0.42,
+      });
+      assert.ok(
+        reverified.worstRatio >= target,
+        `re-verifying the solved stops through solveScrim gave ${reverified.worstRatio}, below the requested target ${target}`
+      );
+    });
+  }
+
+  test('a higher target yields a higher (or equal) plateau alpha than a lower one, on the same image', () => {
+    const image = makeBusyImage();
+    const low = solveScrimStops({ image, ground: '#0E141F', ink: '#F4EAD4', mode: 'dark', target: 4.5, textFrom: 0.42, precision: 2 });
+    const high = solveScrimStops({ image, ground: '#0E141F', ink: '#F4EAD4', mode: 'dark', target: 7, textFrom: 0.42, precision: 2 });
+    assert.ok(
+      high.plateauAlpha >= low.plateauAlpha,
+      `expected the 7:1 plateau (${high.plateauAlpha}) to be >= the 4.5:1 plateau (${low.plateauAlpha})`
+    );
+    assert.ok(high.plateauAlpha > low.plateauAlpha, 'a materially harder target should require more scrim, not the identical amount');
+  });
+});
+
+describe('solveScrimStops() is crop-immune: it solves against every band in the image, not only the bands inside the text region', () => {
+  // THE POINT OF THIS TEST. `background-size: cover` on a panel whose aspect
+  // ratio differs from the image's makes panel coordinates (where the CSS
+  // stops apply) and image coordinates (where bandImage() measures) disagree
+  // -- a short panel crops top and bottom, sliding the image's middle under
+  // the heading. A scrim solved only against bands that already sit at or
+  // below textFrom is therefore proven for exactly one window shape and
+  // merely hoped-for at every other; solveScrimStops() is documented to take
+  // the worst band ANYWHERE in the image for exactly this reason.
+  //
+  // This image puts its single brightest band ABOVE textFrom -- squarely in
+  // the region a co-located ("only bands >= textFrom") solve would never
+  // look at -- and everything at or below textFrom is comfortably dark. If
+  // solveScrimStops() is ever "simplified" to only search bands >= textFrom,
+  // this bright band is invisible to it, the returned plateau under-scrims,
+  // and this test fails when that same bright pixel is evaluated at a panel
+  // position inside the text region (exactly what a short-panel crop does).
+  function makeImageWithBrightBandAboveTextFrom() {
+    return makeImage(8, 100, (x, y) => {
+      const fraction = y / 100;
+      // A narrow, near-white band sitting at 10%-18% of the image height --
+      // well above textFrom (0.42) -- against dark grey everywhere else.
+      if (fraction >= 0.1 && fraction < 0.18) return [250, 250, 250, 255];
+      return [40, 40, 40, 255];
+    });
+  }
+
+  test('the solved plateau still clears the target when the bright above-textFrom pixel is evaluated at a panel position inside the text region', () => {
+    const image = makeImageWithBrightBandAboveTextFrom();
+    const target = 4.5;
+    const result = solveScrimStops({ image, ground: '#0E141F', ink: '#F4EAD4', mode: 'dark', target, textFrom: 0.42, bandCount: 50, precision: 2 });
+
+    // Sanity: the governing band really is the bright one above textFrom,
+    // not one of the dark bands -- otherwise this test would not be
+    // exercising the crop-immunity property it claims to.
+    assert.ok(
+      result.governingFraction < 0.42,
+      `expected the governing band to be the bright one above textFrom (0.42), got fraction ${result.governingFraction}`
+    );
+
+    // Simulate a short-panel crop: evaluate the SAME bright pixel as though
+    // it had landed at 50% of the panel (deep inside the text region) by
+    // blending it at the plateau alpha and checking contrast directly --
+    // the same arithmetic solveScrim() uses, applied to the pixel a
+    // co-located solve would have ignored.
+    const hexToRgb = (hex) => {
+      const n = parseInt(hex.replace('#', ''), 16);
+      return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+    };
+    // palette-engine.mjs is ESM; the WCAG contrast formula is re-derived
+    // directly here rather than a second dynamic import, since only the
+    // arithmetic is needed and this must not depend on solveScrim()
+    // internals to prove independence.
+    const srgbToLinear = (c) => {
+      const v = c / 255;
+      return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    const relLuminance = ([r, g, b]) => {
+      const [R, G, B] = [r, g, b].map(srgbToLinear);
+      return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+    };
+    const contrast = (a, b) => {
+      const la = relLuminance(a) + 0.05;
+      const lb = relLuminance(b) + 0.05;
+      return la > lb ? la / lb : lb / la;
+    };
+
+    const groundRgb = hexToRgb('#0E141F');
+    const inkRgb = hexToRgb('#F4EAD4');
+    const brightPixel = [250, 250, 250];
+    const alpha = result.plateauAlpha;
+    const blended = brightPixel.map((c, i) => Math.round(c * (1 - alpha) + groundRgb[i] * alpha));
+    const croppedRatio = contrast(blended, inkRgb);
+
+    assert.ok(
+      croppedRatio >= target,
+      `the bright above-textFrom pixel, evaluated as if cropped into the text region, must still clear ${target}:1 -- got ${croppedRatio.toFixed(2)}:1 with plateauAlpha=${alpha}`
+    );
+  });
+});
+
+// =====================================================================
+// K. solveScrimStops() covers the WHOLE panel by default -- the M4
+// regression guard. A ramped scrim that reaches alpha 0 at the top of the
+// panel is safe only for an image that is dark up there on its own
+// (Captain's Cabin's night scene). For a high-key image that clear band is
+// a HOLE: text landing in it sits unveiled over near-white pixels while the
+// reported figure stays healthy, because the figure only ever described the
+// region below textFrom. Rendering the real empty state in real app chrome
+// is what caught it; these tests are what stop it coming back.
+// =====================================================================
+
+describe('solveScrimStops() protects the whole panel unless told otherwise', () => {
+  // Bright everywhere, exactly the shape that makes a clear top dangerous.
+  const brightImage = () => makeImage(8, 100, () => [235, 235, 235, 255]);
+  const DARK = { ground: '#0E141F', ink: '#F4EAD4', mode: 'dark' };
+
+  test('textFrom DEFAULTS to 0, producing a flat two-stop scrim with no transparent band', () => {
+    const result = solveScrimStops({ image: brightImage(), ...DARK, target: 4.5, precision: 2 });
+    assert.equal(result.stops.length, 2, 'a whole-panel scrim is two stops, not three');
+    assert.deepEqual(result.stops.map((s) => s[0]), [0, 1], 'the two stops span the whole panel');
+    assert.equal(result.stops[0][1], result.stops[1][1], 'the alpha is constant across the panel');
+    assert.ok(result.stops[0][1] > 0, 'no stop may be fully transparent -- that is the hole this guards');
+  });
+
+  test('an explicit textFrom > 0 still gives the three-stop ramp, so the clear top stays available on purpose', () => {
+    const result = solveScrimStops({ image: brightImage(), ...DARK, target: 4.5, textFrom: 0.42, precision: 2 });
+    assert.equal(result.stops.length, 3);
+    assert.deepEqual(result.stops[0], [0, 0], 'an explicitly requested ramp does start clear');
+  });
+
+  test('the default scrim keeps text legible at the very TOP of the panel, where a ramped one would not', () => {
+    const image = brightImage();
+    const flat = solveScrimStops({ image, ...DARK, target: 4.5, precision: 2 });
+    const ramped = solveScrimStops({ image, ...DARK, target: 4.5, textFrom: 0.42, precision: 2 });
+
+    // Evaluate BOTH over the whole panel (textFrom: 0), which is the honest
+    // question "is text legible anywhere it might land?".
+    const flatWorst = solveScrim({ image, stops: flat.stops, ...DARK, textFrom: 0 }).worstRatio;
+    const rampedWorst = solveScrim({ image, stops: ramped.stops, ...DARK, textFrom: 0 }).worstRatio;
+
+    assert.ok(flatWorst >= 4.5, `the default whole-panel scrim must clear 4.5:1 everywhere, got ${flatWorst.toFixed(2)}`);
+    assert.ok(
+      rampedWorst < 4.5,
+      'the ramped scrim is expected to FAIL over the whole panel on a high-key image -- if this ever passes, ' +
+      'either the fixture stopped being high-key or the ramp stopped starting at zero, and the contrast ' +
+      `between the two shapes (the reason for the default) no longer holds. Got ${rampedWorst.toFixed(2)}`
     );
   });
 });

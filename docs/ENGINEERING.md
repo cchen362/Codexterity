@@ -84,6 +84,8 @@ The shape is decided (Plan 0001) even though code is not yet written. Record it 
 
 **Readability outranks aesthetics — always.** Every text/surface pairing a theme produces must pass **WCAG AA** contrast. A gorgeous low-contrast theme that tires the eyes over a long coding session is a failed theme. This is the project's first design law.
 
+> **There is exactly ONE knowing exception in this repository, and it is narrow (D-0003-7).** Deep Navy Portrait's hero scrim runs at **4.04:1 dark / 4.07:1 light** for normal-size text sitting over the image, chosen by the owner on sight from a rendered ladder after being shown the rule and the cost. It is licensed by that theme being **private and local only** — never shared, never in an installer — and the empty state's heading is large text, which stays well above its own 3:1 threshold. **It is not a precedent:** every shareable theme, Captain's Cabin included, stays at AA, and no recipe may cite it as licence. Note also that **nothing in the build enforces scrim contrast** — the emitter's refusal audits palette tokens, not scrims — so this is upheld by the record, not by a gate.
+
 **The Captain's Cabin palette and typography are LOCKED (Phase 2, 2026-07-31).** The exact values for both `.electron-dark` and `.electron-light` live in [`themes/captains-cabin/theme.css`](../themes/captains-cabin/theme.css); the code palette is in `syntax.json` beside it; the fonts and their roles are recorded in [`docs/specs/customizable-ui-inventory.md`](specs/customizable-ui-inventory.md) §Fonts. Read those files for values — never a mockup, and never this file.
 
 **Palette values are derived, not hand-picked.** Ramps are stepped in OKLCH and every contrast-critical token is *solved* for its WCAG AA target by binary search. The derivation is [`tools/palette/palette-engine.mjs`](../tools/palette/palette-engine.mjs); the check is `audit.mjs`; the emitter is `emit-theme.mjs`. To change a colour, change the recipe and regenerate — do not hand-edit `theme.css`:
@@ -105,6 +107,23 @@ A **direction** is a first-class record in [`tools/palette/directions.mjs`](../t
 node tools/palette/directions.mjs --image <hero.png> --inherit-from navy   # the figures
 node tools/mockup/build-palette-directions.mjs                            # the chooser
 ```
+
+**A HERO'S SCRIM IS SOLVED, NOT GUESSED, AND THE SHAPE IS PART OF THE ANSWER (D-0003-5).**
+[`hero-scrim.mjs`](../tools/palette/hero-scrim.mjs)'s `solveScrimStops()` takes an image, a ground,
+an ink and a mode and returns the stops that clear a contrast target. Two things about it are
+load-bearing and were measured rather than reasoned about. It solves against the worst band
+**anywhere** in the image, which is what makes the proof independent of how `background-size: cover`
+crops the panel — otherwise a scrim is proven for exactly one window shape. And its `textFrom`
+defaults to **0**, covering the whole panel, deliberately unlike `solveScrim()`'s 0.42: a scrim that
+ramps out to transparent at the top is safe only for an image that is dark up there on its own, and
+on a high-key image that clear band is a hole where text sits unveiled **while the reported figure
+stays healthy**. That exact failure shipped once during M4 at a reported 5.53:1, with the heading
+washed out, and was caught only by rendering the empty state inside real app chrome.
+
+**Do not retro-fit the flat shape onto Captain's Cabin.** Its hero is one lamp in a low-key frame,
+so a single plateau solved against that lamp over-veils everything else — measured, 9.68:1 against a
+4.5:1 target, i.e. the picture erased to buy contrast nobody asked for. Its ramp is correct. A
+solver is better for the images whose shape it assumes, not better in general.
 
 **HOW A PALETTE-OPTIONS SHEET MUST BE PRESENTED (D-0003-4, owner ruling 2026-08-05).** Any sheet that asks the owner to choose between palettes follows [`docs/mockups/0005-jisoo-palette-directions.html`](mockups/0005-jisoo-palette-directions.html)'s shape, which is the one they have twice confirmed they can decide from:
 
@@ -139,7 +158,7 @@ Directory roles are visible from the tree (see Plan 0001 §folder-structure). Th
 
 ## Verification Expectations
 
-**The repo has a test harness as of Phase 4 M1**, grown once per Phase 4 milestone. It now covers the theme loader (manifest, safe-CSS, zip reader), the `.ccskin` writer, the packer, the `cdx` CLI, and both package builders (`tests/packaging/windows.test.js`, `tests/packaging/macos.test.js`) — plus, since Plan 0002 M4, the injector's **landmark degradation reporting** (`tests/injector/landmarks.test.js`, covering a theme whose selectors have all stopped matching) — plus, since Plan 0003 M1, the **hero scrim solver** (`tests/palette/hero-scrim.test.js`) and the PNG decoder's colour-type-2 path — plus, since Plan 0003 M2, the **recipe-driven emitter** (`tests/palette/emit-theme.test.js`) — plus, since Plan 0003 M3, the **hero-image palette recommender** (`tests/palette/recommend-palette.test.js`, carrying M3's own calibration gate) — plus, since M3b, the **directions generator and the light-ground input** (`tests/palette/directions.test.js`). Fourteen files, **282 tests**, last run green on this machine 2026-08-05. The rest of the injector core, the launchers and the palette *derivation* itself (`palette-engine.mjs`) have no unit coverage and are proven by the running app and by `audit.mjs` instead.
+**The repo has a test harness as of Phase 4 M1**, grown once per Phase 4 milestone. It now covers the theme loader (manifest, safe-CSS, zip reader), the `.ccskin` writer, the packer, the `cdx` CLI, and both package builders (`tests/packaging/windows.test.js`, `tests/packaging/macos.test.js`) — plus, since Plan 0002 M4, the injector's **landmark degradation reporting** (`tests/injector/landmarks.test.js`, covering a theme whose selectors have all stopped matching) — plus, since Plan 0003 M1, the **hero scrim solver** (`tests/palette/hero-scrim.test.js`) and the PNG decoder's colour-type-2 path — plus, since Plan 0003 M2, the **recipe-driven emitter** (`tests/palette/emit-theme.test.js`) — plus, since Plan 0003 M3, the **hero-image palette recommender** (`tests/palette/recommend-palette.test.js`, carrying M3's own calibration gate) — plus, since M3b, the **directions generator and the light-ground input** (`tests/palette/directions.test.js`) — plus, since Plan 0003 M4, the **scrim SOLVER** (`solveScrimStops`, in the existing `tests/palette/hero-scrim.test.js`), whose crop-immunity and whole-panel-coverage tests are regression guards for two real defects and are verified to fail when the solver is simplified. Fourteen files, **299 tests**, last run green on this machine 2026-08-05. The rest of the injector core, the launchers and the palette *derivation* itself (`palette-engine.mjs`) have no unit coverage and are proven by the running app and by `audit.mjs` instead.
 
 **The emitter suite carries the byte-equivalence gate, and that gate is the reason Captain's Cabin cannot drift — do not weaken it.** `tests/palette/emit-theme.test.js` emits the shipped theme into a temp directory and asserts `theme.css`, `syntax.json` **and** `manifest.json` come back **byte-identical** to the three tracked files. It was the gate Plan 0003 M2 was measured against (SHA-256 `731CC9…4286E`, `36DAD6…211FEB`, `0E44FF…AD5DB5`) and it is now permanent rather than a one-off `Get-FileHash`. The same file proves the two refusals actually fire: a landmark whose `probe` is missing throws **and leaves the output directory empty**, and `assertPalettesPassAA()` — the *same* exported function the emitter calls — throws on a synthetic palette where every token resolves to one hex. **If a legitimate change to the shipped theme ever moves those bytes, update the recorded digests in the same commit that changes the theme, and never the other way round.**
 

@@ -1,7 +1,9 @@
 # Plan 0003 — Image-led theme authoring: the hero-to-palette pipeline
 
-**Status:** **OPEN. Opened 2026-08-05. M1, M2 and M3 DONE (all 2026-08-05); M3b ADDED 2026-08-05 by
-the scope correction below and IN PROGRESS; M4–M6 not started.** M3 met its stated gate but solved
+**Status:** **OPEN. Opened 2026-08-05. M1, M2, M3, M3b and M4 all DONE 2026-08-05 — except M4's
+running-app confirmation and the owner's dark-mode veil choice, which are the only things still
+open in it. M5 and M6 not started.** After M4: `npm test` **299/299**, `audit.mjs` **272/272**, all
+three Captain's Cabin digests unchanged. M3 met its stated gate but solved
 the wrong shape of problem — read "Scope correction" before treating any of M3's framing as settled.
 **M6 was added 2026-08-05**, after measuring that Plan 0002's review finding #5 was mis-scoped: every
 embedded asset ships twice, not only the hero, and the runtime cost is the half that matters. This is the first
@@ -504,8 +506,77 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   Captain's Cabin's **475,958** and **681,124**. Do not change the packaging format here. M4 is a
   milestone about how a theme *looks*, verified by eye in the running app; folding a package-format
   change into it means a visual milestone also edits D-0001-4, and a failure could not be attributed
-  to one or the other. Note the hero is embedded **once** even when both modes use it — the emitter
-  passes a single base64 payload to every mode's rule — so a two-mode hero does not double anything.
+  to one or the other. ~~Note the hero is embedded **once** even when both modes use it — the emitter
+  passes a single base64 payload to every mode's rule — so a two-mode hero does not double anything.~~
+  **THAT SENTENCE IS WRONG AND WAS DISPROVED BY BUILDING IT — see M4's outcome.** The emitter passes
+  one base64 *string* to each mode's rule, and each rule writes its own copy into the stylesheet, so a
+  two-mode hero embeds the image **twice**. Measured: the payload appears 2× at 1,993,928 bytes each,
+  which is 46% of this theme's stylesheet. **This is M6's to decide, not M4's** — it is the same
+  "every asset ships twice" question, one layer in.
+
+  **BUILT AND VERIFIED 2026-08-05, with one gate outstanding.** `npm test` **282 → 299**, `audit.mjs`
+  **272/272**, all three Captain's Cabin digests **unchanged** (`731CC9…4286E`, `36DAD6…211FEB`,
+  `0E44FF…AD5DB5`, with `git status --porcelain themes/captains-cabin` empty). The theme is
+  [`tools/palette/recipes/deep-navy-portrait.mjs`](../../tools/palette/recipes/deep-navy-portrait.mjs)
+  and **needed no emitter change at all** — M2's two-mode hero support and the recipe/emitter boundary
+  held exactly as designed, which is the strongest evidence so far that D-0003-1 is the right shape.
+  The directions sheet is rebuilt to D-0003-4. **Still open: the running-app confirmation and the
+  owner's choice of dark-mode veil (see "The dark-mode question" below).**
+
+  **RECORDED MEASUREMENT (the gate's own ask), and it is a big number:**
+
+  | | Captain's Cabin | Deep Navy Portrait |
+  |---|---|---|
+  | emitted `theme.css` | 475,958 | **4,301,572** (9.0×) |
+  | packaged `.ccskin` | 681,124 | **4,894,864** (7.2×) |
+
+  Two causes, both M6's: the duplicate embed above (1,993,928 bytes), and the source photograph
+  itself, which is a **1,495,444-byte lossless PNG** against Captain's Cabin's 124,134-byte lossy
+  WebP. A photograph is close to the worst case for PNG. Nothing was done about either here, on
+  purpose — this milestone is about how the theme looks.
+
+  **WHAT M4 SETTLED THAT THE SCOPING DID NOT ANTICIPATE — four measured facts:**
+
+  1. **The module could only VERIFY a scrim, never produce one, and that gap is why a new hero felt
+     like starting over.** `solveScrimStops()` closes it (**D-0003-5**): hand it an image, a ground, an
+     ink and a mode, and it bisects the alpha that clears a contrast target. The two scrims went from
+     a hand-tuned guess-and-check to two lines of recipe data.
+  2. **A PASSING CONTRAST FIGURE HID AN ILLEGIBLE HEADING, and only rendering the empty state inside
+     real app chrome caught it.** The first solved scrim ramped out to fully transparent at the top of
+     the panel, exactly as Captain's Cabin's does, and reported a comfortable **5.53:1**. The heading
+     rendered washed out and barely readable. The figure was not wrong — it described the region
+     *below* the text line, which is all `textFrom: 0.42` ever claimed — and the heading had landed
+     above it. Captain's Cabin survives a clear top only because its hero is a night scene, dark up
+     there anyway; a high-key image turns the same clear band into a hole. **The fix is the shape, not
+     the number**: the solved alpha is identical either way, held flat across the whole panel, and
+     `solveScrimStops` now defaults to protecting everything. Same family as D-0001-7's silent font
+     fallback and M3's double-prefixed custom property — *a green measurement of the wrong region
+     looks exactly like success*.
+  3. **The flat shape is crop-immune, and that is a property Captain's Cabin's scrim does not have.**
+     Because the plateau is solved against the worst band anywhere in the image, the in-place worst
+     case and the "any band could land anywhere" worst case are the **same** figure (5.53:1 dark).
+     `background-size: cover` makes panel and image coordinates disagree on any panel shape but one,
+     so a ramp's proof quietly depends on the window. See D-0003-5(a).
+  4. **The solved figures, and the owner moved them BELOW AA on purpose (D-0003-7).** Both modes are
+     solved independently, because the method inverts — dark's brightest pixel governs, light's
+     darkest does — and dark genuinely needs *more* veil than light at any given target (0.632 vs
+     0.591 at the AA floor), which is the opposite of the intuition and is why neither is ever
+     derived from the other. The first build shipped a 5.5:1 target (0.69 / 0.66) for headroom
+     nobody had asked for. Shown a rendered ladder of four veils per mode, the owner asked for the
+     portrait clearer *including below 4.5:1*; they were told plainly that 4.5:1 is AA for
+     normal-size text and that this project's first design law is "readability outranks aesthetics",
+     and chose **4:1 knowingly**. Shipped: **dark plateau 0.60 at 4.04:1, light plateau 0.56 at
+     4.07:1.** The heading is large text (AA threshold 3:1) and still clears; what goes under the
+     line is the secondary line, the card labels and the composer placeholder. Scoped to this
+     private theme, not a precedent — see the ruling for why, and note that **nothing in the build
+     gates scrim contrast**, so this is held by the record rather than by a check.
+
+  **THE DARK-MODE PANEL SITS BRIGHTER THAN THE APP AROUND IT, AND THAT IS INHERENT TO THIS IMAGE.**
+  The portrait's mean luminance is 0.657 against a ground at ~0.007, so at any veil that still shows
+  a face the empty-state panel reads lighter than the navy sidebar and title bar. That was put to the
+  owner as its own question with a three-rung ladder (0.69 / 0.78 / 0.86); they went the other way
+  entirely and asked for *more* portrait, which settles it — the luminous panel is wanted, not
+  tolerated. **Do not re-raise it as a defect.**
 
 - **M5 — install it privately and record what was settled.** Apply it locally through the existing
   `cdx apply`, confirm the theme-neutral shortcut carries it with no packaging change (the runtime is
@@ -530,6 +601,18 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   | `monaspace-neon-latin-400.woff2` | 44,476 | 59,304 |
   | `literata-latin-variable.woff2` | 38,996 | 51,996 |
   | **total** | **328,622** | **438,168** |
+
+  **A THIRD COPY EXISTS, FOUND IN M4, and M6 owns it too.** A hero used in BOTH modes is embedded
+  **once per mode rule**, not once — this plan previously asserted the opposite under M4 and was
+  wrong. Measured on Deep Navy Portrait: the payload appears 2× at **1,993,928 bytes each**, i.e.
+  **46%** of that theme's 4,300,500-byte stylesheet, on top of the raw copy in the package. The fix
+  is small and does **not** touch D-0001-4's package format — emit the `url(data:…)` once into a
+  custom property and have each mode's rule read it — but it belongs here with A1/A2 rather than in a
+  visual milestone, for the same reason M4's byte work was moved out. **Also worth measuring here,
+  and separable:** that theme's source image is a 1,495,444-byte **lossless PNG** of a photograph
+  against Captain's Cabin's 124,134-byte lossy WebP, so the format choice costs more than the
+  duplication does. Note the constraint that produced it — zero-dependency Node can decode PNG and
+  cannot decode WebP (M1 fact 1), so the scrim solver needs a PNG even if the *shipped* asset is not.
 
   Base64 is **92%** of the 475,958-byte stylesheet; the package is 681,124 bytes. **`inject.js` — the
   only code that runs inside Codex — never reads `activeTheme.assets` at all**; it uses `.css`,
