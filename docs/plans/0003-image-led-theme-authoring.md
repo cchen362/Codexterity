@@ -744,8 +744,30 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
 
   **A THIRD COPY EXISTS, FOUND IN M4, and M6 owns it too.** A hero used in BOTH modes is embedded
   **once per mode rule**, not once — this plan previously asserted the opposite under M4 and was
-  wrong. Measured on Deep Navy Portrait: the payload appears 2× at **1,993,928 bytes each**, i.e.
-  **46%** of that theme's 4,300,500-byte stylesheet, on top of the raw copy in the package. The fix
+  wrong. Measured on Deep Navy Portrait: the payload appears 2× at **1,993,928 base64 chars each**,
+  on top of the raw copy in the package.
+
+  > **FIGURE CORRECTED 2026-08-05 (Plan 0003 M5), by re-measuring the emitted stylesheet — the old
+  > text said "46% of that theme's 4,300,500-byte stylesheet" and both halves were off.** The
+  > stylesheet is **4,302,301** bytes (agreeing with M4's own table and with `cdx verify`); 4,300,500
+  > appears nowhere. And 46% is *one* copy — **the two together are 92.7%**. Full inventory, by
+  > content hash, of everything embedded in each theme's `theme.css`:
+  >
+  > | payload | Captain's Cabin | Deep Navy Portrait |
+  > |---|---|---|
+  > | `fraunces-latin-variable.woff2` | 161,356 ×1 | 161,356 ×1 |
+  > | `monaspace-neon-latin-400.woff2` | 59,304 ×1 | 59,304 ×1 |
+  > | `literata-latin-variable.woff2` | 51,996 ×1 | 51,996 ×1 |
+  > | hero | 165,512 ×1 (webp) | **1,993,928 ×2** (png) |
+  > | **embedded total** | **438,168 = 92.1%** | **4,260,512 = 99.0%** |
+  >
+  > So **the fonts are embedded once each even in the two-mode theme** — only the hero duplicates,
+  > because it is the only payload written into a per-mode rule. Deduplicating it would take that
+  > stylesheet from 4,302,301 to roughly **2,308,373** bytes, a 46.3% cut, and would leave Captain's
+  > Cabin's bytes **untouched** (its hero is dark-mode only, so it has nothing to deduplicate) — which
+  > is convenient for gate 3, since the byte-equivalence gate must still pass unchanged.
+
+  The fix
   is small and does **not** touch D-0001-4's package format — emit the `url(data:…)` once into a
   custom property and have each mode's rule read it — but it belongs here with A1/A2 rather than in a
   visual milestone, for the same reason M4's byte work was moved out. **Also worth measuring here,
