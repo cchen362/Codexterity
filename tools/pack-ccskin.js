@@ -100,14 +100,16 @@ function packTheme(themeDir, options = {}) {
 
   // Assets are read by the exact paths manifest.assets[] declares — NEVER
   // by walking the theme directory. themes/captains-cabin/assets/fonts/
-  // holds five font faces on disk but the manifest declares only three
-  // (D-0001-7): two are losing typography candidates and one is the
+  // holds NINE font faces on disk but the manifest declares only three
+  // (D-0001-7): five are the losing typography candidates (bitter,
+  // commissioner, ibm-plex-sans, newsreader, work-sans) and one is the
   // superseded Monaspace Xenon, all kept in the repo as the record of that
   // decision, not as shippable assets. A directory scan would happily zip
-  // all five into the .ccskin; reading only what the manifest names is what
+  // all nine into the .ccskin; reading only what the manifest names is what
   // keeps the package's contents equal to the theme's validated contents,
   // which is the whole reason this milestone's first judgement call
-  // resolved this way.
+  // resolved this way. (Counts corrected 2026-08-05 — this comment said
+  // "five on disk ... two candidates", undercounting both.)
   for (const asset of manifest.assets) {
     entries.push({ name: asset.path, content: readVerbatim(asset.path, 'manifest.json: assets[].path') });
   }

@@ -1,6 +1,8 @@
 # Plan 0003 — Image-led theme authoring: the hero-to-palette pipeline
 
-**Status:** **OPEN. Opened 2026-08-05. M1 and M2 DONE (both 2026-08-05); M3–M5 not started.** This is the first
+**Status:** **OPEN. Opened 2026-08-05. M1 and M2 DONE (both 2026-08-05); M3–M6 not started.**
+**M6 was added 2026-08-05**, after measuring that Plan 0002's review finding #5 was mis-scoped: every
+embedded asset ships twice, not only the hero, and the runtime cost is the half that matters. This is the first
 plan of the post-Phase-7 era; [Plan 0002](0002-phase-7-qa-docs-release.md) closed the roadmap at tag
 `v0.1.0` and is the release baseline this plan builds on. Numbers at the tag were: `npm test`
 **196/196**, `node tools/palette/audit.mjs` **272/272**, `themes/captains-cabin/theme.css` SHA-256
@@ -289,9 +291,15 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   scrim. Verify in the running app at the window shapes the exploration lists (wide, tall/narrow,
   short with vertical cropping), in both modes, with heading, suggestion content and composer present.
 
-  **Gate:** contrast solved and audited for both modes; a stated **byte budget** for the embedded hero
-  agreed before the image ships (review finding #5); Captain's Cabin still emits byte-identically; the
-  theme confirmed in the real running app, not from a build.
+  **Gate:** contrast solved and audited for both modes; Captain's Cabin still emits byte-identically;
+  the theme confirmed in the real running app, not from a build. **On the "byte budget" this gate used
+  to ask for (review finding #5): it is now M6's, not M4's, and M4's obligation is reduced to a
+  RECORDED MEASUREMENT** — state the new theme's emitted `theme.css` size and `.ccskin` size next to
+  Captain's Cabin's **475,958** and **681,124**. Do not change the packaging format here. M4 is a
+  milestone about how a theme *looks*, verified by eye in the running app; folding a package-format
+  change into it means a visual milestone also edits D-0001-4, and a failure could not be attributed
+  to one or the other. Note the hero is embedded **once** even when both modes use it — the emitter
+  passes a single base64 payload to every mode's rule — so a two-mode hero does not double anything.
 
 - **M5 — install it privately and record what was settled.** Apply it locally through the existing
   `cdx apply`, confirm the theme-neutral shortcut carries it with no packaging change (the runtime is
@@ -300,6 +308,62 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
 
   **Gate:** the package is **not** added to either installer and **not** shared; both platform
   builders still ship Captain's Cabin alone.
+
+- **M6 — the embedding audit: stop paying twice for every asset.** Plan 0002's review finding #5 said
+  "the hero ships twice". **Measured 2026-08-05, it is worse and differently shaped than that: EVERY
+  embedded asset ships twice, and the runtime half is the part that matters.** This milestone is the
+  decision, and it is deliberately *after* the theme work so that a packaging change is never
+  attributed to a colour change.
+
+  **Measured facts — do not re-derive:**
+
+  | asset | raw copy in the `.ccskin` | base64 copy inside `theme.css` |
+  |---|---|---|
+  | `hero-empty-state.webp` | 124,134 | 165,512 |
+  | `fraunces-latin-variable.woff2` | 121,016 | 161,356 |
+  | `monaspace-neon-latin-400.woff2` | 44,476 | 59,304 |
+  | `literata-latin-variable.woff2` | 38,996 | 51,996 |
+  | **total** | **328,622** | **438,168** |
+
+  Base64 is **92%** of the 475,958-byte stylesheet; the package is 681,124 bytes. **`inject.js` — the
+  only code that runs inside Codex — never reads `activeTheme.assets` at all**; it uses `.css`,
+  `.manifest.landmarks` and `.id`. The loader nevertheless reads all 328,622 bytes into a `Map` in
+  Codex's main process on every launch, and the **sole** consumer anywhere is
+  [`injector/cli.js`](../../injector/cli.js)'s `cdx verify`, which sums them for one summary line.
+  Woff2 and WebP are already compressed, so deflate does not recover the duplication.
+
+  **Two separable problems. Measure before choosing on the second.**
+
+  **(A) The duplicate payload — certain, and the fix is a real design choice, not a cleanup.**
+  Two candidate shapes, both legitimate:
+  - **A1 — stop packing the raw faces and the hero; keep the OFL licences.** The licences are *not*
+    optional: SIL OFL 1.1 requires the licence to accompany the font, and the font travels as a data
+    URI inside `theme.css`, so the licence must travel too. Package would fall from ~681 KB to
+    ~352 KB. **Cost: this changes D-0001-4's package format** — `assets[]` becomes a *declaration of
+    what the CSS embeds* rather than a *payload manifest*, and the loader's byte-count integrity check
+    (`declares X bytes but the packaged entry is Y`) loses its subject. That check is load-bearing
+    today and its replacement must be designed, not dropped.
+  - **A2 — keep the format, make the loader lazy.** Do not read asset bytes unless a caller asks.
+    Recovers the whole in-process cost with a much smaller blast radius, leaves D-0001-4 and the
+    integrity check intact, and leaves package size unchanged. `cdx verify` becomes the one caller
+    that opts in.
+
+  **(B) The stylesheet is re-sent on every navigation — certain that it happens, UNMEASURED whether it
+  costs anything.** `applyThemeViaStyleTag` finds-or-creates one `<style>` by stable id and replaces
+  its `textContent`, and it re-runs on `dom-ready`, `did-navigate` **and `did-navigate-in-page`** —
+  the last of which fires on in-app route changes. So ~476 KB crosses main→renderer as a string every
+  time. **Do not "fix" this before measuring it.** The obvious repair — have the injected script skip
+  the assignment when a content hash matches what is already there — is cheap and safe, but shipping
+  it without a measurement would be optimising an unmeasured cost, which this repo does not do.
+
+  **Gate:** (1) the re-application cost of (B) is **measured in the running app** — count of
+  `applyTheme` calls in a real session and the wall-clock cost of each — and the number is recorded
+  here whether or not it justifies a change; (2) a choice between **A1 and A2** is made and stamped as
+  a decision with its reasoning, since both are defensible and the next agent must not re-litigate;
+  (3) Captain's Cabin still emits **byte-identically** and `npm test` still passes — this milestone
+  must not touch a token; (4) if the package format changes, the `.ccskin` is rebuilt, reinstalled,
+  and **verified launching in the running app**, because D-0001-29's lesson is that a green suite can
+  sit on top of a product that cannot start.
 
 ---
 
