@@ -444,7 +444,22 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   The gate measured *correctness* and never asked *is this a thing a person can decide from*. M3b's
   gate 4 is deliberately the owner's verdict for that reason.
 
-- **M4 — Deep Navy Portrait, the first theme built by the pipeline.** Dark mode: the shipped navy
+- **M4 — Deep Navy Portrait, the first theme built by the pipeline.**
+
+  **Three corrections to this milestone's scope, made by M3b — read before starting.**
+  (1) **The engine work M4 used to own is already done.** `PARCHMENT` is now the `lightGround` build
+  option, so light mode needs no engine change — only a recipe that sets it.
+  (2) **M4 also rebuilds the directions sheet to D-0003-4**, the owner's presentation ruling: the hero
+  **in** each option behind the empty state under a per-option solved scrim, **one** dark/light toggle
+  for the whole sheet, typography unchanged by default. `0007` shows the hero *alongside* each option,
+  which was a dodge around the portrait's unsolved scrim; solving that scrim is M4's work anyway, so
+  the dodge has no remaining excuse.
+  (3) **The light-mode ground is an OPEN OWNER CHOICE, not a derivation.** `0007` §2 renders three
+  candidates against the portrait — warm parchment as shipped, a cooler paper-grey, a blue-leaning
+  paper. **M4 starts by getting that pick.** Do not choose it by argument; rebuild the sheet, show it,
+  ask. (This session's recommendation, for the owner to accept or reject on sight, is the middle one.)
+
+  Dark mode: the shipped navy
   palette, unchanged. Light mode: re-derived cooler for the monochrome hero, per the owner's ruling.
   Hero in **both** modes with **independently solved** scrims — the same image does not mean the same
   scrim. Verify in the running app at the window shapes the exploration lists (wide, tall/narrow,
