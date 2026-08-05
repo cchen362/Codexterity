@@ -27,6 +27,15 @@
  * entry sizes and CRCs — local file headers are only consulted to locate
  * where an entry's compressed data begins, never trusted for sizes, per
  * this milestone's spec.
+ *
+ * D-0003-9 (Plan 0003 M6) — `options.inflate` makes decompression OPT-IN per
+ * entry. Every entry still gets every structural check below (path safety,
+ * symlink refusal, duplicate-name refusal, compression-method validity,
+ * local-header presence/bounds) and has its declared size charged against
+ * `maxTotalBytes` regardless of whether it is inflated; what the predicate
+ * actually skips for a "no" entry is the zlib inflate call and the CRC-32
+ * pass over its bytes. See `readZip`'s own doc comment for the shape this
+ * returns.
  */
 
 const zlib = require('zlib');
@@ -99,17 +108,37 @@ function findEndOfCentralDirectory(buf) {
 }
 
 /**
- * Parse a .ccskin (zip) buffer into a Map<entryName, Buffer> of file
- * contents. Directory entries are silently skipped (not extracted, not an
- * error). `maxTotalBytes` bounds the cumulative UNCOMPRESSED size across all
+ * Parse a .ccskin (zip) buffer into `{ files, sizes }`:
+ *
+ *   - `sizes`: Map<entryName, number> — the verified UNCOMPRESSED byte
+ *     count of EVERY non-directory entry, inflated or not. Cheap for every
+ *     entry: it comes from the central directory record every entry has,
+ *     never from materialising the entry's bytes.
+ *   - `files`: Map<entryName, Buffer> — the decompressed, CRC-verified
+ *     contents of only the entries `options.inflate` selected (see below).
+ *     An entry present in `sizes` but not in `files` was structurally
+ *     validated (path, symlink, compression method, header bounds) and had
+ *     its declared size charged against the cap, but was never
+ *     decompressed or CRC-checked.
+ *
+ * Directory entries are silently skipped (not extracted, not an error).
+ * `maxTotalBytes` bounds the cumulative UNCOMPRESSED size across all
  * entries combined with `bytesConsumedSoFar` (the caller may already have
  * charged the compressed .ccskin's own on-disk size against the same cap).
+ *
+ * `options.inflate`: `(entryName) => boolean`, defaulting to "inflate
+ * everything" so a caller that never heard of this option gets exactly the
+ * pre-D-0003-9 behaviour. Pass a narrower predicate to skip decompressing
+ * (and CRC-verifying) entries nothing in the current load will read — see
+ * `injector/theme-loader/index.js`'s lazy asset-loading path for the
+ * caller this exists for.
  */
 function readZip(buf, options = {}) {
   const maxTotalBytes = options.maxTotalBytes;
   if (typeof maxTotalBytes !== 'number') {
     throw new TypeError('readZip requires options.maxTotalBytes');
   }
+  const shouldInflate = options.inflate || (() => true);
 
   const eocdOffset = findEndOfCentralDirectory(buf);
   const diskEntryCount = buf.readUInt16LE(eocdOffset + 10);
@@ -207,6 +236,7 @@ function readZip(buf, options = {}) {
   }
 
   const files = new Map();
+  const sizes = new Map();
   let totalUncompressed = 0;
 
   for (const entry of entries) {
@@ -226,8 +256,10 @@ function readZip(buf, options = {}) {
     // validator a clean manifest and a later consumer a different one. There is
     // no legitimate reason for a theme package to contain the same path twice,
     // so ambiguity is rejected rather than resolved by a rule someone else's
-    // tool might not share.
-    if (files.has(entry.name)) {
+    // tool might not share. Checked against `sizes`, not `files` — `sizes` is
+    // populated for EVERY processed entry regardless of D-0003-9's inflate
+    // predicate, so a duplicate that is never inflated is still caught.
+    if (sizes.has(entry.name)) {
       fail(`zip entry "${entry.name}" appears more than once; a theme package must not declare the same path twice`);
     }
 
@@ -238,7 +270,10 @@ function readZip(buf, options = {}) {
     // Locate the actual compressed-data offset via the LOCAL header — but
     // only to skip its (possibly different) name/extra field lengths. Its
     // size fields are never read; the central directory already gave us
-    // the authoritative sizes.
+    // the authoritative sizes. Done for EVERY entry, inflated or not — an
+    // entry we never decompress still needs its local header proven present
+    // and in-bounds, because that is what proves the archive itself is not
+    // truncated or corrupt at that entry's position.
     const lh = entry.localHeaderOffset;
     if (lh + LOCAL_FILE_HEADER_SIZE > buf.length || buf.readUInt32LE(lh) !== LOCAL_FILE_HEADER_SIGNATURE) {
       fail(`zip entry "${entry.name}": local file header is missing or corrupt`);
@@ -250,12 +285,31 @@ function readZip(buf, options = {}) {
     if (dataEnd > buf.length) {
       fail(`zip entry "${entry.name}": compressed data runs past end of file`);
     }
-    const compressedData = buf.subarray(dataStart, dataEnd);
 
     const remainingBudget = maxTotalBytes - totalUncompressed;
     if (remainingBudget <= 0) {
-      failSize(`zip contents exceed the ${maxTotalBytes}-byte package cap while decompressing "${entry.name}"`);
+      failSize(`zip contents exceed the ${maxTotalBytes}-byte package cap while reading "${entry.name}"`);
     }
+
+    if (!shouldInflate(entry.name)) {
+      // D-0003-9 — charge the DECLARED (central-directory) size against the
+      // cap even though this entry is never decompressed and nothing is
+      // allocated for it. That is conservative, not a trust gap: the cap
+      // bounds what THIS load allocates, so a package that lies about a
+      // skipped entry's size can only make the cap trip SOONER than the
+      // truth would, never later — it cannot cause an under-count. Any
+      // entry this function DOES inflate is bounded again, independently,
+      // by zlib's `maxOutputLength` below, so a lying declaration there
+      // cannot get further than that hard limit either.
+      if (entry.uncompressedSize > remainingBudget) {
+        failSize(`zip contents exceed the ${maxTotalBytes}-byte package cap according to the declared size of "${entry.name}"`);
+      }
+      sizes.set(entry.name, entry.uncompressedSize);
+      totalUncompressed += entry.uncompressedSize;
+      continue;
+    }
+
+    const compressedData = buf.subarray(dataStart, dataEnd);
 
     let content;
     if (entry.compressionMethod === COMPRESSION_STORED) {
@@ -299,9 +353,10 @@ function readZip(buf, options = {}) {
 
     totalUncompressed += content.length;
     files.set(entry.name, content);
+    sizes.set(entry.name, content.length);
   }
 
-  return files;
+  return { files, sizes };
 }
 
 module.exports = { readZip, crc32, MAX_ZIP_ENTRIES };

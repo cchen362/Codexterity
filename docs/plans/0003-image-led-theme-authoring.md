@@ -1,7 +1,16 @@
 # Plan 0003 — Image-led theme authoring: the hero-to-palette pipeline
 
-**Status:** **OPEN. Opened 2026-08-05. M1, M2, M3, M3b, M4 and M5 all DONE 2026-08-05. M6 is the only
-milestone left.** M5 installed the private theme properly and proved the themed launch no longer
+**Status:** **CLOSED. Opened and completed 2026-08-05. ALL SIX MILESTONES DONE — M1, M2, M3, M3b, M4,
+M5 and M6.** M6 closed the plan: the embedding audit is decided and stamped as **D-0003-9** (keep
+D-0001-4's package format, make asset bytes opt-in, write a payload once, and leave the
+per-navigation re-send alone because measuring it disproved the hypothesis — Codex's in-app route
+changes fire no navigation event at all, so the stylesheet is applied 4 times at startup and never
+again). Final numbers on this machine: `npm test` **312/312**, `audit.mjs` **272/272**, all three
+Captain's Cabin digests **unchanged** (`731CC9…4286E`, `36DAD6…211FEB`, `0E44FF…AD5DB5`), verified
+launching from the installed artifact. **The pipeline this plan set out to build exists and has
+produced a theme**: hand it a hero image and a direction in words, see several complete palettes
+rendered, pick one, and a recipe emits a validated package. Deep Navy Portrait is its first output
+and its proof. M5 installed the private theme properly and proved the themed launch no longer
 depends on the repository; after it, `npm test` **299/299**, `audit.mjs` **272/272**, all three
 Captain's Cabin digests unchanged, and no code changed at all except one decision marker. M4's gate is met: the theme was confirmed in the real running app, showing the portrait in
 **both** modes, and the owner's observations across two launches settled the last two open questions:
@@ -815,6 +824,100 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   must not touch a token; (4) if the package format changes, the `.ccskin` is rebuilt, reinstalled,
   and **verified launching in the running app**, because D-0001-29's lesson is that a green suite can
   sit on top of a product that cannot start.
+
+  **DONE 2026-08-05. ALL FOUR GATES MET, and this milestone closes Plan 0003.** `npm test`
+  **299 → 312**, `audit.mjs` **272/272**, all three Captain's Cabin digests **unchanged**
+  (`731CC9…4286E`, `36DAD6…211FEB`, `0E44FF…AD5DB5`, `git status --porcelain themes/captains-cabin`
+  empty). Settled as **D-0003-9**, three clauses, markers in the six files they govern. No token was
+  touched.
+
+  **GATE 1 — THE MEASUREMENT, AND IT DISPROVES THE HYPOTHESIS IT WAS ASKED TO SIZE.** Review finding
+  #5 said the stylesheet is re-sent on **every** navigation including in-app route changes. Measured
+  in the running app against Codex **26.730.8199.0**, with per-apply timing instrumented *before* the
+  launch: `applyTheme` ran **4 times, all within 6.5 seconds of launch**, and **never again** through
+  3½ minutes of the owner opening conversations, switching between them, opening and closing Settings
+  and toggling dark/light. **`did-navigate-in-page` fired zero times.**
+
+  | apply | window | trigger | CSS bytes | `insertCSS` attempt | build script | `executeJavaScript` | total |
+  |---|---|---|---|---|---|---|---|
+  | #1 | wc#1 | `did-navigate` | 2,308,725 | 43.1 ms | 4.1 ms | 506.7 ms | **553.9 ms** |
+  | #2 | wc#1 | `dom-ready` | 2,308,725 | 26.7 ms | 5.4 ms | 66.1 ms | **98.2 ms** |
+  | #3 | wc#3 | `did-navigate` | 2,308,725 | 40.8 ms | 6.8 ms | 907.4 ms | **955.0 ms** |
+  | #4 | wc#3 | `dom-ready` | 2,308,725 | 21.8 ms | 5.5 ms | 94.0 ms | **121.2 ms** |
+
+  **The negative names its query, which is the only thing that makes it usable.** The listener was
+  attached (the four applies prove it, on both windows), the handler logs the event *before* it
+  applies anything, and the file sink was demonstrably alive (the +15 s settled checks wrote
+  normally, and the log's own line-1 timestamp confirms it is this launch's file, not a stale one).
+  So the silence is **absence of events**, not absence of logging. Root cause: Codex is a single-page
+  app whose window URL stayed `app://-/index.html` for the whole session, and `did-navigate-in-page`
+  fires only on a same-document **URL** change — Codex's router swaps view state without touching it.
+
+  **What genuinely exists is a startup double-apply**, not a per-navigation one: each window is themed
+  twice, ~24 ms apart, once from `did-navigate` and once from `dom-ready`. The redundant half (#2 and
+  #4) costs **219.4 ms once per launch** on this 2.3 MB theme, and proportionally ~45 ms on the
+  476 KB shipped one, inside a boot that takes ~3 s before the first window appears. **The repair is
+  deliberately not shipped, and D-0003-9(c) carries the trip-wire** that puts it back on the table if
+  Codex ever adopts URL-based routing.
+
+  **A SECOND MEASUREMENT THE GATE DID NOT ASK FOR, AND IT IS THE ONE THAT JUSTIFIES TIMING BOTH
+  HALVES SEPARATELY.** The landmark/token diagnostics that run on every apply cost
+  **210.3 / 235.7 / 659.0 / 907.5 ms** — in total **more than the stylesheet transfers they
+  accompany**. Had the instrumentation timed `applyTheme` end to end, "re-application is expensive"
+  would have been recorded as a fact about the theme when most of it was a fact about our own
+  diagnostics. That is this plan's one recurring mistake in its fifth form (a ratio over the wrong
+  region, a mock wrong about which surfaces are opaque, a crop comparison at the wrong aspect ratio,
+  a log diffed across a truncation) — and the first time it was anticipated rather than discovered.
+
+  **GATE 2 — the A1/A2 choice is stamped as D-0003-9(a): A2, keep the format, make asset bytes
+  opt-in.** The measurement cuts both ways and is recorded honestly: the recurring cost is **real but
+  small**. `loadTheme` went **13.7 → 12.0 ms** on the shipped package and **64.6 → 58.6 ms** on the
+  private one (medians of seven warm runs). The durable half is memory — **341,881 bytes across 7
+  files**, materialised into a `Map` held for the whole session inside Codex's own main process, now
+  never allocated. A1 would have saved ~342 KB of a **one-time** download in exchange for changing
+  D-0001-4's package format, invalidating every built `.ccskin`, and deleting the subject of the
+  loader's byte-count integrity check. **When a problem measures small, the correct fix is the one
+  with the small blast radius** — that, not the millisecond count, is the reasoning.
+
+  > **INVENTORY CORRECTION.** M6's own table above says **328,622** raw asset bytes. That counted the
+  > hero and the three fonts and **omitted the three OFL licence files** (`Literata-OFL.txt` 4,389,
+  > `Fraunces-OFL.txt` 4,391, `Monaspace-OFL.txt` 4,479 — 13,259 bytes). The measured total a package
+  > actually carries is **341,881 bytes across 7 files**, which is also what `cdx verify` reports.
+
+  **The integrity check did not move and did not weaken.** It only ever compared *lengths*, and a
+  length needs no content — an `lstat` for a directory source, the zip central directory's
+  `uncompressedSize` for a `.ccskin` — so it still runs on **every** load in both modes. What
+  laziness defers is strictly the inflate and CRC-32 of bytes nothing in the running app reads; the
+  fonts and hero that actually paint are the base64 copies inside `theme.css`, still read,
+  CRC-checked and safe-CSS-scanned unconditionally. `theme.assets` is a **throwing accessor** under
+  lazy rather than an empty Map, so a caller that forgets to opt in fails loudly instead of computing
+  a confident zero.
+
+  **GATE 3 — Captain's Cabin still emits byte-identically**, which the hero deduplication earned
+  rather than dodged: its hero is dark-mode only, so it has exactly one consumer of the payload and
+  the indirection correctly does not apply to it (D-0003-9(b)). The two-mode theme went
+  **4,302,301 → 2,308,725** bytes of CSS (−46.3%) and **4,895,121 → 3,405,383** bytes of package
+  (−30.4%), verified by counting payloads in the emitted file: four base64 blobs (three fonts, one
+  hero), one `--codexterity-hero` definition, two rules reading it.
+
+  **GATE 4 — the artifact was exercised, not just the tests.** The changed injector and the rebuilt
+  package were installed to `%USERPROFILE%\Codexterity` in the layout `Install.ps1` produces, applied
+  by theme id through the **installed** CLI, and launched from the owner's Start-menu shortcut. The
+  injector loaded the package from the installed path (2,308,725 bytes of CSS, 6 landmarks), the
+  settled +15 s check on the main window reported **hero `PAINTING`, `emptyStateHeading=yes`**, ground
+  `#0E141F`, ink `#F4EAD4`, brass `#C0A454`, title bar `rgb(21,27,38)`, `Literata=YES Fraunces=YES
+  Monaspace Neon=YES`, and the two decorative accents collapsed to brass while green and orange
+  stayed distinct (D-0001-11). The owner ran the navigation and visual QA and reported the theme
+  correct with nothing unstyled or half-painted.
+
+  **The separable measurement, taken and deliberately not acted on.** The private theme's source
+  photograph is a **1,495,444-byte lossless PNG**; the same image at the same dimensions encodes
+  lossy at **131,046 bytes (q92)** or **81,891 bytes (q85)** — so the *format* choice costs roughly
+  ten times what the duplication did. Left alone on purpose: M6's scope forbids substituting a
+  re-encode for the A1/A2 decision, and zero-dependency Node can decode PNG and not WebP (M1 fact 1),
+  so the scrim solver needs a PNG source even when the shipped asset is not one. *(The encoder's
+  quality knob is not monotonic across this range on this machine — q75 measured 115,554, larger than
+  q85 — so read these as an order of magnitude, not a curve.)*
 
 ---
 

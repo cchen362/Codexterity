@@ -17,13 +17,27 @@ const CAPTAINS_CABIN_DIR = path.join(REPO_ROOT, 'themes', 'captains-cabin');
 // against the actual shipped theme rather than a fixture. It covers the real
 // generated manifest.json, the real 476 KB theme.css with its three embedded
 // font data URIs and its selector escapes, and the real asset byte counts.
-test('loadTheme() loads the real themes/captains-cabin directory cleanly', () => {
+test('loadTheme() loads the real themes/captains-cabin directory cleanly (default lazy assets)', () => {
   const theme = loadTheme(CAPTAINS_CABIN_DIR);
   assert.equal(theme.id, 'captains-cabin');
   assert.equal(theme.sourceKind, 'directory');
   assert.equal(typeof theme.css, 'string');
   assert.ok(theme.css.length > 0);
+  // D-0003-9 -- the default is lazy: assetSizes is always populated, but
+  // the shipped theme's real assets (fonts + hero) are never read into
+  // memory by this call.
+  assert.ok(theme.assetSizes instanceof Map);
+  assert.ok(theme.assetSizes.size > 0);
+  assert.throws(() => theme.assets, /asset bytes were not read/);
+});
+
+test('loadTheme() loads the real themes/captains-cabin directory with assets: "eager"', () => {
+  const theme = loadTheme(CAPTAINS_CABIN_DIR, { assets: 'eager' });
   assert.ok(theme.assets instanceof Map);
+  assert.equal(theme.assets.size, theme.assetSizes.size);
+  for (const [assetPath, size] of theme.assetSizes) {
+    assert.equal(theme.assets.get(assetPath).length, size);
+  }
 });
 
 // --- directory-sourced fixtures, built in a temp dir per test ---
@@ -67,7 +81,7 @@ test('loadTheme() on a minimal valid directory theme', () => {
   assert.equal(theme.sourceKind, 'directory');
   assert.equal(theme.css, '.a { color: red; }');
   assert.deepEqual(theme.syntax, { keyword: '#000' });
-  assert.equal(theme.assets.size, 0);
+  assert.equal(theme.assetSizes.size, 0);
 });
 
 test('loadTheme() rejects unsafe CSS in a directory theme', () => {
@@ -83,7 +97,10 @@ test('loadTheme() rejects unsafe CSS in a directory theme', () => {
   });
 });
 
-test('loadTheme() verifies asset byte length against the manifest', () => {
+// D-0003-9 -- no options passed, so this exercises the DEFAULT (lazy) path:
+// the manifest/package byte-count integrity check (D-0001-4/D-0001-21) must
+// still catch a lying manifest even though the file's CONTENT is never read.
+test('loadTheme() verifies asset byte length against the manifest (default lazy assets)', () => {
   const dir = makeTempThemeDir();
   fs.mkdirSync(path.join(dir, 'assets'));
   fs.writeFileSync(path.join(dir, 'assets', 'hero.webp'), Buffer.alloc(10));
@@ -96,6 +113,42 @@ test('loadTheme() verifies asset byte length against the manifest', () => {
     assert.match(err.message, /disagree about what shipped/);
     return true;
   });
+});
+
+// Same lie, caught the same way with assets: 'eager' -- the two modes must
+// disagree with a package identically, never let a bad package through one
+// mode and not the other.
+test('loadTheme() verifies asset byte length against the manifest (assets: "eager")', () => {
+  const dir = makeTempThemeDir();
+  fs.mkdirSync(path.join(dir, 'assets'));
+  fs.writeFileSync(path.join(dir, 'assets', 'hero.webp'), Buffer.alloc(10));
+  writeManifest(dir, { assets: [{ path: 'assets/hero.webp', bytes: 999 }] });
+  fs.writeFileSync(path.join(dir, 'theme.css'), '.a{color:red}');
+  fs.writeFileSync(path.join(dir, 'syntax.json'), '{}');
+
+  assert.throws(() => loadTheme(dir, { assets: 'eager' }), (err) => {
+    assert.equal(err.code, 'MANIFEST_INVALID');
+    assert.match(err.message, /disagree about what shipped/);
+    return true;
+  });
+});
+
+test('loadTheme() on a directory theme with a correctly-declared asset: assetSizes matches in both modes, .assets only in eager', () => {
+  const dir = makeTempThemeDir();
+  fs.mkdirSync(path.join(dir, 'assets'));
+  const assetContent = Buffer.from('the quick brown fox');
+  fs.writeFileSync(path.join(dir, 'assets', 'hero.webp'), assetContent);
+  writeManifest(dir, { assets: [{ path: 'assets/hero.webp', bytes: assetContent.length }] });
+  fs.writeFileSync(path.join(dir, 'theme.css'), '.a{color:red}');
+  fs.writeFileSync(path.join(dir, 'syntax.json'), '{}');
+
+  const lazy = loadTheme(dir);
+  assert.equal(lazy.assetSizes.get('assets/hero.webp'), assetContent.length);
+  assert.throws(() => lazy.assets, /asset bytes were not read; call loadTheme\(source, \{ assets: 'eager' \}\)/);
+
+  const eager = loadTheme(dir, { assets: 'eager' });
+  assert.equal(eager.assetSizes.get('assets/hero.webp'), assetContent.length);
+  assert.ok(eager.assets.get('assets/hero.webp').equals(assetContent));
 });
 
 test('loadTheme() throws SOURCE_NOT_FOUND for a missing path', () => {
@@ -116,9 +169,12 @@ function buildZip(entries) {
   for (const entry of entries) {
     const nameBuf = Buffer.from(entry.name, 'utf8');
     const uncompressed = Buffer.isBuffer(entry.content) ? entry.content : Buffer.from(entry.content || '', 'utf8');
-    const method = 8;
-    const data = zlib.deflateRawSync(uncompressed);
-    const crc = crc32(uncompressed);
+    // method/crcOverride are optional per-entry overrides, added for the
+    // D-0003-9 tests below (a corrupt-CRC asset that a LAZY load must not
+    // notice, but an EAGER one must).
+    const method = entry.method === undefined ? 8 : entry.method;
+    const data = method === 0 ? uncompressed : zlib.deflateRawSync(uncompressed);
+    const crc = entry.crcOverride !== undefined ? entry.crcOverride : crc32(uncompressed);
 
     const localHeaderOffset = offset;
     const localHeader = Buffer.alloc(30);
@@ -205,6 +261,97 @@ test('loadTheme() loads a minimal .ccskin (zip) theme', () => {
   assert.equal(theme.id, 'zip-theme');
   assert.equal(theme.sourceKind, 'ccskin');
   assert.equal(theme.css, '.a { color: blue; }');
+});
+
+// --- D-0003-9: lazy vs eager asset loading, .ccskin side ---
+
+function buildZipTheme({ assetContent, declaredBytes, crcOverride }) {
+  const manifest = {
+    formatVersion: 1,
+    id: 'zip-asset-theme',
+    name: 'Zip Asset Theme',
+    version: '0.1.0',
+    author: 'test',
+    license: 'MIT',
+    description: 'A fixture theme shipped as a zip, carrying one asset.',
+    targetApp: 'openai-codex-desktop',
+    targetVersionRange: { min: '26.727', max: '27' },
+    verifiedAgainst: '26.727.6591.0',
+    files: { css: 'theme.css', syntax: 'syntax.json' },
+    landmarks: [],
+    assets: [{ path: 'assets/hero.webp', bytes: declaredBytes }],
+  };
+  const zip = buildZip([
+    { name: 'manifest.json', content: JSON.stringify(manifest) },
+    { name: 'theme.css', content: '.a { color: blue; }' },
+    { name: 'syntax.json', content: '{}' },
+    { name: 'assets/hero.webp', content: assetContent, crcOverride },
+  ]);
+  const dir = makeTempThemeDir();
+  const ccskinPath = path.join(dir, 'test.ccskin');
+  fs.writeFileSync(ccskinPath, zip);
+  return ccskinPath;
+}
+
+// The manifest/package byte-count check (D-0001-4/D-0001-21) is a comparison
+// of DECLARED SIZES -- the central directory's uncompressedSize against
+// manifest.json's assets[].bytes -- and that comparison needs no
+// decompression at all, so it must catch a lie in BOTH modes.
+test('loadTheme() (.ccskin) verifies asset byte length against the manifest, lazy and eager alike', () => {
+  const assetContent = Buffer.from('hero pixels');
+  const ccskinPath = buildZipTheme({ assetContent, declaredBytes: assetContent.length + 1 });
+
+  assert.throws(() => loadTheme(ccskinPath), (err) => {
+    assert.equal(err.code, 'MANIFEST_INVALID');
+    assert.match(err.message, /disagree about what shipped/);
+    return true;
+  });
+  assert.throws(() => loadTheme(ccskinPath, { assets: 'eager' }), (err) => {
+    assert.equal(err.code, 'MANIFEST_INVALID');
+    assert.match(err.message, /disagree about what shipped/);
+    return true;
+  });
+});
+
+// The CRC-32 check is the one thing D-0003-9 actually defers: a lazy load
+// must NOT notice a corrupt asset (it never decompresses it), while an
+// eager load -- which does decompress it -- must still catch the
+// corruption. This is the test that proves laziness didn't quietly drop a
+// real integrity guarantee, only relocate it to the one caller that needs it.
+test('loadTheme() (.ccskin): eager asset loading still CRC-verifies; lazy does not decompress at all', () => {
+  const assetContent = Buffer.from('hero pixels, sixteen bytes');
+  const ccskinPath = buildZipTheme({
+    assetContent,
+    declaredBytes: assetContent.length,
+    crcOverride: 0xdeadbeef, // deliberately wrong
+  });
+
+  // Lazy: the declared size still matches, so this succeeds -- the asset's
+  // actual (corrupt) bytes are never touched.
+  const lazy = loadTheme(ccskinPath);
+  assert.equal(lazy.assetSizes.get('assets/hero.webp'), assetContent.length);
+
+  // Eager: decompressing the entry to compare it against the manifest
+  // means the CRC-32 mismatch is unavoidable, so this must throw.
+  assert.throws(() => loadTheme(ccskinPath, { assets: 'eager' }), (err) => {
+    assert.ok(err instanceof ThemeLoadError);
+    assert.equal(err.code, 'ZIP_MALFORMED');
+    assert.match(err.message, /CRC-32 mismatch/);
+    return true;
+  });
+});
+
+test('loadTheme() (.ccskin): eager mode returns real asset buffers; lazy .assets throws the naming error', () => {
+  const assetContent = Buffer.from('hero pixels, twenty-one B');
+  const ccskinPath = buildZipTheme({ assetContent, declaredBytes: assetContent.length });
+
+  const lazy = loadTheme(ccskinPath);
+  assert.equal(lazy.assetSizes.get('assets/hero.webp'), assetContent.length);
+  assert.throws(() => lazy.assets, /asset bytes were not read; call loadTheme\(source, \{ assets: 'eager' \}\)/);
+
+  const eager = loadTheme(ccskinPath, { assets: 'eager' });
+  assert.equal(eager.assetSizes.get('assets/hero.webp'), assetContent.length);
+  assert.ok(eager.assets.get('assets/hero.webp').equals(assetContent));
 });
 
 // --- D-0001-3: a theme DIRECTORY may not smuggle a read out via a symlink ---

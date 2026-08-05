@@ -338,7 +338,13 @@ function cmdVerify(themeArg, ctx) {
 
   let theme;
   try {
-    theme = loadTheme(source);
+    // D-0003-9 — this is the ONE caller anywhere that opts into 'eager'.
+    // Verifying a package is precisely the job that should pay to inflate
+    // and CRC-32 every asset entry; every other caller in this file only
+    // needs the manifest/CSS/syntax and the cheap declared sizes, which
+    // loadTheme's 'lazy' default (see its own doc comment) still fully
+    // integrity-checks without reading a single asset byte.
+    theme = loadTheme(source, { assets: 'eager' });
   } catch (err) {
     if (err instanceof ThemeLoadError) {
       ctx.stderr(`${err.code}: ${err.message}\n`);

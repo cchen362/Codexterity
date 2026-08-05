@@ -27,8 +27,11 @@ test('packTheme() round-trips the real captains-cabin theme through loadTheme()'
   try {
     const result = packTheme(CAPTAINS_CABIN_DIR, { outDir });
 
-    const fromCcskin = loadTheme(result.outputPath);
-    const fromDirectory = loadTheme(CAPTAINS_CABIN_DIR);
+    // D-0003-9 — 'eager' on both loads: this test's whole point is to
+    // compare actual asset bytes between the two source kinds, which the
+    // default lazy mode deliberately does not read.
+    const fromCcskin = loadTheme(result.outputPath, { assets: 'eager' });
+    const fromDirectory = loadTheme(CAPTAINS_CABIN_DIR, { assets: 'eager' });
 
     assert.equal(fromCcskin.id, fromDirectory.id);
 
@@ -83,8 +86,10 @@ test('the package contains exactly the manifest-declared assets, and no undeclar
     const manifest = JSON.parse(manifestText);
     const declaredAssetPaths = new Set(manifest.assets.map((a) => a.path));
 
+    // assetSizes is populated in both modes and is all this assertion needs
+    // (the set of paths, not their bytes) -- no need to opt into 'eager'.
     const fromCcskin = loadTheme(result.outputPath);
-    const loadedAssetPaths = new Set(fromCcskin.assets.keys());
+    const loadedAssetPaths = new Set(fromCcskin.assetSizes.keys());
     assert.deepStrictEqual(loadedAssetPaths, declaredAssetPaths);
 
     // The negative case: themes/captains-cabin/assets/fonts/ holds more font
@@ -111,7 +116,12 @@ test('the package contains exactly the manifest-declared assets, and no undeclar
     // manifest-declared paths, so it would report a stowaway asset as
     // simply absent rather than proving it was never packed.
     const archiveBuffer = fs.readFileSync(result.outputPath);
-    const archiveEntries = readZip(archiveBuffer, { maxTotalBytes: MAX_PACKAGE_BYTES });
+    // readZip() now returns { files, sizes } (D-0003-9); `sizes` covers
+    // every entry regardless of inflate mode, and the default inflate
+    // predicate (everything) means `files` does too here -- either would
+    // answer this "what's really in the archive" question, `sizes` is used
+    // since it is the cheaper of the two.
+    const { sizes: archiveEntries } = readZip(archiveBuffer, { maxTotalBytes: MAX_PACKAGE_BYTES });
 
     // The exact-set assertion, which is what actually closes the hole: the
     // per-font loop below only proves no *font* stowed away, and the

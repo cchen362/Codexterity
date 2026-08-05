@@ -46,7 +46,12 @@ function packTheme(themeDir, options = {}) {
   // agreement, the 32 MiB cap) and its ThemeLoadError already names the
   // offending file and line — wrapping or catching it here would only
   // obscure a message that is already as specific as it can be.
-  const loaded = loadTheme(themeDir);
+  //
+  // D-0003-9 — 'eager' here on purpose: step 4 below round-trips every
+  // ASSET BYTE (not just its declared size) through the packed archive to
+  // prove the packer reproduces them exactly, so this is one of the few
+  // legitimate callers that needs the actual buffers, not just their sizes.
+  const loaded = loadTheme(themeDir, { assets: 'eager' });
   const { manifest } = loaded;
   const themeDirResolved = path.resolve(themeDir);
 
@@ -131,7 +136,10 @@ function packTheme(themeDir, options = {}) {
     );
   }
 
-  const roundTripped = loadTheme(outputPath);
+  // D-0003-9 — 'eager' for the same reason as the directory load above: the
+  // per-asset byte comparison right below needs the packed archive's actual
+  // buffers, not merely their verified sizes.
+  const roundTripped = loadTheme(outputPath, { assets: 'eager' });
 
   if (roundTripped.id !== loaded.id) {
     throw new Error(`pack-ccskin: round-trip id mismatch — directory load gave "${loaded.id}", packed archive gave "${roundTripped.id}"`);

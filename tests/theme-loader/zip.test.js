@@ -106,14 +106,14 @@ const CAP = 33554432;
 
 test('round-trips a stored entry', () => {
   const zip = buildZip([{ name: 'theme.css', content: '.a { color: red; }', method: 0 }]);
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.equal(files.get('theme.css').toString('utf8'), '.a { color: red; }');
 });
 
 test('round-trips a deflated entry', () => {
   const content = '.a { color: red; }'.repeat(100);
   const zip = buildZip([{ name: 'theme.css', content, method: 8 }]);
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.equal(files.get('theme.css').toString('utf8'), content);
 });
 
@@ -123,7 +123,7 @@ test('round-trips multiple entries, skipping a directory entry', () => {
     { name: 'manifest.json', content: '{"a":1}', method: 0 },
     { name: 'theme.css', content: '.a{color:red}'.repeat(50), method: 8 },
   ]);
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.equal(files.size, 2);
   assert.equal(files.has('assets/'), false);
   assert.equal(files.get('manifest.json').toString('utf8'), '{"a":1}');
@@ -227,7 +227,7 @@ test('the symlink mode bits are only read from a Unix-made zip', () => {
   const zip = buildZip([
     { name: 'theme.css', content: 'a{color:red}', method: 0, unixMode: 0xa000 },
   ]);
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.equal(files.get('theme.css').toString('utf8'), 'a{color:red}');
 });
 
@@ -253,7 +253,7 @@ test('a Unix-made entry with mode 0755 is a FILE, not a directory', () => {
   const zip = buildZip([
     { name: 'theme.css', content: 'a{color:red}', method: 0, madeByUnix: true, unixMode: 0o755 },
   ]);
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.equal(files.size, 1);
   assert.equal(files.get('theme.css').toString('utf8'), 'a{color:red}');
 });
@@ -263,7 +263,95 @@ test('a Unix-made directory entry (S_IFDIR) is still skipped', () => {
     { name: 'assets', content: '', method: 0, madeByUnix: true, unixMode: 0o40755 },
     { name: 'theme.css', content: 'a{color:red}', method: 0, madeByUnix: true, unixMode: 0o644 },
   ]);
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.equal(files.size, 1);
   assert.equal(files.has('assets'), false);
+});
+
+// --- D-0003-9: options.inflate — opt-in decompression, per entry ---
+
+test('readZip() default inflate predicate decompresses everything (backward compatible)', () => {
+  const zip = buildZip([{ name: 'theme.css', content: '.a{color:red}'.repeat(10), method: 8 }]);
+  const { files, sizes } = readZip(zip, { maxTotalBytes: CAP });
+  assert.equal(files.get('theme.css').toString('utf8'), '.a{color:red}'.repeat(10));
+  assert.equal(sizes.get('theme.css'), files.get('theme.css').length);
+});
+
+test('options.inflate: sizes covers every entry, files only the selected ones', () => {
+  const zip = buildZip([
+    { name: 'theme.css', content: 'small file', method: 0 },
+    { name: 'assets/big.woff2', content: 'a much larger asset payload', method: 8 },
+  ]);
+  const { files, sizes } = readZip(zip, {
+    maxTotalBytes: CAP,
+    inflate: (name) => name === 'theme.css',
+  });
+
+  // sizes: every non-directory entry, regardless of inflate selection.
+  assert.deepEqual([...sizes.keys()].sort(), ['assets/big.woff2', 'theme.css']);
+  assert.equal(sizes.get('theme.css'), Buffer.byteLength('small file'));
+  assert.equal(sizes.get('assets/big.woff2'), Buffer.byteLength('a much larger asset payload'));
+
+  // files: only the entry the predicate selected.
+  assert.equal(files.size, 1);
+  assert.equal(files.has('theme.css'), true);
+  assert.equal(files.has('assets/big.woff2'), false);
+  assert.equal(files.get('theme.css').toString('utf8'), 'small file');
+});
+
+test('a symlink entry the predicate never selects for inflation is still refused', () => {
+  // D-0003-9's whole safety argument rests on this: skipping decompression
+  // must never mean skipping the structural checks. A symlink entry that
+  // is never inflated is exactly the D-0001-3 attack this repeats for.
+  const zip = buildZip([
+    { name: 'theme.css', content: 'a{color:red}', method: 0 },
+    { name: 'assets/evil.woff2', content: '../../../.codex/auth.json', method: 0,
+      madeByUnix: true, isSymlink: true },
+  ]);
+  assert.throws(() => readZip(zip, { maxTotalBytes: CAP, inflate: (name) => name === 'theme.css' }), (err) => {
+    assert.equal(err.code, 'ZIP_MALFORMED');
+    assert.match(err.message, /symbolic link/);
+    return true;
+  });
+});
+
+test('an unsafe path in a non-inflated entry is still refused', () => {
+  const zip = buildZip([
+    { name: 'theme.css', content: 'a{color:red}', method: 0 },
+    { name: '../../evil.txt', content: 'x', method: 0 },
+  ]);
+  assert.throws(() => readZip(zip, { maxTotalBytes: CAP, inflate: (name) => name === 'theme.css' }), (err) => {
+    assert.equal(err.code, 'ZIP_MALFORMED');
+    assert.match(err.message, /safe relative path/);
+    return true;
+  });
+});
+
+test('a duplicate entry name is refused even when neither copy is selected for inflation', () => {
+  const zip = buildZip([
+    { name: 'manifest.json', content: '{"benign":true}', method: 0 },
+    { name: 'assets/hero.webp', content: 'x', method: 0 },
+    { name: 'assets/hero.webp', content: 'y', method: 0 },
+  ]);
+  assert.throws(() => readZip(zip, { maxTotalBytes: CAP, inflate: (name) => name === 'manifest.json' }), (err) => {
+    assert.equal(err.code, 'ZIP_MALFORMED');
+    assert.match(err.message, /more than once/);
+    return true;
+  });
+});
+
+test('a non-inflated entry still charges its DECLARED size against the cap', () => {
+  // A skipped entry allocates nothing, but its declared uncompressedSize is
+  // still charged against maxTotalBytes -- conservative, per the comment in
+  // zip.js: a lying declaration can only make the cap trip sooner.
+  const declaredHuge = Buffer.alloc(2 * 1024 * 1024, 0x41); // 2 MiB
+  const zip = buildZip([{ name: 'assets/huge.bin', content: declaredHuge, method: 8 }]);
+  assert.throws(
+    () => readZip(zip, { maxTotalBytes: 1024 * 1024, inflate: () => false }),
+    (err) => {
+      assert.ok(err instanceof ThemeLoadError);
+      assert.equal(err.code, 'SIZE_EXCEEDED');
+      return true;
+    }
+  );
 });

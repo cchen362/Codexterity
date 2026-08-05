@@ -10,6 +10,26 @@
  * kinds. CommonJS throughout — the whole `injector/` tree is `--require`d
  * into Codex's Electron main process (D-0001-1), which loads it as CJS.
  *
+ * D-0003-9 (Plan 0003 M6) — asset BYTES are opt-in. Plan 0003 M6 measured
+ * that this loader was reading 328,622 bytes of raw font/hero assets into
+ * Codex's own Electron main process on every single launch, and that
+ * `injector/core/inject.js` — the only code that runs inside Codex — never
+ * reads `activeTheme.assets` at all: the fonts and hero that actually paint
+ * are the base64 copies already embedded in `theme.css`, which this loader
+ * reads, CRC-checks (via the zip path) and safe-CSS-scans unconditionally,
+ * every load, regardless of asset mode. The only consumer anywhere of the
+ * raw asset bytes is `cdx verify` (injector/cli.js), summing their lengths
+ * for one summary line. So: `loadTheme(source, options)` now takes
+ * `options.assets`, `'lazy'` (the default) or `'eager'`. Lazy skips
+ * decompressing/reading the asset bytes themselves but MUST NOT skip the
+ * manifest/package byte-count integrity check (D-0001-4/D-0001-21) — that
+ * check only ever compared LENGTHS, never contents, and a length is
+ * obtainable without materialising anything (an `lstat` for a directory
+ * source, the zip central directory's `uncompressedSize` for a `.ccskin`),
+ * so it still runs on every load, lazy or eager. What laziness defers is
+ * strictly the CRC-32 check and the inflate of asset bytes nobody in the
+ * running app reads.
+ *
  * Public API: `loadTheme(source, options)` — see the exported function's
  * own doc comment below for the return shape and failure modes.
  */
@@ -101,13 +121,18 @@ function sumDirectorySize(dir) {
 }
 
 /**
- * Read a file that a manifest declared, refusing anything that is not a plain
- * regular file. `lstat`, never `stat`: the whole point is to see the link
- * itself rather than what it points at (D-0001-3, and see sumDirectorySize).
- * The check is repeated here rather than trusted from the directory scan
- * because the scan and the read are separate filesystem observations.
+ * `lstat` a file that a manifest declared, refusing anything that is not a
+ * plain regular file, and return its byte size WITHOUT reading its content.
+ * `lstat`, never `stat`: the whole point is to see the link itself rather
+ * than what it points at (D-0001-3, and see sumDirectorySize). The check is
+ * repeated here rather than trusted from the directory scan because the
+ * scan and this call are separate filesystem observations.
+ *
+ * This is the D-0003-9 primitive that makes lazy asset loading possible: a
+ * declared byte count is obtainable — and the symlink/regular-file guard
+ * enforceable — from an `lstat`, with no `readFileSync` at all.
  */
-function readPackageFile(fullPath, declaredAs, label, encoding) {
+function statPackageFile(fullPath, declaredAs, label) {
   let stat;
   try {
     stat = fs.lstatSync(fullPath);
@@ -124,6 +149,16 @@ function readPackageFile(fullPath, declaredAs, label, encoding) {
   if (!stat.isFile()) {
     fail('MANIFEST_INVALID', `manifest.json declares ${label} = "${declaredAs}" but that path is not a regular file`);
   }
+  return stat.size;
+}
+
+/**
+ * Read a file that a manifest declared, refusing anything that is not a
+ * plain regular file. Built on `statPackageFile` so the symlink/regular-file
+ * guard is asserted exactly once and shared with the lazy asset-size path.
+ */
+function readPackageFile(fullPath, declaredAs, label, encoding) {
+  statPackageFile(fullPath, declaredAs, label);
   return encoding ? fs.readFileSync(fullPath, encoding) : fs.readFileSync(fullPath);
 }
 
@@ -146,7 +181,9 @@ function resolveInDirectory(themeDir, relativePath, label) {
   return resolved;
 }
 
-function loadFromDirectory(themeDir) {
+function loadFromDirectory(themeDir, assetsMode) {
+  const eager = assetsMode === 'eager';
+
   sumDirectorySize(themeDir);
 
   const manifestPath = path.join(themeDir, 'manifest.json');
@@ -164,40 +201,82 @@ function loadFromDirectory(themeDir) {
   const syntaxText = readPackageFile(syntaxPath, manifest.files.syntax, 'files.syntax', 'utf8');
   const syntax = parseJson(syntaxText, manifest.files.syntax, 'MANIFEST_INVALID');
 
-  const assets = new Map();
+  // D-0003-9 — `assetSizes` is populated in BOTH modes (it is the cheap
+  // half of the integrity check: an `lstat`, not a read). `assetBuffers`
+  // stays `null` in lazy mode; `loadTheme` turns that `null` into a
+  // throwing accessor rather than an empty Map, so a caller that reads
+  // `.assets` after a lazy load fails loudly instead of silently summing
+  // zero.
+  const assetSizes = new Map();
+  const assetBuffers = eager ? new Map() : null;
   for (const asset of manifest.assets) {
     const assetPath = resolveInDirectory(themeDir, asset.path, 'manifest.json: assets[].path');
-    const buffer = readPackageFile(assetPath, asset.path, `assets[].path`, null);
-    if (buffer.length !== asset.bytes) {
-      fail(
-        'MANIFEST_INVALID',
-        `manifest.json declares asset "${asset.path}" as ${asset.bytes} bytes, but the file is ${buffer.length} bytes — the package and its manifest disagree about what shipped`
-      );
+    if (eager) {
+      const buffer = readPackageFile(assetPath, asset.path, `assets[].path`, null);
+      if (buffer.length !== asset.bytes) {
+        fail(
+          'MANIFEST_INVALID',
+          `manifest.json declares asset "${asset.path}" as ${asset.bytes} bytes, but the file is ${buffer.length} bytes — the package and its manifest disagree about what shipped`
+        );
+      }
+      assetSizes.set(asset.path, buffer.length);
+      assetBuffers.set(asset.path, buffer);
+    } else {
+      const size = statPackageFile(assetPath, asset.path, `assets[].path`);
+      if (size !== asset.bytes) {
+        fail(
+          'MANIFEST_INVALID',
+          `manifest.json declares asset "${asset.path}" as ${asset.bytes} bytes, but the file is ${size} bytes — the package and its manifest disagree about what shipped`
+        );
+      }
+      assetSizes.set(asset.path, size);
     }
-    assets.set(asset.path, buffer);
   }
 
-  return { manifest, css, syntax, assets };
+  return { manifest, css, syntax, assetSizes, assetBuffers };
 }
 
 // ---------------------------------------------------------------------
 // .ccskin (zip) sourced themes
 // ---------------------------------------------------------------------
 
-function loadFromCcskin(ccskinPath) {
+function loadFromCcskin(ccskinPath, assetsMode) {
+  const eager = assetsMode === 'eager';
+
   const fileSize = fs.statSync(ccskinPath).size;
   if (fileSize > MAX_PACKAGE_BYTES) {
     fail('SIZE_EXCEEDED', `"${ccskinPath}" is ${fileSize} bytes, exceeding the ${MAX_PACKAGE_BYTES}-byte package cap (D-0001-4)`);
   }
   const buf = fs.readFileSync(ccskinPath);
 
-  const files = readZip(buf, { maxTotalBytes: MAX_PACKAGE_BYTES });
-
-  const manifestBuffer = files.get('manifest.json');
+  // D-0003-9 — two passes over the SAME buffer, deliberately. `manifest.json`
+  // is the only entry whose name we know before we have read anything: the
+  // names of `files.css`, `files.syntax`, and every `assets[].path` are
+  // themselves fields INSIDE the manifest, so a single pass cannot know what
+  // to inflate until the manifest has already been parsed. Both passes
+  // re-walk the central directory (cheap: no decompression happens for an
+  // unselected entry) rather than decompress speculatively.
+  const manifestPass = readZip(buf, {
+    maxTotalBytes: MAX_PACKAGE_BYTES,
+    inflate: (name) => name === 'manifest.json',
+  });
+  const manifestBuffer = manifestPass.files.get('manifest.json');
   if (!manifestBuffer) {
     fail('MANIFEST_INVALID', `"${ccskinPath}" has no manifest.json at its root`);
   }
   const manifest = validateManifest(parseJson(manifestBuffer.toString('utf8'), 'manifest.json', 'MANIFEST_INVALID'));
+
+  // Second pass: css and syntax are read (and safe-CSS-scanned / JSON-parsed)
+  // on EVERY load, lazy or eager — those are the bytes that actually reach
+  // Codex, embedded in theme.css itself. Assets are inflated only when this
+  // load asked for them eagerly (D-0003-9).
+  const neededNames = new Set([manifest.files.css, manifest.files.syntax]);
+  const pass = readZip(buf, {
+    maxTotalBytes: MAX_PACKAGE_BYTES,
+    inflate: eager ? () => true : (name) => neededNames.has(name),
+  });
+  const files = pass.files;
+  const sizes = pass.sizes;
 
   function getEntry(relativePath, label) {
     if (!isSafeRelativePath(relativePath)) {
@@ -217,19 +296,36 @@ function loadFromCcskin(ccskinPath) {
   const syntaxBuffer = getEntry(manifest.files.syntax, 'manifest.json: files.syntax');
   const syntax = parseJson(syntaxBuffer.toString('utf8'), manifest.files.syntax, 'MANIFEST_INVALID');
 
-  const assets = new Map();
+  // D-0003-9 — the manifest/package byte-count integrity check (D-0001-4 /
+  // D-0001-21) runs on EVERY load, lazy or eager: `sizes` carries the
+  // central directory's `uncompressedSize` for every entry regardless of
+  // whether it was inflated, so the comparison against `asset.bytes` never
+  // needs the entry's actual content. Only `assetBuffers` — the thing
+  // nothing inside Codex ever reads — is conditional on `eager`.
+  const assetSizes = new Map();
+  const assetBuffers = eager ? new Map() : null;
   for (const asset of manifest.assets) {
-    const buffer = getEntry(asset.path, 'manifest.json: assets[].path');
-    if (buffer.length !== asset.bytes) {
+    const label = 'manifest.json: assets[].path';
+    if (!isSafeRelativePath(asset.path)) {
+      fail('MANIFEST_INVALID', `${label} ("${asset.path}") is not a safe relative path`);
+    }
+    const size = sizes.get(asset.path);
+    if (size === undefined) {
+      fail('MANIFEST_INVALID', `${label} declares "${asset.path}" but that entry does not exist in the .ccskin`);
+    }
+    if (size !== asset.bytes) {
       fail(
         'MANIFEST_INVALID',
-        `manifest.json declares asset "${asset.path}" as ${asset.bytes} bytes, but the packaged entry is ${buffer.length} bytes — the package and its manifest disagree about what shipped`
+        `manifest.json declares asset "${asset.path}" as ${asset.bytes} bytes, but the packaged entry is ${size} bytes — the package and its manifest disagree about what shipped`
       );
     }
-    assets.set(asset.path, buffer);
+    assetSizes.set(asset.path, size);
+    if (eager) {
+      assetBuffers.set(asset.path, files.get(asset.path));
+    }
   }
 
-  return { manifest, css, syntax, assets };
+  return { manifest, css, syntax, assetSizes, assetBuffers };
 }
 
 /**
@@ -237,17 +333,36 @@ function loadFromCcskin(ccskinPath) {
  *
  * @param {string} source - path to either a theme DIRECTORY or a `.ccskin`
  *   FILE. Detected by `fs.statSync`, never by file extension.
+ * @param {object} [options]
+ * @param {'lazy'|'eager'} [options.assets='lazy'] - D-0003-9. `'lazy'` (the
+ *   default) skips decompressing/reading the actual asset bytes — the
+ *   manifest/package byte-count check still runs regardless, so a package
+ *   that lies about an asset's size still fails identically either way.
+ *   `'eager'` reads and CRC-verifies every declared asset, as this function
+ *   always did before D-0003-9. Pass `'eager'` only from the one caller
+ *   whose job is to prove a package's bytes intact (`cdx verify`); nothing
+ *   inside Codex's own process needs the raw asset bytes at all.
  * @returns {{ id: string, manifest: object, css: string, syntax: object,
- *   assets: Map<string, Buffer>, sourceKind: 'directory'|'ccskin',
- *   sourcePath: string }}
+ *   assetSizes: Map<string, number>, assets: Map<string, Buffer>,
+ *   sourceKind: 'directory'|'ccskin', sourcePath: string }}
+ *   `assetSizes` is always a real Map, in both modes. `assets` is a real Map
+ *   only when `options.assets === 'eager'`; under the default `'lazy'` mode
+ *   it is a GETTER that THROWS when read, naming the fix, rather than
+ *   returning an empty Map — a silently-empty Map would let a future caller
+ *   compute a wrong total (e.g. "0 bytes of assets") that looks like a real
+ *   answer instead of a caller that forgot to opt in.
  * @throws {ThemeLoadError} with a machine-readable `code`
  *   (MANIFEST_INVALID, CSS_UNSAFE, SIZE_EXCEEDED, ZIP_MALFORMED,
  *   SOURCE_NOT_FOUND) and a human-readable `message` naming the offending
  *   file and, for CSS, the line.
  */
-function loadTheme(source) {
+function loadTheme(source, options = {}) {
   if (typeof source !== 'string' || source.length === 0) {
     throw new TypeError('loadTheme(source): source must be a non-empty path string');
+  }
+  const assetsMode = options.assets === undefined ? 'lazy' : options.assets;
+  if (assetsMode !== 'lazy' && assetsMode !== 'eager') {
+    throw new TypeError(`loadTheme(source, options): options.assets must be 'lazy' or 'eager' (got ${JSON.stringify(options.assets)})`);
   }
 
   let stat;
@@ -263,23 +378,41 @@ function loadTheme(source) {
 
   if (stat.isDirectory()) {
     sourceKind = 'directory';
-    result = loadFromDirectory(sourcePath);
+    result = loadFromDirectory(sourcePath, assetsMode);
   } else if (stat.isFile()) {
     sourceKind = 'ccskin';
-    result = loadFromCcskin(sourcePath);
+    result = loadFromCcskin(sourcePath, assetsMode);
   } else {
     fail('SOURCE_NOT_FOUND', `theme source "${source}" is neither a directory nor a regular file`);
   }
 
-  return {
+  const theme = {
     id: result.manifest.id,
     manifest: result.manifest,
     css: result.css,
     syntax: result.syntax,
-    assets: result.assets,
+    assetSizes: result.assetSizes,
     sourceKind,
     sourcePath,
   };
+
+  // D-0003-9 — `assets` is a getter, not a plain property, precisely so a
+  // lazy load can fail loudly the moment something reads it instead of
+  // handing back a Map that is empty for the wrong reason.
+  Object.defineProperty(theme, 'assets', {
+    enumerable: true,
+    configurable: false,
+    get() {
+      if (result.assetBuffers === null) {
+        throw new Error(
+          'theme.assets: asset bytes were not read; call loadTheme(source, { assets: \'eager\' }) to load them.'
+        );
+      }
+      return result.assetBuffers;
+    },
+  });
+
+  return theme;
 }
 
 module.exports = { loadTheme, ThemeLoadError, MAX_PACKAGE_BYTES };

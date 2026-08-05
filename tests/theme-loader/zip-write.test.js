@@ -60,7 +60,7 @@ function readCentralDirectory(buf) {
 
 test('writeZip() output round-trips through readZip() for a single entry', () => {
   const zip = writeZip([{ name: 'manifest.json', content: '{"id":"t"}' }]);
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.equal(files.size, 1);
   assert.equal(files.get('manifest.json').toString('utf8'), '{"id":"t"}');
 });
@@ -71,7 +71,7 @@ test('writeZip() output round-trips through readZip() for multiple entries', () 
     { name: 'theme.css', content: '.a { color: red; }'.repeat(50) },
     { name: 'assets/fonts/x.woff2', content: Buffer.from([1, 2, 3, 4, 5]) },
   ]);
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.equal(files.size, 3);
   assert.equal(files.get('manifest.json').toString('utf8'), '{"id":"t"}');
   assert.equal(files.get('theme.css').toString('utf8'), '.a { color: red; }'.repeat(50));
@@ -89,7 +89,7 @@ test('binary content survives a full write/read round-trip byte-for-byte', () =>
   const binary = Buffer.concat([allBytes, allBytes, allBytes]);
 
   const zip = writeZip([{ name: 'assets/binary.bin', content: binary }]);
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.ok(files.get('assets/binary.bin').equals(binary));
 });
 
@@ -102,7 +102,7 @@ test('incompressible content falls back to STORED and readZip() accepts it on th
   const random = crypto.randomBytes(4096); // deflate cannot shrink random bytes
   const zip = writeZip([{ name: 'assets/random.bin', content: random }]);
 
-  const files = readZip(zip, { maxTotalBytes: CAP });
+  const { files } = readZip(zip, { maxTotalBytes: CAP });
   assert.ok(files.get('assets/random.bin').equals(random));
 
   const [record] = readCentralDirectory(zip);
@@ -147,8 +147,8 @@ test('entry order is preserved and is the caller’s to set', () => {
 
   assert.equal(forward.equals(backward), false);
 
-  const forwardFiles = readZip(forward, { maxTotalBytes: CAP });
-  const backwardFiles = readZip(backward, { maxTotalBytes: CAP });
+  const { files: forwardFiles } = readZip(forward, { maxTotalBytes: CAP });
+  const { files: backwardFiles } = readZip(backward, { maxTotalBytes: CAP });
   assert.equal(forwardFiles.get('a.txt').toString('utf8'), 'aaa');
   assert.equal(forwardFiles.get('b.txt').toString('utf8'), 'bbb');
   assert.equal(backwardFiles.get('a.txt').toString('utf8'), 'aaa');

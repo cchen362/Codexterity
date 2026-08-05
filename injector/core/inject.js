@@ -61,6 +61,29 @@ const { reportLandmarkVerdicts } = require('./landmarks.js');
 // set once, in start(), and read at every applyTheme() call.
 let activeTheme = null;
 
+// D-0003-9 (Plan 0003 M6) — HOW OFTEN THE STYLESHEET IS RE-SENT, AND WHAT EACH
+// SEND COSTS, ARE LOGGED RATHER THAN REASONED ABOUT.
+//
+// applyThemeViaStyleTag replaces one <style> element's textContent, and
+// attachToWindow re-runs it on dom-ready, did-navigate AND did-navigate-in-page
+// — the last of which fires on ordinary in-app route changes. So the entire
+// stylesheet crosses main->renderer as a string every time the user moves
+// around the app, and a theme's stylesheet is not a fixed size: Captain's Cabin
+// is ~476 KB and a two-mode photographic hero is several times that. Plan 0002's
+// review finding #5 asserted this was a runtime cost; it was CERTAIN that the
+// re-send happens and UNMEASURED whether it costs anything, and the obvious
+// repair (skip the assignment when a content hash matches) is cheap enough that
+// it would have been shipped on the strength of the assertion alone.
+//
+// This counter and the two timings below are the measurement, kept in the
+// shipped code rather than added and removed: the cost scales with whatever
+// theme is applied, so it is a standing property of the product, not a one-off
+// experiment. The two halves are timed SEPARATELY on purpose — building the
+// script (JSON.stringify over the whole stylesheet, in Codex's main process)
+// and executeJavaScript (IPC plus the renderer's own parse) have different
+// fixes, and a single end-to-end number cannot tell them apart.
+let applyCount = 0;
+
 // Gate 0 diagnostic aid: stdout capture from a packaged GUI-subsystem
 // Electron process launched through unusual activation paths is itself an
 // open question, so every log line is ALSO appended to a plain file when
@@ -997,8 +1020,8 @@ async function reportLandmarks(webContents, phase) {
  *   - A DOM node can be removed by the app's own re-rendering, where an
  *     inserted stylesheet cannot. The stable id makes re-application idempotent.
  */
-async function applyThemeViaStyleTag(webContents, css) {
-  const script = `
+function buildStyleTagScript(css) {
+  return `
     (() => {
       const ID = 'codexterity-theme';
       let el = document.getElementById(ID);
@@ -1015,11 +1038,19 @@ async function applyThemeViaStyleTag(webContents, css) {
       };
     })();
   `;
+}
+
+// Split out of applyThemeViaStyleTag (D-0003-9) so the two halves can be timed
+// apart: everything above happens in Codex's MAIN process and scales with the
+// stylesheet's length; everything below crosses the IPC boundary and is then
+// the renderer's problem.
+async function applyThemeViaStyleTag(webContents, script) {
   return webContents.executeJavaScript(script, true);
 }
 
-async function applyTheme(webContents) {
+async function applyTheme(webContents, reason) {
   const label = `webContents#${webContents.id}`;
+  const applyNo = ++applyCount;
   // Read from the module-level slot, not a captured argument (D-0001-25 —
   // see the slot's own doc comment above). This is the read half of the
   // mutable slot M3 exists to build: every call site asks "what is the
@@ -1030,6 +1061,12 @@ async function applyTheme(webContents) {
   const css = activeTheme.css;
   const bytes = Buffer.byteLength(css, 'utf8');
 
+  // hrtime.bigint(), not Date.now(): a single apply may well land under a
+  // millisecond, and a measurement whose resolution is the same size as the
+  // thing measured cannot answer "is this worth fixing".
+  const tStart = process.hrtime.bigint();
+  const ms = (from, to) => Number(to - from) / 1e6;
+
   try {
     await webContents.insertCSS(css, { cssOrigin: 'user' });
     log(`injected OK via insertCSS on ${label} — ${bytes} bytes`);
@@ -1038,17 +1075,46 @@ async function applyTheme(webContents) {
   } catch (err) {
     log(`insertCSS FAILED on ${label}: ${err.message}`);
   }
+  const tInsertCssFailed = process.hrtime.bigint();
 
   // insertCSS is unavailable on this build. Before conceding the mechanism,
   // establish whether the OTHER official main->renderer API works at all --
   // the answer decides whether D-0001-1's no-debug-port guarantee survives.
   try {
-    const result = await applyThemeViaStyleTag(webContents, css);
+    const script = buildStyleTagScript(css);
+    const tScriptBuilt = process.hrtime.bigint();
+    const result = await applyThemeViaStyleTag(webContents, script);
+    const tDone = process.hrtime.bigint();
     log(
       `injected OK via executeJavaScript style tag on ${label} — ` +
         `${result.bytes} chars, lastChildOfHead=${result.lastChildOfHead}`
     );
+    // D-0003-9 — the re-application cost, per apply, on one line. `reason` names
+    // the event that triggered it so a session's log says WHICH kind of
+    // navigation is doing the re-sending, not merely how many happened.
+    log(
+      `  apply #${applyNo} [${reason}] on ${label}: ${bytes} CSS bytes — ` +
+        `insertCSS attempt ${ms(tStart, tInsertCssFailed).toFixed(1)}ms, ` +
+        `build script ${ms(tInsertCssFailed, tScriptBuilt).toFixed(1)}ms, ` +
+        `executeJavaScript ${ms(tScriptBuilt, tDone).toFixed(1)}ms, ` +
+        `total ${ms(tStart, tDone).toFixed(1)}ms`
+    );
+    // The DIAGNOSTICS are timed too, and separately, because they also run on
+    // every one of these events and they are not part of the theme at all.
+    // Without this line the measurement above could report a few milliseconds
+    // of stylesheet transfer sitting inside a far more expensive DOM sweep, and
+    // "re-application is cheap" would be a true statement about the wrong
+    // subject — the recurring mistake this plan has recorded four times over
+    // (a contrast ratio measured over the wrong region, a mock wrong about
+    // which surfaces are opaque, a crop comparison run at the wrong aspect
+    // ratio, a log diffed across a truncation). Whichever half dominates, the
+    // fix belongs to that half.
+    const tProbeStart = process.hrtime.bigint();
     await reportLandmarks(webContents, 'apply-time (dom-ready/navigate)');
+    log(
+      `  apply #${applyNo} [${reason}] diagnostics (token + landmark probe, not the theme transfer): ` +
+        `${ms(tProbeStart, process.hrtime.bigint()).toFixed(1)}ms`
+    );
     return;
   } catch (err) {
     // Both official routes are gone. Degrade to the stock look — never leave
@@ -1080,19 +1146,24 @@ function attachToWindow(win) {
 
   // No CSS argument threaded through: applyTheme() reads the active theme
   // from the module-level slot at the moment each event fires (D-0001-25).
+  // The trigger is passed down rather than inferred inside applyTheme, because
+  // the three events are the whole question M6 asks (D-0003-9): dom-ready fires
+  // once per window, did-navigate on a real page load, and did-navigate-in-page
+  // on every in-app route change — and only the last one can turn ordinary use
+  // of the app into repeated whole-stylesheet transfers.
   wc.on('dom-ready', () => {
     log(`dom-ready on ${label} (url=${wc.getURL()})`);
-    applyTheme(wc);
+    applyTheme(wc, 'dom-ready');
   });
 
   wc.on('did-navigate', (_event, url) => {
     log(`did-navigate on ${label} -> ${url}`);
-    applyTheme(wc);
+    applyTheme(wc, 'did-navigate');
   });
 
   wc.on('did-navigate-in-page', (_event, url) => {
     log(`did-navigate-in-page on ${label} -> ${url}`);
-    applyTheme(wc);
+    applyTheme(wc, 'did-navigate-in-page');
   });
 }
 

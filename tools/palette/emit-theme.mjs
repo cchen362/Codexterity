@@ -558,7 +558,10 @@ function renderScrimStop([fraction, alpha]) {
   return `color-mix(in srgb, var(--color-background-surface) ${alphaPct}%, transparent) ${fractionPct}%`;
 }
 
-function buildHeroModeRule(recipe, mode, heroB64) {
+// heroLayerValue is the second background-image layer's CSS value — either
+// the inline `url(data:...)` payload itself (single-mode themes, unchanged
+// shape) or `var(--codexterity-hero)` (two-mode themes; see buildHeroBlock).
+function buildHeroModeRule(recipe, mode, heroLayerValue) {
   const stops = recipe.hero.scrim[mode];
   const stopLines = stops.map((s, i) => {
     const rendered = renderScrimStop(s);
@@ -571,7 +574,7 @@ function buildHeroModeRule(recipe, mode, heroB64) {
   background-image:
     linear-gradient(to bottom,
 ${stopLines.join('\n')}
-    url(data:${recipe.hero.mime};base64,${heroB64});
+    ${heroLayerValue};
   background-size: cover, cover;
   /* '${recipe.hero.position}', not 'top': on a tall panel cover scales by height, so nothing is
      cropped vertically and this only centres horizontally. On a SHORT panel it
@@ -583,9 +586,54 @@ ${stopLines.join('\n')}
 }`;
 }
 
+// D-0003-9(b) — THE SINGLE-EMBED RULE, and why the branch below is
+// conditional rather than "just always use a variable".
+//
+// A theme whose hero appears in only ONE mode (Captain's Cabin: dark only)
+// has exactly one consumer of the base64 payload. Routing that single
+// consumer through a custom property buys zero bytes — there is nothing to
+// deduplicate — while rewriting the stylesheet of a LOCKED, owner-approved
+// theme whose byte-equivalence gate (tests/palette/emit-theme.test.js) is
+// the mechanism that keeps it from drifting. "The payload is written once"
+// is the rule; with one consumer, inline URL syntax already IS once. Do not
+// "tidy" this into an unconditional indirection.
+//
+// A theme whose hero appears in BOTH modes (Deep Navy Portrait) has TWO
+// consumers of the identical bytes. Mapping heroB64 into each mode's rule
+// inline, as the pre-fix code did, wrote the ~2M-char base64 string twice —
+// measured at 92.7% of that theme's 4.3MB stylesheet. The fix is to write
+// the payload once, on the container element itself (not :root — this is a
+// THEME-PRIVATE payload, and a global custom property name for it would be
+// visible, and collidable, from every other rule in the cascade for no
+// benefit: nothing outside this container ever needs to read it).
 function buildHeroBlock(recipe, heroB64) {
-  const rules = recipe.hero.modes.map((mode) => buildHeroModeRule(recipe, mode, heroB64));
+  const heroUrl = `url(data:${recipe.hero.mime};base64,${heroB64})`;
+
+  if (recipe.hero.modes.length <= 1) {
+    const rules = recipe.hero.modes.map((mode) => buildHeroModeRule(recipe, mode, heroUrl));
+    return `${recipe.hero.prose}
+${rules.join('\n\n')}`;
+  }
+
+  // Two-plus consumers: emit the payload once, referenced by both mode
+  // rules through a custom property scoped to the container that paints it.
+  // The container selector carries no root-class prefix (unlike the mode
+  // rules below it) because only one of .electron-dark/.electron-light is
+  // ever present on <html> at a time (D-0001-2's own root-class scoping),
+  // so this single declaration reaches whichever mode is active without
+  // needing to be duplicated per mode itself — duplicating THIS rule would
+  // reintroduce exactly the repetition it exists to remove.
+  const heroVarRule = `.\\[container-name\\:home-main-content\\]:has(.heading-xl) {
+  /* The hero payload, written ONCE and shared by every mode rule below via
+     var(--codexterity-hero) — see D-0003-9(b) in emit-theme.mjs's
+     buildHeroBlock for why this indirection exists only when the hero has
+     more than one mode. */
+  --codexterity-hero: ${heroUrl};
+}`;
+  const rules = recipe.hero.modes.map((mode) => buildHeroModeRule(recipe, mode, 'var(--codexterity-hero)'));
   return `${recipe.hero.prose}
+${heroVarRule}
+
 ${rules.join('\n\n')}`;
 }
 

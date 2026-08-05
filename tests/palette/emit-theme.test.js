@@ -410,12 +410,51 @@ describe('a recipe declaring hero.modes = [dark, light] emits one hero rule per 
     assert.doesNotMatch(lightRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 50%, transparent\)/);
   });
 
-  test("the image's base64 payload is identical in both mode rules -- ONE image, two rules", () => {
+  // D-0003-9(b) -- the payload is written ONCE, on a --codexterity-hero
+  // custom property scoped to the container that paints it, and BOTH mode
+  // rules reference it through var(--codexterity-hero) rather than each
+  // carrying their own copy of the base64 string. Before this fix,
+  // buildHeroBlock() mapped the same heroB64 string into every mode's rule
+  // inline, so a two-mode theme's payload appeared once PER MODE -- measured
+  // on the real (private) two-mode theme at 2x, 1,993,928 base64 chars each,
+  // 92.7% of that theme's stylesheet.
+  test("the image's base64 payload is embedded exactly ONCE, and both mode rules reference it via var(--codexterity-hero)", () => {
     const expectedB64 = fs.readFileSync(path.join(tmpAssets, 'assets', 'hero-synthetic.bin')).toString('base64');
     const escaped = expectedB64.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const payloadRegex = new RegExp(`url\\(data:application/octet-stream;base64,${escaped}\\)`, 'g');
-    const matches = css.match(payloadRegex) || [];
-    assert.equal(matches.length, 2, `expected the same base64 payload to appear in exactly 2 rules (one per mode), found ${matches.length}`);
+    const payloadMatches = css.match(payloadRegex) || [];
+    assert.equal(payloadMatches.length, 1, `expected the base64 payload to be embedded exactly once (via a shared custom property), found ${payloadMatches.length}`);
+
+    // The lone embed must be the --codexterity-hero custom property
+    // definition, not a leftover inline use inside one of the mode rules.
+    const varDefRegex = new RegExp(`--codexterity-hero:\\s*url\\(data:application/octet-stream;base64,${escaped}\\)`);
+    assert.match(css, varDefRegex);
+
+    // Both mode rules must read the payload back through the variable --
+    // this is what makes ONE embed sufficient for TWO rules that need it.
+    const darkRuleStart = css.indexOf('.electron-dark .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    const lightRuleStart = css.indexOf('.electron-light .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    const darkRuleText = css.slice(darkRuleStart, lightRuleStart);
+    const lightRuleText = css.slice(lightRuleStart, lightRuleStart + 1000);
+    assert.match(darkRuleText, /var\(--codexterity-hero\)/);
+    assert.match(lightRuleText, /var\(--codexterity-hero\)/);
+  });
+
+  test('a single-mode hero (Captain\'s Cabin\'s own shape) stays fully inline -- no --codexterity-hero variable is introduced when there is only one consumer', () => {
+    // This is D-0003-9(b) exercised the other way: with exactly one hero
+    // mode there is nothing to deduplicate, and the indirection must not
+    // appear at all -- proven end to end by the byte gate at the top of this
+    // file (Captain's Cabin re-emits byte-identical to the tracked file),
+    // and directly here against the single-mode branch of buildHeroBlock().
+    assert.ok(!captainsCabin.hero || captainsCabin.hero.modes.length === 1, 'expected the fixture recipe this test reasons about to declare exactly one hero mode');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdx-emit-theme-single-mode-'));
+    try {
+      const outDir = tmpDir + path.sep;
+      const result = emitTheme(captainsCabin, { outDir, assetsDir: REAL_THEME_DIR });
+      assert.ok(!result.css.includes('--codexterity-hero'), 'expected no --codexterity-hero variable in a single-mode hero theme');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   test('the recipe fixture itself names no real theme -- guards this test against accidentally depending on deep-navy-portrait or its private hero source', () => {
