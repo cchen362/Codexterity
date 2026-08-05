@@ -91,10 +91,26 @@ Settled when this plan was scoped. Inputs, not questions.
 2. **Typography does not change.** Fraunces / Literata / Monaspace Neon are retained as-is — hand-picked
    over several rounds and judged legible. The recipe must still *support* a theme bringing its own
    fonts; this theme simply does not.
-3. **Dark mode keeps the shipped navy palette exactly. Light mode is re-derived cooler.** The owner's
-   words: *"I do think the light mode has too much yellow for the hero."* The shipped light mode is
-   warm parchment (`#F0E7D5`) and the hero is cold monochrome; that pairing is the one real design
-   risk in this theme. Dark is proven and does not move.
+3. ~~**Dark mode keeps the shipped navy palette exactly. Light mode is re-derived cooler.**~~
+   **REVERSED BY THE OWNER 2026-08-05, ON SIGHT, AND THIS IS THE CURRENT RULING: BOTH MODES KEEP THE
+   SHIPPED PALETTE EXACTLY.** The original concern was real and is recorded here so nobody re-derives
+   it — *"I do think the light mode has too much yellow for the hero"* — and M3b tested it properly
+   by rendering three light grounds against the actual portrait: the shipped warm parchment
+   (`#F0E7D5`), a cooler paper-grey (`#E1E9EF`) and a blue-leaning paper (`#DBEAF7`). Shown those, the
+   owner chose **the shipped warm parchment**: *"I will go with the 'As it ships — warm parchment'
+   option as I don't really like the light blue options."*
+
+   **Do not attempt to cool light mode again.** This is the documented pattern of a stated preference
+   reversing once it is rendered, and it has now been tested; re-opening it means re-running an
+   experiment whose answer is recorded.
+
+   **CONSEQUENCE, and it makes M4 much smaller than originally scoped.** With dark navy unchanged and
+   light parchment unchanged, and with the accent hue unchanged (the monochrome portrait names no hue,
+   measured in M3), **Deep Navy Portrait's palette is IDENTICAL to Captain's Cabin's.** The two themes
+   differ only in: identity (name/description/id), the hero asset, the fact that the hero appears in
+   **both** modes rather than dark only, and the two scrims. There is no new colour in this theme, so
+   its `audit.mjs` result is by construction the same 68/68 twice — the emitter's refusal still runs,
+   but it is not where M4's risk lives. **M4's real work is the scrims**, and that is genuinely new.
 4. **This theme is PRIVATE / LOCAL ONLY.** It is built, installed and used on the owner's machines and
    the package is never shared. Distribution rights for the photograph are therefore **not a gate on
    any milestone here** — but the moment sharing is contemplated, they become a decision (not
@@ -454,10 +470,26 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   for the whole sheet, typography unchanged by default. `0007` shows the hero *alongside* each option,
   which was a dodge around the portrait's unsolved scrim; solving that scrim is M4's work anyway, so
   the dodge has no remaining excuse.
-  (3) **The light-mode ground is an OPEN OWNER CHOICE, not a derivation.** `0007` §2 renders three
-  candidates against the portrait — warm parchment as shipped, a cooler paper-grey, a blue-leaning
-  paper. **M4 starts by getting that pick.** Do not choose it by argument; rebuild the sheet, show it,
-  ask. (This session's recommendation, for the owner to accept or reject on sight, is the middle one.)
+  (3) ~~The light-mode ground is an OPEN OWNER CHOICE.~~ **SETTLED 2026-08-05: the owner picked the
+  shipped warm parchment**, rejecting both cooler candidates on sight (see owner ruling 3 above, now
+  reversed). **This no longer blocks anything.** The recipe sets no `lightGround` override at all —
+  the default IS the answer — so `buildLight` is called exactly as Captain's Cabin calls it.
+
+  **SCRIM FEASIBILITY, MEASURED 2026-08-05 — do not re-derive, and note the shipped stops are not a
+  starting point but a proven failure.** Re-solved against `assets/hero-sources/BW_Jisoo.png` with
+  this theme's real ground and ink in each mode (`tools/palette/hero-scrim.mjs`, 60 bands):
+
+  | stop set | dark | light | image visible |
+  |---|---|---|---|
+  | Captain's Cabin's shipped stops | 1.03:1 **FAILS** | 1.02:1 **FAILS** | 83% of panel |
+  | `[[0,0],[0.30,0.35],[0.45,0.70],[0.60,0.88],[0.80,0.95],[1,0.97]]` | **4.90:1 OK** | **5.43:1 OK** | 59% of panel |
+  | `[[0,0.10],[0.30,0.55],[0.42,0.85],[0.60,0.95],[1,0.98]]` | 10.18:1 OK | 9.29:1 OK | 43% of panel |
+
+  So the hero **can** carry text in both modes and still read as a picture over most of the panel.
+  The middle row is a working starting point, not a recommendation — **solve each mode independently
+  and judge the result by eye**, because these figures say only that text is legible, never that the
+  portrait still looks good under that much veiling. The worst case lands at 43% of panel height in
+  every case, which is where the heading sits.
 
   Dark mode: the shipped navy
   palette, unchanged. Light mode: re-derived cooler for the monochrome hero, per the owner's ruling.
