@@ -1,6 +1,8 @@
 # Plan 0003 — Image-led theme authoring: the hero-to-palette pipeline
 
-**Status:** **OPEN. Opened 2026-08-05. M1, M2 and M3 DONE (all 2026-08-05); M4–M6 not started.**
+**Status:** **OPEN. Opened 2026-08-05. M1, M2 and M3 DONE (all 2026-08-05); M3b ADDED 2026-08-05 by
+the scope correction below and IN PROGRESS; M4–M6 not started.** M3 met its stated gate but solved
+the wrong shape of problem — read "Scope correction" before treating any of M3's framing as settled.
 **M6 was added 2026-08-05**, after measuring that Plan 0002's review finding #5 was mis-scoped: every
 embedded asset ships twice, not only the hero, and the runtime cost is the half that matters. This is the first
 plan of the post-Phase-7 era; [Plan 0002](0002-phase-7-qa-docs-release.md) closed the roadmap at tag
@@ -38,6 +40,37 @@ that image, derives both modes through the existing OKLCH engine, solves the scr
 pixels, and emits a validated theme package. **Deep Navy Portrait is the pipeline's first output and
 its proof — not its purpose.** A milestone that produces the theme without the pipeline has failed
 even if the theme looks good.
+
+> **SCOPE CORRECTION, 2026-08-05, after the owner reviewed M3's sheet. Read this before anything
+> below it.** M3 built an *instrument* that answers "what colour is this picture?" The owner needs a
+> **generator** that answers "here are several ways this app could look with this picture in it." The
+> owner's words, and they govern:
+>
+> > *"I provide a preferred hero image > based on the hero image theme/aesthetic/palette **or
+> > direction from me** (i.e: Dior inspired palette + another 2 bolder/creative version), it will
+> > create the mockups like what shown in 0005 > I decided on palette from the mockup > we build the
+> > new theme."*
+>
+> Three consequences, all of which correct assumptions made when this plan was scoped:
+>
+> 1. **The creative direction comes from the OWNER, not from the image.** The image constrains and
+>    informs; it does not decide. M3 assumed the image was the source of direction, which is why a
+>    monochrome hero produced a one-card sheet and read as a dead end rather than as an answer.
+> 2. **This is GENERAL, and BW_Jisoo is only the first input.** The owner's own example is a
+>    *cyberpunk neon-lit city skyline*. Nothing built here may be shaped around one photograph — a
+>    milestone that works only for the portrait has failed the plan's actual purpose.
+> 3. **An authored input was never forbidden, and treating it as forbidden is what mis-shaped M3.**
+>    The hard constraint below rules out hand-picking the hundreds of *final token colours*. It has
+>    never ruled out an authored *input*: navy `#0E141F` is itself an authored input a human chose.
+>    "Dior inspired" becoming a ground hue and an accent hue is the same move, and everything
+>    downstream is still solved by the engine and proven by the audit.
+>
+> **Owner rulings 1 and 3 are narrowed accordingly.** Ruling 3 ("dark keeps the shipped navy") was
+> about *this theme*, not a standing rule for every future one — the owner: *"I was asking to keep the
+> Deep Navy in dark mode because I thought it still looks great with the new hero image, NOT ship
+> every future new theme with only Deep Navy for dark mode."* Directions may move **both** modes.
+> For **Deep Navy Portrait specifically** the owner has settled it: **shipped navy in dark, and a
+> parchment-family light mode**, with a cooler variant to be shown rather than argued.
 
 **The hard constraint that shapes the whole design: a recommender proposes RECIPE INPUTS, never final
 colours.** `docs/ENGINEERING.md` states that palette values are *derived, not hand-picked* — ramps
@@ -350,6 +383,59 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   for the portrait is the **inherited navy alone** — both image-driven proposals are omitted, with
   their measured numbers — which agrees with owner ruling 3 but does not decide M4's cooler light
   mode, and no scrim has been solved for that image.
+
+- **M3b — DIRECTIONS: the generator the owner actually asked for.** Added 2026-08-05 by the scope
+  correction above. M3's recommender stays and keeps its calibration gate, but it stops being the
+  star: it becomes **one contributor of one direction** among several.
+
+  A **direction** is a first-class authored record — a name, a one-line intent in plain language, and
+  its recipe inputs (ground hue/chroma per mode, accent hue). Authored directions ("Dior atelier") and
+  the *measured* direction read off a hero by `recommend-palette.mjs` are then the **same kind of
+  object**, so a colourful hero contributes a direction automatically and a monochrome one simply
+  contributes none — with no special case anywhere.
+
+  **This milestone parameterises the light-mode ground (`PARCHMENT`)**, which M2 reserved for M4 and
+  which M4 no longer owns: directions cannot differ in light mode until it is an input. The 40°
+  accent separation floor (D-0003-2 clause c) still governs every direction, authored or measured.
+
+  **The sheet is a DECISION SURFACE, not an instrument report — this is the half M3 got wrong.**
+  Lead with large rendered UI mocks per direction in both modes, each named and carrying its intent in
+  the product's voice. **The OKLCH figures, the hue-projection reasoning and the audit arithmetic move
+  OFF the sheet and into the CLI**, where the engineer reads them; the owner's copy states only that a
+  direction passed. The owner's verdict on M3's sheet is the specification here: *"a bunch of jargon
+  and terms like `Ground OKLCH: L 0.191, C 0.024, H 262.2°` … doesn't help or serve any purpose for me
+  visually."*
+
+  **Gate:** (1) every direction is derived through `palette-engine.mjs` and passes `audit.mjs` before
+  the sheet is written, and the builder still **refuses to write** if any fails; (2) the tool is
+  demonstrably **general** — it takes an arbitrary hero plus an arbitrary direction set, with nothing
+  shaped around `BW_Jisoo.png`, and a fresh clone lacking `assets/hero-sources/` still runs green;
+  (3) Captain's Cabin still emits **byte-identically**; (4) the owner picks a direction from the
+  rendered sheet, which is what unblocks M4.
+
+  **BUILT 2026-08-05; gates 1–3 met, gate 4 is the owner's and is OPEN.** `npm test` **257 → 282**,
+  `audit.mjs` 272/272, all three theme digests unchanged. The light-mode ground is now an input
+  (`lightGround`, defaulting to the parchment constant, which stays the default and keeps its original
+  reasoning). [`tools/palette/directions.mjs`](../../tools/palette/directions.mjs) holds the catalogue
+  and `buildDirections()`; [`tools/mockup/build-palette-directions.mjs`](../../tools/mockup/build-palette-directions.mjs)
+  writes `docs/mockups/0007-palette-directions.html`.
+
+  **Five directions, all passing AA in both modes:** `shipped-navy` (the control), `dior-atelier`,
+  `ember-quarterdeck`, `neon-fathom`, and `from-image` when the hero yields one. **`neon-fathom` is
+  the generality proof** — a teal-black ground with a hot magenta accent, i.e. the owner's own
+  cyberpunk example, derived and audited rather than hand-picked, with nothing in the tool shaped
+  around any particular photograph.
+
+  **The 0006 sheet and its builder are RETIRED, not kept alongside.** Its unique content — the
+  calibration evidence and the hue reasoning — is fully covered by `directions.mjs`'s CLI and by the
+  suite's calibration gate, so a second, superseded owner-facing sheet builder would only drift. Both
+  the 0006 and 0007 filenames stay git-ignored (D-0003-3).
+
+  **What M3b settled that M3 got wrong, recorded because it is the reusable lesson:** a milestone can
+  meet a written gate and still solve the wrong shape of problem. M3's gate ("every proposal passes
+  the audit before the owner is shown anything") was fully met by a sheet the owner could not use.
+  The gate measured *correctness* and never asked *is this a thing a person can decide from*. M3b's
+  gate 4 is deliberately the owner's verdict for that reason.
 
 - **M4 — Deep Navy Portrait, the first theme built by the pipeline.** Dark mode: the shipped navy
   palette, unchanged. Light mode: re-derived cooler for the monochrome hero, per the owner's ruling.

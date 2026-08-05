@@ -126,21 +126,25 @@ export const ROLE_HUES = Object.freeze({
   error: ROLE.error.H,
 });
 
-// ── The accent hue, made a parameter (Plan 0003 M3, D-0003-2 clause d) ──────
-// PARCHMENT below is deliberately NOT parameterised alongside it: nothing
-// proposes a light-mode ground yet, and M4 is the change that first varies it.
-// D-0001-11 is NOT reopened by this. That decision fixes ACCENT POLICY — one
-// accent, with the two decorative hues collapsing into it and the three
-// semantic status hues held distinct — and nothing here changes how many
-// accents this theme has or which tokens collapse into it. This only lets a
-// caller choose WHICH HUE that one accent sits at; the chroma (how saturated
-// it reads) is not varied, because nothing downstream proposes a chroma and
-// an unused input would be exactly the placeholder this repo forbids.
-const ACCENT_OPTION_KEYS = new Set(['accentHue']);
+// ── Build options: accentHue (M3) and lightGround (M3b) ─────────────────────
+// Both buildDark and buildLight take the SAME options object, because a
+// caller (recommend-palette.mjs, directions.mjs) authors one recipe for both
+// modes and should not have to know which function reads which field. The
+// two functions below share one "is this key recognised at all" gate
+// (BUILD_OPTION_KEYS, enforced once per call inside resolveAccent) so an
+// unrecognised key throws no matter which build function receives it, and
+// each option then validates its OWN shape only where it is actually
+// consumed: resolveAccent reads accentHue (used by both modes, since brass
+// appears in buildDark's border-focus/accent tokens AND buildLight's), and
+// resolveLightGround reads lightGround (used only by buildLight — buildDark
+// has no light-mode ground to vary). A caller may therefore pass
+// { accentHue, lightGround } to BOTH buildDark and buildLight without
+// buildDark objecting to a key it simply does not need.
+const BUILD_OPTION_KEYS = new Set(['accentHue', 'lightGround']);
 function resolveAccent(options) {
   for (const key of Object.keys(options)) {
-    if (!ACCENT_OPTION_KEYS.has(key)) {
-      throw new Error(`palette-engine: unrecognised build option ${JSON.stringify(key)} (recognised: accentHue)`);
+    if (!BUILD_OPTION_KEYS.has(key)) {
+      throw new Error(`palette-engine: unrecognised build option ${JSON.stringify(key)} (recognised: ${[...BUILD_OPTION_KEYS].join(', ')})`);
     }
   }
   if (!('accentHue' in options)) return ROLE.brass;
@@ -150,11 +154,57 @@ function resolveAccent(options) {
   }
   return { ...ROLE.brass, H: h };
 }
-// Parchment is the light-mode ground for every option. A pale tint of the dark
-// ground would give aubergine a lilac cast — the exact violet-on-white look the
-// design floor rules out — and a captain's chart room is paper in daylight either
-// way. The ground's identity carries into light mode through the ink and borders.
-const PARCHMENT = { L: 0.930, C: 0.026, H: 85 };
+
+// Parchment is the light-mode ground DEFAULT. A pale tint of the dark ground
+// would give aubergine a lilac cast — the exact violet-on-white look the
+// design floor rules out — and a captain's chart room is paper in daylight
+// either way. This is the finding Plan 0003 M2 deferred parameterising
+// (buildLight always used it, which is precisely why two themes could never
+// differ in light mode) and Plan 0003 M3b now unblocks: a DIRECTION may
+// override it deliberately (a bolder or cooler light ground is a legitimate
+// creative choice, same status as choosing navy for dark in the first
+// place — see the "SCOPE CORRECTION" block in Plan 0003), but parchment
+// stays what a caller gets by doing nothing, and the reasoning above for why
+// it is the safe default is unchanged. Frozen and exported so directions.mjs
+// reads the one default from here rather than copying the three numbers into
+// a second file where they could silently drift.
+export const DEFAULT_LIGHT_GROUND = Object.freeze({ L: 0.930, C: 0.026, H: 85 });
+
+// Accepts a PARTIAL override — a direction that wants to shift only the hue
+// (e.g. a cooler light mode for a monochrome hero) should not have to also
+// restate lightness and chroma it does not intend to change. Each provided
+// key is validated and merged onto DEFAULT_LIGHT_GROUND; an unrecognised key
+// inside the override object throws by name, same discipline as the
+// top-level option check above.
+const LIGHT_GROUND_RANGES = {
+  L: [0, 1],
+  C: [0, 0.4], // generous OKLCH chroma ceiling; oklchToHex's own gamut-mapping
+               // loop (see above) already clamps anything sRGB cannot render,
+               // so this bound exists to catch a typo (e.g. a hue value typed
+               // into the chroma field), not to second-guess the gamut mapper.
+  H: [0, 360],
+};
+function resolveLightGround(options) {
+  if (!('lightGround' in options)) return { ...DEFAULT_LIGHT_GROUND };
+  const override = options.lightGround;
+  if (typeof override !== 'object' || override === null || Array.isArray(override)) {
+    throw new Error(`palette-engine: lightGround must be an object with any of {L, C, H}, got ${JSON.stringify(override)}`);
+  }
+  const merged = { ...DEFAULT_LIGHT_GROUND };
+  for (const key of Object.keys(override)) {
+    const range = LIGHT_GROUND_RANGES[key];
+    if (!range) {
+      throw new Error(`palette-engine: lightGround has unrecognised key ${JSON.stringify(key)} (recognised: L, C, H)`);
+    }
+    const v = override[key];
+    const [lo, hi] = range;
+    if (!Number.isFinite(v) || v < lo || v > hi) {
+      throw new Error(`palette-engine: lightGround.${key} must be a finite number in the range [${lo}, ${hi}], got ${JSON.stringify(v)}`);
+    }
+    merged[key] = v;
+  }
+  return merged;
+}
 
 /**
  * The chrome layer — everything outside the six core surfaces and four ink tiers.
@@ -418,12 +468,22 @@ export function buildDark(groundHex, options = {}) {
 
 export function buildLight(groundHex, options = {}) {
   const brass = resolveAccent(options);
-  // Surfaces are parchment for every ground; the ground's hue carries into the
-  // ink and borders instead, so aubergine reads as plum ink on paper rather than
-  // as a lilac page.
+  const base = resolveLightGround(options);
+  // Surfaces come from `base` (parchment by default, or a direction's
+  // override), but the ink and border HUE still come from `groundHex` — the
+  // DARK ground's own hue — regardless of what `base` is. This is the
+  // interaction Plan 0003 M3b's task list calls out by name: it is why
+  // aubergine reads as plum ink on paper rather than as a lilac page even
+  // though the paper itself is parchment, not a tint of aubergine. A
+  // direction that moves BOTH the dark ground and the light ground has two
+  // independent hues in play — the surface hue (`base.H`) and the ink hue
+  // (`inkH`, below) — and conflating them is exactly where a careless change
+  // would break the ink's own contrast proof: `solveL` below holds `inkH`
+  // fixed and solves ONLY lightness against `worst`, which is itself built
+  // from `base`. Move `base`'s hue into `inkH`'s slot and the ink text stops
+  // being the colour the dark ground actually is.
   const g0 = hexToOklch(groundHex);
   const inkH = g0.H;
-  const base = { ...PARCHMENT };
   const ground = oklchToHex(base);
   const surf = (dL, dC = 0) => oklchToHex({ L: base.L + dL, C: Math.max(0, base.C + dC), H: base.H });
   const p = {

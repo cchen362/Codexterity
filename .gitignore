@@ -20,14 +20,19 @@ out/
 # derived copy of an image the repo already ships.
 assets/hero-sources/
 
-# D-0003-3 — The M3 palette-recommendation sheet is a BUILD PRODUCT, not a committed mockup —
-# the one file in docs/mockups/ that is generated rather than tracked. It embeds
-# the hero it is judging, and for the portrait theme that hero is one of the
-# private photographs above; committing the sheet would put the photograph into
-# git history by the back door, defeating the rule immediately above it. Owner
-# decision, 2026-08-05. Rebuild it any time with:
-#     node tools/mockup/build-palette-recommendation.mjs
+# D-0003-3 — The palette-directions sheet is a BUILD PRODUCT, not a committed
+# mockup — the one file in docs/mockups/ that is generated rather than tracked.
+# It embeds the hero images it is judging, and one of those is a private
+# photograph from the ignored directory above; committing the sheet would put
+# that photograph into git history by the back door, defeating the rule
+# immediately above it. Owner decision, 2026-08-05. Rebuild it any time with:
+#     node tools/mockup/build-palette-directions.mjs
+#
+# The 0006 pattern is retained deliberately even though its builder was retired
+# in M3b: a stale copy of that sheet may still sit in a working tree from before
+# the rename, and it embeds the same photograph, so it must stay un-committable.
 docs/mockups/0006-palette-recommendation.html
+docs/mockups/0007-palette-directions.html
 
 # Scratch / temp
 scratchpad/
