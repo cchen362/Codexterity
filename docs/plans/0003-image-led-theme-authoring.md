@@ -431,6 +431,13 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   suite's calibration gate, so a second, superseded owner-facing sheet builder would only drift. Both
   the 0006 and 0007 filenames stay git-ignored (D-0003-3).
 
+  **PRESENTATION IS NOW A STANDARD, NOT A PER-SHEET CHOICE (D-0003-4, owner 2026-08-05).** Future
+  palette-options sheets follow `0005`'s shape: the hero **in** each option (behind the empty state,
+  under a scrim solved per option with `hero-scrim.mjs` — `0007` put it alongside, which was a dodge
+  around the unsolved portrait scrim), **one dark/light toggle** for the whole sheet rather than two
+  panels per option, and **typography unchanged by default** so the comparison is about colour. **M4
+  rebuilds the sheet to this standard**; it is not deferred.
+
   **What M3b settled that M3 got wrong, recorded because it is the reusable lesson:** a milestone can
   meet a written gate and still solve the wrong shape of problem. M3's gate ("every proposal passes
   the audit before the owner is shown anything") was fully met by a sheet the owner could not use.
