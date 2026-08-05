@@ -616,12 +616,40 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   against every horizontal crop whatever the anchor.
 
 - **M5 — install it privately and record what was settled.** Apply it locally through the existing
-  `cdx apply`, confirm the theme-neutral shortcut carries it with no packaging change (the runtime is
-  already theme-agnostic — that claim gets tested here for the first time), and stamp the decisions
-  this plan settles in code plus `docs/DECISIONS.md`.
+  `cdx apply`, confirm the theme-neutral shortcut carries it with no packaging change, and stamp the
+  decisions this plan settles in code plus `docs/DECISIONS.md`.
 
   **Gate:** the package is **not** added to either installer and **not** shared; both platform
   builders still ship Captain's Cabin alone.
+
+  **THIS MILESTONE IS SMALLER THAN IT LOOKS — M4 ALREADY DID MOST OF IT, so do not redo it.** Three
+  measured facts, 2026-08-05:
+
+  1. **The theme-agnostic runtime claim is already TESTED, and it passed.** M4's verification ran
+     `cdx apply` on `dist/deep-navy-portrait.ccskin` and the owner launched through the installed
+     Start-menu shortcut; the theme applied in both modes with no packaging change of any kind. That
+     was M5's headline claim and it is now evidence rather than expectation.
+  2. **The gate is structurally satisfied, not merely observed.**
+     [`tools/build-windows-package.js`](../../tools/build-windows-package.js) hardcodes
+     `themes/captains-cabin` as the theme it packs (line ~85), so no installer can pick this theme up
+     by accident. Confirm the macOS builder the same way and the gate is met by construction.
+  3. **The decisions are already stamped:** D-0003-5 (the scrim solver), D-0003-6 (the theme
+     directory is git-ignored build output) and D-0003-7 (the scrim's governing contrast threshold,
+     with its trip-wire) are in `docs/DECISIONS.md` with markers in the code they govern.
+
+  **WHAT ACTUALLY REMAINS, and it is one real defect.** `~/.codexterity/state.json` currently points
+  the owner's daily launch at
+  `C:\Users\cchen362\Desktop\CodexSkin_Pirate\dist\deep-navy-portrait.ccskin` — a path inside a **git
+  working tree**, in a directory that is **git-ignored build output** (`dist/`). Captain's Cabin, by
+  contrast, is installed at `%USERPROFILE%\Codexterity\dist\captains-cabin.ccskin`. So the themed
+  launch now depends on the repo staying where it is and on `dist/` never being cleaned — neither of
+  which is true of build output, and a `git clean` would silently break the shortcut. **M5's job is
+  to install the package properly**: copy it beside Captain's Cabin in the installed tree, re-apply
+  from *that* path, and confirm the shortcut still launches themed. Note the install root is
+  `%USERPROFILE%\Codexterity` for a measured reason (D-0001-29 — MSIX redirection hides
+  `%LOCALAPPDATA%` from Codex); do not invent a new location. Also worth doing while there: the
+  `cdx restore` round trip, since D-0001-32 makes "restore leaves a working plain-Codex launch" a
+  promise this theme has not yet exercised.
 
 - **M6 — the embedding audit: stop paying twice for every asset.** Plan 0002's review finding #5 said
   "the hero ships twice". **Measured 2026-08-05, it is worse and differently shaped than that: EVERY
