@@ -1,7 +1,9 @@
 # Plan 0003 — Image-led theme authoring: the hero-to-palette pipeline
 
-**Status:** **OPEN. Opened 2026-08-05. M1, M2, M3, M3b and M4 all DONE 2026-08-05. M5 and M6 not
-started.** M4's gate is met: the theme was confirmed in the real running app, showing the portrait in
+**Status:** **OPEN. Opened 2026-08-05. M1, M2, M3, M3b, M4 and M5 all DONE 2026-08-05. M6 is the only
+milestone left.** M5 installed the private theme properly and proved the themed launch no longer
+depends on the repository; after it, `npm test` **299/299**, `audit.mjs` **272/272**, all three
+Captain's Cabin digests unchanged, and no code changed at all except one decision marker. M4's gate is met: the theme was confirmed in the real running app, showing the portrait in
 **both** modes, and the owner's observations across two launches settled the last two open questions:
 the governing contrast threshold (3:1, not 4.5:1 — only the heading is over the photograph) and the
 hero's anchor (`center`; a shifted anchor was shipped and then **rejected on sight**). Both the final
@@ -650,6 +652,79 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   `%LOCALAPPDATA%` from Codex); do not invent a new location. Also worth doing while there: the
   `cdx restore` round trip, since D-0001-32 makes "restore leaves a working plain-Codex launch" a
   promise this theme has not yet exercised.
+
+  **DONE 2026-08-05. Gate met, and met by construction on both platforms.** The package is installed
+  at **`C:\Users\cchen362\Codexterity\dist\deep-navy-portrait.ccskin`** (4,895,121 bytes, SHA-256
+  `A9F8E1…C6F65`, byte-identical to the copy in the repository's `dist/`), applied **by theme id
+  through the installed CLI** so `resolveThemeSource` resolves it under the install root rather than
+  from a literal path, and `~/.codexterity/state.json` now names that installed path. **No code
+  changed** beyond one decision marker; `npm test` **299/299**, `audit.mjs` **272/272**, all three
+  Captain's Cabin digests unchanged (`731CC9…4286E`, `36DAD6…211FEB`, `0E44FF…AD5DB5`).
+
+  **The gate:** [`tools/build-windows-package.js`](../../tools/build-windows-package.js) hardcodes
+  `themes/captains-cabin` (~line 85), and the macOS side does the same in two places —
+  [`packaging/macos/build-macos-package.js`](../../packaging/macos/build-macos-package.js) line 192
+  defaults its payload to `dist/captains-cabin.ccskin` and
+  [`packaging/macos/install.sh`](../../packaging/macos/install.sh) line 107 runs
+  `cdx apply captains-cabin`. Neither installer can pick this theme up by accident. That is a **code
+  read**, not a macOS run, so it does not touch D-0001-16.
+
+  **THE INDEPENDENCE CLAIM WAS PROVED, NOT ASSUMED.** The repository's `dist/` was **renamed away for
+  the whole verification** — all three launches below ran with it absent. `cdx verify` succeeded
+  against the installed package (4,302,301 CSS bytes, 7 assets, 1,713,191 bytes) and `cdx list`
+  enumerated both installed packages with `deep-navy-portrait [active]`. A `git clean` can no longer
+  break the owner's daily launch.
+
+  **The round trip, three launches, verified in the running app against Codex 26.730.8199.0:**
+
+  1. **Themed, from the installed path.** The injector logged the package loading from
+     `C:\Users\cchen362\Codexterity\dist\…`; at the settled +15s check the main window reported
+     `hero: PAINTING … emptyStateHeading=yes` and **four landmarks PRESENT** (`sidebar-panel`,
+     `sidebar-active-row`, `heading-display`, `home-hero`), with `terminal` and `code-surfaces` absent
+     only because neither was on screen — an unrun measurement. Brass active-row mark at 2×16 px
+     `rgb(192,164,84)`, sidebar `#0B111C`, title bar `rgb(21,27,38)`, `--color-text-primary #F4EAD4`,
+     all three fonts loadable, and the two decorative chart accents collapsed to brass
+     (`rgb(172,143,63)`) while green and orange stayed distinct (D-0001-11). **The owner confirmed the
+     portrait in BOTH dark and light mode** — the light-mode appearance is this theme's own smoke test,
+     since Captain's Cabin deliberately has no hero there.
+  2. **`cdx restore`, then launch — D-0001-32 exercised for the first time with this theme.** Restore
+     removed `state.json` *and* the `.codexterity` directory, leaving no residue. The shortcut then
+     launched **plain Codex with no error dialog**, and the launcher log proves it structurally rather
+     than by eye: *"Unthemed launch (-NoTheme): no injector will be attached"*, *"NODE_OPTIONS /
+     CDX_THEME_PACKAGE removed from the child environment"*, and `injector.log` **0 bytes**.
+  3. **Re-applied and launched.** The theme returned from the installed path, same four landmarks
+     PRESENT, hero painting. Deep Navy Portrait is the theme left applied, at the owner's choice.
+
+  **What M5 settled that the re-scoping did not anticipate — three facts:**
+
+  1. **Where a private theme lives is a real decision, and two of the three obvious homes are already
+     forbidden.** Stamped as **D-0003-8**. The repository's `dist/` is git-ignored build output, so a
+     `git clean` breaks the launch; `~/.codexterity/` looks ideal because no installer touches it, but
+     D-0001-24 keeps `cdx restore`'s no-residue promise by `rmdir`ing that directory **only when
+     empty**, so a `themes/` subdirectory there would quietly turn a documented guarantee into a lie.
+     The install root is what remains, and D-0001-29 already pins it.
+  2. **`Install.ps1` wipes the install directory recursively, so a reinstall DROPS the private
+     package — and that is correct.** The installer's last step re-runs `cdx apply captains-cabin`, so
+     a reinstall self-heals to a theme that is certainly present rather than leaving `state.json`
+     naming a file that is gone. Recorded in D-0003-8 with a "do not preserve stray `.ccskin`" marker
+     at the wipe, because the tidy-looking fix is the wrong one.
+  3. **A SECOND REAL CODEX UPDATE HELD, WITH ZERO CHANGES.** `docs/ENGINEERING.md` records
+     26.727.6591.0 → 26.730.7989.0 (the Electron 150 → 151 jump). Codex has since moved again to
+     **26.730.8199.0**, and everything above was measured against that build. This one is a weaker
+     datapoint than the first and is recorded as such: Electron/Chromium are **unchanged** at
+     151.0.7922.71 (Node 24.14.0, V8 15.1.206.10), so it is a Codex build bump, not a runtime jump —
+     evidence that the token binding survives ordinary app releases, not a second proof of the
+     hardening question.
+
+  **A MEASUREMENT TECHNIQUE THAT IS WRONG AND LOOKS RIGHT — the launcher TRUNCATES `injector.log` at
+  every startup.** Reading the log's line count before a launch and diffing against it afterwards
+  reports only the tail of a file that was emptied and refilled, and it briefly convicted a fully
+  successful launch of never attaching. **Anchor on line 1's timestamp, not on the file's length.**
+  Two lines in that file also look like defects and are not: the
+  `STARTUP FAILED, 'electron' module unavailable` entries are Codex's **child** processes (they run
+  the same preload and have no Electron), and `Codex process exited with code 1` is the MSIX
+  activation stub handing off. Same family as this plan's other three instrument mistakes — the tool
+  was fine; what it was pointed at was not.
 
 - **M6 — the embedding audit: stop paying twice for every asset.** Plan 0002's review finding #5 said
   "the hero ships twice". **Measured 2026-08-05, it is worse and differently shaped than that: EVERY

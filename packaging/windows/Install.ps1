@@ -141,6 +141,20 @@ if (-not (Test-Path -LiteralPath $PayloadSource -PathType Container)) {
         "Codexterity-Windows folder, with 'payload\' present beside Install.ps1.")
 }
 
+# ---------------------------------------------------------------------------
+# D-0003-8 -- this wipe is RECURSIVE ON PURPOSE, and it is allowed to delete a
+# privately installed theme package. Plan 0003 M5 installed Deep Navy Portrait
+# (a private, never-shared theme) as a hand-placed .ccskin in $InstallDir\dist\
+# beside the packaged Captain's Cabin, because that is the only location that
+# is neither git-ignored build output (the repo's own dist\, which `git clean`
+# would remove) nor ~/.codexterity\ (whose emptiness `cdx restore` depends on to
+# leave no residue, D-0001-24). A reinstall therefore DROPS such a package --
+# and that is the correct outcome, not a bug to fix: step 4 below re-applies
+# captains-cabin, so a reinstall self-heals to a theme that is definitely
+# present instead of leaving state.json pointing at a file that is gone. Do NOT
+# "improve" this by preserving stray *.ccskin across installs; a private theme's
+# real source of truth is its recipe (D-0003-6), one emit-and-pack away.
+# ---------------------------------------------------------------------------
 if (Test-Path -LiteralPath $InstallDir) {
     Write-Info "Removing previous installation at '$InstallDir'..."
     try {
