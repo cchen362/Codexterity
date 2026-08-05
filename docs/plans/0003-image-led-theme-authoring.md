@@ -2,12 +2,10 @@
 
 **Status:** **OPEN. Opened 2026-08-05. M1, M2, M3, M3b and M4 all DONE 2026-08-05. M5 and M6 not
 started.** M4's gate is met: the theme was confirmed in the real running app, showing the portrait in
-**both** modes, and the owner's observations there produced two corrections (the governing contrast
-threshold and the hero's anchor) which are recorded under M4. **One loose end, deliberately not
-blocking:** the final veil (3:1) and the `68% center` anchor were emitted *after* that launch, so
-they are proven by measurement and by rendered comparison but have not themselves been seen in the
-app — fold that confirmation into M5's install verification rather than spending a launch on it now.
-After M4: `npm test` **299/299**, `audit.mjs` **272/272**, all three Captain's Cabin digests
+**both** modes, and the owner's observations across two launches settled the last two open questions:
+the governing contrast threshold (3:1, not 4.5:1 — only the heading is over the photograph) and the
+hero's anchor (`center`; a shifted anchor was shipped and then **rejected on sight**). Both the final
+veil and the reverted anchor have now been seen in the running app. After M4: `npm test` **299/299**, `audit.mjs` **272/272**, all three Captain's Cabin digests
 unchanged. M3 met its stated gate but solved
 the wrong shape of problem — read "Scope correction" before treating any of M3's framing as settled.
 **M6 was added 2026-08-05**, after measuring that Plan 0002's review finding #5 was mis-scoped: every
@@ -532,8 +530,8 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
 
   | | Captain's Cabin | Deep Navy Portrait |
   |---|---|---|
-  | emitted `theme.css` | 475,958 | **4,302,325** (9.0×) |
-  | packaged `.ccskin` | 681,124 | **4,895,132** (7.2×) |
+  | emitted `theme.css` | 475,958 | **4,302,301** (9.0×) |
+  | packaged `.ccskin` | 681,124 | **4,895,121** (7.2×) |
 
   Two causes, both M6's: the duplicate embed above (1,993,928 bytes), and the source photograph
   itself, which is a **1,495,444-byte lossless PNG** against Captain's Cabin's 124,134-byte lossy
@@ -596,16 +594,26 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
   entirely and asked for *more* portrait, twice, which settles it — the luminous panel is wanted, not
   tolerated. **Do not re-raise it as a defect.**
 
-  **THE HERO IS ANCHORED AT `68% center`, NOT `center`, AND THAT IS A MEASURED CHOICE.** Reported by
-  the owner from the running app: in a half-width window with the sidebar open the face was off-frame.
-  `background-size: cover` crops horizontally once the panel is narrower than the image's aspect, and
-  this subject sits right of centre, so centring slices the face off — while anchoring hard `right`
-  overshoots into hair and shoulder just as badly. Five anchors were rendered side by side in a
-  tall/narrow panel and **68%** is the one that holds the whole face. It is free on wide panels: when
-  the panel is wider than the image's aspect, `cover` scales by width, there is no horizontal
-  overflow, and the horizontal position has no effect. It also cannot disturb the contrast proof —
-  `bandImage()` takes the worst pixel across each band's **full width**, so every horizontal crop was
-  already accounted for.
+  **THE HERO STAYS AT `background-position: center`. A SHIFTED ANCHOR WAS BUILT, SHIPPED AND THEN
+  REJECTED ON SIGHT — do not re-propose one.** The owner reported from the running app that in a
+  half-width window with the sidebar open the face was partly off-frame: `cover` crops horizontally
+  once the panel is narrower than the image's aspect, and this subject sits right of centre. Five
+  anchors were rendered side by side, `68% center` won that comparison and was emitted — and the
+  owner then looked at it in the app and rejected it, because **at the window proportions they
+  actually use it swings the face into the content**, crowding the heading and the suggestion cards,
+  with the sidebar open *and* closed. The narrow-window crop is the lesser problem and is accepted.
+
+  **The reusable part is why the comparison was wrong, and it is a third instance of this milestone's
+  one recurring mistake.** The mock panels were ~300px wide against a real content panel of ~950px,
+  so the experiment ran at an aspect ratio the app does not have — and `cover`'s whole behaviour is a
+  function of that ratio. A tidy side-by-side of five options at the wrong proportions reads as
+  conclusive while answering a different question. Same shape as fact 2 (a ratio measured over the
+  wrong region) and fact 5 (a mock wrong about which elements are opaque): **the instrument was fine
+  every time; what it was pointed at was not.** For anything governed by panel geometry — `cover`,
+  `contain`, aspect-dependent crops, container queries — reproduce the real panel's proportions or do
+  not run the comparison at all. Note this was never a contrast question in either direction:
+  `bandImage()` takes the worst pixel across each band's **full width**, so the scrim is solved
+  against every horizontal crop whatever the anchor.
 
 - **M5 — install it privately and record what was settled.** Apply it locally through the existing
   `cdx apply`, confirm the theme-neutral shortcut carries it with no packaging change (the runtime is

@@ -98,19 +98,27 @@ const SHAPE = {
 const HERO = {
   file: 'assets/hero-empty-state.png',
   mime: 'image/png',
-  // Not 'center', and the reason is this photograph's composition. The subject
-  // sits RIGHT OF CENTRE, so on a panel narrower than the image's 16:9 aspect
-  // — a half-width window with the sidebar open, which is a shape the owner
-  // actually uses — `cover` crops horizontally about the centre and slices the
-  // face off, leaving hair and shoulder. Anchoring hard 'right' overshoots it
-  // just as badly in the other direction. 68% was picked by rendering five
-  // anchors side by side in a tall/narrow panel and looking. This costs
-  // nothing on wide panels: when the panel is WIDER than the image's aspect,
-  // `cover` scales by width, there is no horizontal overflow, and the
-  // horizontal position has no effect at all. It also cannot touch the
-  // contrast proof — bandImage() takes the worst pixel across each band's FULL
-  // width, so the scrim is solved against every horizontal crop already.
-  position: '68% center',
+  // 'center', and a shifted anchor was TRIED AND REJECTED ON SIGHT — do not
+  // re-propose one. The owner reported that in a half-width window with the
+  // sidebar open, `cover` crops horizontally (the panel is then narrower than
+  // this image's 16:9 aspect) and pushes the subject, who sits right of
+  // centre, partly out of frame. '68% center' was chosen from a rendered
+  // comparison of five anchors and shipped; the owner then looked at it in the
+  // running app and rejected it, because at the window proportions they
+  // actually use it swings the face INTO the content — crowding the heading
+  // and the suggestion cards — with the sidebar both open and closed. The
+  // narrow-window crop is the lesser problem and is accepted.
+  //
+  // WHY THE COMPARISON MISLED: the mock panels it was judged in were ~300px
+  // wide against a real content panel of ~950px, so they exercised an aspect
+  // ratio the app does not have. An anchor is only meaningful at the real
+  // panel's proportions, and a side-by-side of five options at the wrong
+  // proportions looks conclusive while answering a different question.
+  //
+  // Note this was never a contrast question in either direction: bandImage()
+  // takes the worst pixel across each band's FULL width, so the scrim is
+  // already solved against every horizontal crop, whatever the anchor.
+  position: 'center',
   modes: ['dark', 'light'],
   // D-0003-7 — solved against the LARGE-TEXT threshold (3:1), not 4.5:1,
   // because the only text over this image is the empty state's heading. Verify
