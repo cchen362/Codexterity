@@ -1,9 +1,14 @@
 # Plan 0003 — Image-led theme authoring: the hero-to-palette pipeline
 
-**Status:** **OPEN. Opened 2026-08-05. M1, M2, M3, M3b and M4 all DONE 2026-08-05 — except M4's
-running-app confirmation and the owner's dark-mode veil choice, which are the only things still
-open in it. M5 and M6 not started.** After M4: `npm test` **299/299**, `audit.mjs` **272/272**, all
-three Captain's Cabin digests unchanged. M3 met its stated gate but solved
+**Status:** **OPEN. Opened 2026-08-05. M1, M2, M3, M3b and M4 all DONE 2026-08-05. M5 and M6 not
+started.** M4's gate is met: the theme was confirmed in the real running app, showing the portrait in
+**both** modes, and the owner's observations there produced two corrections (the governing contrast
+threshold and the hero's anchor) which are recorded under M4. **One loose end, deliberately not
+blocking:** the final veil (3:1) and the `68% center` anchor were emitted *after* that launch, so
+they are proven by measurement and by rendered comparison but have not themselves been seen in the
+app — fold that confirmation into M5's install verification rather than spending a launch on it now.
+After M4: `npm test` **299/299**, `audit.mjs` **272/272**, all three Captain's Cabin digests
+unchanged. M3 met its stated gate but solved
 the wrong shape of problem — read "Scope correction" before treating any of M3's framing as settled.
 **M6 was added 2026-08-05**, after measuring that Plan 0002's review finding #5 was mis-scoped: every
 embedded asset ships twice, not only the hero, and the runtime cost is the half that matters. This is the first
