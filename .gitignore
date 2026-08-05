@@ -20,6 +20,15 @@ out/
 # derived copy of an image the repo already ships.
 assets/hero-sources/
 
+# D-0003-3 — The M3 palette-recommendation sheet is a BUILD PRODUCT, not a committed mockup —
+# the one file in docs/mockups/ that is generated rather than tracked. It embeds
+# the hero it is judging, and for the portrait theme that hero is one of the
+# private photographs above; committing the sheet would put the photograph into
+# git history by the back door, defeating the rule immediately above it. Owner
+# decision, 2026-08-05. Rebuild it any time with:
+#     node tools/mockup/build-palette-recommendation.mjs
+docs/mockups/0006-palette-recommendation.html
+
 # Scratch / temp
 scratchpad/
 *.log

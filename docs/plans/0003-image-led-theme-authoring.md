@@ -1,6 +1,6 @@
 # Plan 0003 — Image-led theme authoring: the hero-to-palette pipeline
 
-**Status:** **OPEN. Opened 2026-08-05. M1 and M2 DONE (both 2026-08-05); M3–M6 not started.**
+**Status:** **OPEN. Opened 2026-08-05. M1, M2 and M3 DONE (all 2026-08-05); M4–M6 not started.**
 **M6 was added 2026-08-05**, after measuring that Plan 0002's review finding #5 was mis-scoped: every
 embedded asset ships twice, not only the hero, and the runtime cost is the half that matters. This is the first
 plan of the post-Phase-7 era; [Plan 0002](0002-phase-7-qa-docs-release.md) closed the roadmap at tag
@@ -10,7 +10,10 @@ plan of the post-Phase-7 era; [Plan 0002](0002-phase-7-qa-docs-release.md) close
 `npm test` **230/230**, `audit.mjs` still **272/272**, and both theme digests **unchanged** — M1 moved
 no token and no theme file. **After M2, measured on this machine 2026-08-05:** `npm test` **240/240**,
 `audit.mjs` still **272/272**, and **all three** theme digests unchanged — M2 rewrote the emitter
-without moving a byte of what ships.
+without moving a byte of what ships. **After M3, measured on this machine 2026-08-05:** `npm test`
+**257/257**, `audit.mjs` still **272/272**, and **all three** theme digests still unchanged — which
+this milestone earned rather than inherited, because M3 is the first change to
+`palette-engine.mjs`, the file that produces every colour.
 
 **Depends on:** [Plan 0001](0001-captains-cabin-architecture.md) (architecture authority),
 [Plan 0002](0002-phase-7-qa-docs-release.md) (the release baseline and the five review findings under
@@ -284,6 +287,69 @@ byte-equivalence gate on Captain's Cabin is in place before any theme is added.
 
   **Gate:** every proposal it emits passes `audit.mjs` before the owner is shown anything; a proposal
   that cannot pass is reported as failing, never quietly nudged into passing.
+
+  **DONE 2026-08-05. Gate met.** [`tools/palette/recommend-palette.mjs`](../../tools/palette/recommend-palette.mjs)
+  proposes a ground hue/chroma and an accent hue and audits every proposal *inside itself* before
+  returning it; [`tools/mockup/build-palette-recommendation.mjs`](../../tools/mockup/build-palette-recommendation.mjs)
+  renders `docs/mockups/0006-palette-recommendation.html` and **refuses to write it** if any proposal
+  fails. `npm test` **240 → 257**, `audit.mjs` **272/272**, all three theme digests **unchanged**.
+  Settled as **D-0003-2** (the recommender) and **D-0003-3** (the sheet is a build product).
+
+  **THE CALIBRATION GATE, and it is M3's analogue of M1's 5.99:1.** Pointed at Captain's Cabin's own
+  hero, the instrument reproduces values the owner approved months earlier by a completely different
+  route:
+
+  | measured from the image | recommender | shipped |
+  |---|---|---|
+  | ground hue | 241.4° | 262.2° |
+  | ground chroma | 0.0238 | 0.0243 |
+  | accent hue (pre-projection) | 63.4° | — |
+  | accent hue (post-projection) | **90.0°** | **90.4°** |
+
+  The accent line is the strong one: 63.4° is only 13.4° from the warning ink at 50°, inside the 40°
+  separation floor, so it is projected to the nearest admissible hue — which is 90°, the shipped brass.
+
+  **What M3 settled that the scoping did not anticipate — five measured facts:**
+
+  1. **The whole-image mean is a BROKEN hue instrument, and the shipped hero is the proof.** That hero
+     averages to OKLCH chroma **0.0036**, i.e. near-neutral, because its warm lamplight and cold sea
+     cancel in a single mean. A recommender built on `tonalSummary().overall.meanOklch` would have
+     reported "no hue" about the one image this theme's navy and brass actually came from. The
+     instrument is a **chroma-weighted hue histogram split by lightness** instead: the dark mass names
+     the ground, what glows names the accent. Recorded as D-0003-2 clause b so it is not "simplified"
+     back.
+  2. **The brief asked for "ground hue and chroma PER MODE"; that is two milestones, not one.** Light
+     mode's own ground is still the `PARCHMENT` constant, and varying it is M4's by owner ruling 3.
+     Emitting a light-ground input nothing consumes would be a placeholder. M3 therefore proposes ONE
+     ground — which does reach light mode, through `buildLight`'s ink and border hues — plus the
+     accent hue. The engine gained exactly one new input, `accentHue`.
+  3. **The role-separation floor was not in the brief and the milestone does not work without it.**
+     An accent hue taken raw from an image can land next to a semantic status hue; 63.4° sits 13.4°
+     from warning. `palette-engine.mjs` already ships brass and warning 40° apart *deliberately*, so
+     that gap became the floor. Without it the calibration gate would have produced an amber accent
+     indistinguishable from a warning border — and it is the projection, not the raw reading, that
+     lands on the shipped hue.
+  4. **The `passes: false` branch is currently unreachable through `recommendPalette`, and the test
+     says so rather than faking it.** Proposals hold the inherited ground's *lightness*, and both
+     registered grounds are AA-clean at every hue and chroma at that lightness, so no image can drive
+     a real AA failure today. The branch is kept because M4 varies `PARCHMENT` and a future ground can
+     reach it; the suite exercises the same composition directly on a degenerate ground instead of
+     inventing a failure. Same posture as the emitter suite's own note about `assertPalettesPassAA`.
+  5. **The review sheet shipped unreadable once, and only looking at it caught that.** Its chrome read
+     `var(--color-…)` tokens defined under double-prefixed names (`--color---color-text-primary`),
+     which is not a CSS error — every affected property silently fell back to its initial value, so
+     body text rendered **pure black on the navy ground, about 1.1:1**. Fonts loaded, images decoded,
+     no overflow: every structural check was green on a page nobody could read. Root cause: engine
+     palettes are keyed bare (`text-primary`) while `theme.css`-parsed tokens already carry the
+     prefix, and one formatter served both. Fixed at the source, plus a build-time refusal
+     (`assertChromeTokensResolve`) that now fails the build on a double prefix or a missing chrome
+     token. Same silent-success shape as the Fraunces bug in D-0001-7 — a declaration naming
+     something undefined looks exactly like success.
+
+  **Not claimed:** nothing about how Deep Navy Portrait should look. The recommender's honest output
+  for the portrait is the **inherited navy alone** — both image-driven proposals are omitted, with
+  their measured numbers — which agrees with owner ruling 3 but does not decide M4's cooler light
+  mode, and no scrim has been solved for that image.
 
 - **M4 — Deep Navy Portrait, the first theme built by the pipeline.** Dark mode: the shipped navy
   palette, unchanged. Light mode: re-derived cooler for the monochrome hero, per the owner's ruling.

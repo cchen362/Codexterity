@@ -14,8 +14,14 @@ const clamp = (x) => Math.min(1, Math.max(0, x));
 const rgbToHex = (r, g, b) =>
   '#' + [r, g, b].map((v) => Math.round(clamp(v) * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
 
-export function hexToOklch(hex) {
-  const [R, G, B] = hexToRgb(hex).map((v) => fInv(v / 255));
+// sRGB (0-255 byte triple) -> OKLCH. This is the one place the OKLab matrices
+// live; `hexToOklch` below is a thin wrapper (hex -> bytes -> here), the same
+// shape `luminanceRgb`/`luminance` already use for the WCAG coefficients, and
+// for the same reason: Plan 0003 M3's recommender converts on the order of
+// 1.5 million pixels from a hero image, and routing that through hex-string
+// parsing on every pixel would be wasted work for no benefit.
+export function rgbToOklch([r, g, b]) {
+  const [R, G, B] = [r, g, b].map((v) => fInv(v / 255));
   const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
   const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
   const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
@@ -26,6 +32,9 @@ export function hexToOklch(hex) {
   let H = (Math.atan2(bb, a) * 180) / Math.PI;
   if (H < 0) H += 360;
   return { L, C, H };
+}
+export function hexToOklch(hex) {
+  return rgbToOklch(hexToRgb(hex));
 }
 
 function oklchToRgbRaw({ L, C, H }) {
@@ -101,6 +110,46 @@ const ROLE = {
   warning: { C: 0.130, H: 50 },   // burnt ochre — deliberately pulled 40° off the
   error:   { C: 0.130, H: 25 },   // brass so a warning never reads as the accent
 };
+
+// The role hues, and ONLY the hues, exported for a single downstream reader:
+// Plan 0003 M3's recommend-palette.mjs, so it reads the shipped defaults —
+// and the three semantic hues an accent proposal must stay clear of — from
+// one place instead of copying five numbers into a second file where they
+// would silently drift from ROLE above. Frozen because this is a module
+// constant the engine itself also reads (via ROLE); an exported mutable
+// object a caller could mutate is a live hazard, not a convenience.
+export const ROLE_HUES = Object.freeze({
+  ink: ROLE.ink.H,
+  brass: ROLE.brass.H,
+  success: ROLE.success.H,
+  warning: ROLE.warning.H,
+  error: ROLE.error.H,
+});
+
+// ── The accent hue, made a parameter (Plan 0003 M3, D-0003-2 clause d) ──────
+// PARCHMENT below is deliberately NOT parameterised alongside it: nothing
+// proposes a light-mode ground yet, and M4 is the change that first varies it.
+// D-0001-11 is NOT reopened by this. That decision fixes ACCENT POLICY — one
+// accent, with the two decorative hues collapsing into it and the three
+// semantic status hues held distinct — and nothing here changes how many
+// accents this theme has or which tokens collapse into it. This only lets a
+// caller choose WHICH HUE that one accent sits at; the chroma (how saturated
+// it reads) is not varied, because nothing downstream proposes a chroma and
+// an unused input would be exactly the placeholder this repo forbids.
+const ACCENT_OPTION_KEYS = new Set(['accentHue']);
+function resolveAccent(options) {
+  for (const key of Object.keys(options)) {
+    if (!ACCENT_OPTION_KEYS.has(key)) {
+      throw new Error(`palette-engine: unrecognised build option ${JSON.stringify(key)} (recognised: accentHue)`);
+    }
+  }
+  if (!('accentHue' in options)) return ROLE.brass;
+  const h = options.accentHue;
+  if (!Number.isFinite(h) || h < 0 || h > 360) {
+    throw new Error(`palette-engine: accentHue must be a finite number in the range [0, 360], got ${JSON.stringify(h)}`);
+  }
+  return { ...ROLE.brass, H: h };
+}
 // Parchment is the light-mode ground for every option. A pale tint of the dark
 // ground would give aubergine a lilac cast — the exact violet-on-white look the
 // design floor rules out — and a captain's chart room is paper in daylight either
@@ -132,7 +181,11 @@ const PARCHMENT = { L: 0.930, C: 0.026, H: 85 };
  * colour enters the theme through this function.
  *
  * @param p      the partially built palette (surfaces + ink + status already solved)
- * @param ctx    { surf, tint, worst, ground, dir } from the caller's own mode
+ * @param ctx    { surf, tint, worst, ground, dir, brass } from the caller's own mode.
+ *               `brass` is ROLE.brass, or ROLE.brass with its hue overridden by an
+ *               `accentHue` build option (Plan 0003 M3) — threaded through ctx
+ *               rather than read from the module-level ROLE, so this function
+ *               never has to know whether the hue was overridden.
  */
 // The sidebar's offset from the ground, and the row-interaction depths measured
 // FROM THE SIDEBAR. Module-level because `buildLight` needs the row depth to know
@@ -146,7 +199,7 @@ const SIDEBAR_DL = -0.014;
 const ROW_HOVER_DL = 0.058;
 const ROW_ACTIVE_DL = 0.070;
 
-function deriveChrome(p, { surf, tint, worst, dir }) {
+function deriveChrome(p, { surf, tint, worst, dir, brass }) {
   // ── Surfaces the app paints that the core ramp did not name ────────────────
   // The sidebar sits a step BELOW the ground, as Codex's own does (#0e0e0e under
   // a #111111 ground). Going down rather than up keeps every text/surface pair
@@ -168,7 +221,7 @@ function deriveChrome(p, { surf, tint, worst, dir }) {
   // ── The one accent, and the two decorative hues that collapse into it ──────
   // Solved against the WORST (lightest in dark mode, darkest in light) surface so
   // accent text clears AA wherever it lands, not merely on the ground.
-  p['text-accent']    = solveL(ROLE.brass, worst, 4.8, dir);
+  p['text-accent']    = solveL(brass, worst, 4.8, dir);
   p['icon-accent']    = p['text-accent'];
   p['accent-blue']    = p['text-accent'];   // link / mention  — decorative, collapses
   p['accent-purple']  = p['text-accent'];   // discovery       — decorative, collapses
@@ -205,9 +258,9 @@ function deriveChrome(p, { surf, tint, worst, dir }) {
   const extent = Math.abs(hexToOklch(worst).L - hexToOklch(p['background-surface']).L);
   const step = (fraction) => aDir * fraction * extent;
 
-  p['background-accent']        = tint(ROLE.brass.H, step(0.49));
-  p['background-accent-hover']  = tint(ROLE.brass.H, step(0.71));
-  p['background-accent-active'] = tint(ROLE.brass.H, step(0.93));
+  p['background-accent']        = tint(brass.H, step(0.49));
+  p['background-accent-hover']  = tint(brass.H, step(0.71));
+  p['background-accent-active'] = tint(brass.H, step(0.93));
 
   // Row hover / press — anchored to the SIDEBAR, not to the ground (D-0001-17).
   //
@@ -303,7 +356,8 @@ function deriveChrome(p, { surf, tint, worst, dir }) {
   return p;
 }
 
-export function buildDark(groundHex) {
+export function buildDark(groundHex, options = {}) {
+  const brass = resolveAccent(options);
   const g = hexToOklch(groundHex);
   const surf = (dL, dC = 0) => oklchToHex({ L: g.L + dL, C: Math.max(0, g.C + dC), H: g.H });
   const p = {
@@ -337,7 +391,7 @@ export function buildDark(groundHex) {
   p['border']       = surf(0.070);
   p['border-heavy'] = solveL({ C: Math.max(g.C, 0.02), H: g.H }, groundHex, 3.2, 'up');
   // Brass is solved bright enough to read as lit metal, not tarnished bronze.
-  p['border-focus'] = solveL(ROLE.brass, groundHex, 7.6, 'up');
+  p['border-focus'] = solveL(brass, groundHex, 7.6, 'up');
 
   p['background-button-primary']        = p['border-focus'];
   p['background-button-primary-hover']  = oklchToHex({ ...hexToOklch(p['border-focus']), L: hexToOklch(p['border-focus']).L + 0.055 });
@@ -359,10 +413,11 @@ export function buildDark(groundHex) {
   p['background-danger-active']  = tint(ROLE.error.H, 0.055);
   p['editor-added']              = tint(ROLE.success.H, 0.042);
   p['editor-deleted']            = tint(ROLE.error.H, 0.042);
-  return deriveChrome(p, { surf, tint, worst, dir: 'up' });
+  return deriveChrome(p, { surf, tint, worst, dir: 'up', brass });
 }
 
-export function buildLight(groundHex) {
+export function buildLight(groundHex, options = {}) {
+  const brass = resolveAccent(options);
   // Surfaces are parchment for every ground; the ground's hue carries into the
   // ink and borders instead, so aubergine reads as plum ink on paper rather than
   // as a lilac page.
@@ -401,7 +456,7 @@ export function buildLight(groundHex) {
   p['border-light'] = surf(-0.028);
   p['border']       = surf(-0.070);
   p['border-heavy'] = solveL({ C: 0.045, H: inkH }, ground, 3.2, 'down');
-  p['border-focus'] = solveL(ROLE.brass, ground, 4.0, 'down');
+  p['border-focus'] = solveL(brass, ground, 4.0, 'down');
 
   // On a light ground the filled button DARKENS on hover/press, so the ivory
   // label's contrast only ever increases from its rest-state worst case.
@@ -424,7 +479,7 @@ export function buildLight(groundHex) {
   p['background-danger-active']  = tint(ROLE.error.H, -0.030);
   p['editor-added']              = tint(ROLE.success.H, -0.018);
   p['editor-deleted']            = tint(ROLE.error.H, -0.018);
-  return deriveChrome(p, { surf, tint, worst, dir: 'down' });
+  return deriveChrome(p, { surf, tint, worst, dir: 'down', brass });
 }
 
 // Syntax palette, derived so it always sits on that ground's code surface.
