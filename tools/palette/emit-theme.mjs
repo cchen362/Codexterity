@@ -549,6 +549,54 @@ ${ANY_MODE_SCOPE} .sidebar-item[aria-current="page"]::before {
   transform: translateY(-50%) !important;
   background: ${accent} !important;
   pointer-events: none !important;
+}
+
+/*
+ * D-0004-4 — LANDMARK, a chart-hue fill collapsed to brass gets brass's own
+ * button pairing, not a spot-fix on its ink alone.
+ *
+ * Measured Plan 0004 M3: Codex's app-update pill (bottom-left of the sidebar,
+ * shown while an update waits) is \`button.bg-chart-blue.text-white\` — its 10px
+ * "Update" label and svg glyph both inherit \`color\` from the button.
+ * \`--color-chart-blue\` resolves to \`--color-blue\`, which D-0001-11 deliberately
+ * collapses into brass along with accent-purple. That collapse is what breaks
+ * this pairing: white on stock chart-blue (#0169cc) was fine; white on brass
+ * (\`--app-color-accent-blue\`, #AC8F3F dark) measures 3.11:1 — FAILS AA for a
+ * 10px label. Light mode was 6.90:1 and already passed.
+ *
+ * THE FIRST FIX TRIED WAS WRONG, AND WHY. Re-inking with 'text-on-accent' alone
+ * (leaving the fill as accent-blue) looked sufficient because it passes for
+ * THIS theme's brass — 4.82:1 dark / 6.46:1 light — but that is a coincidence
+ * of brass's own hue, not a solved guarantee: 'text-on-accent' is solved
+ * against 'background-button-primary' (the brass BUTTON fill), never against
+ * 'accent-blue' (which takes 'text-accent's value — a colour solved to read as
+ * TEXT on the ground, not as a fill). Exercising this against
+ * tools/palette/directions.mjs's authored catalogue found exactly that gap:
+ * 'neon-fathom' (a magenta accentHue) pairs 'text-on-accent' #182122 against
+ * 'accent-blue' #AC70A7 at well under 4.5:1 in dark mode, because nothing
+ * solves that pair for an arbitrary hue.
+ *
+ * THE ROOT-CAUSE FIX. Re-point the FILL too, not only the ink: this rule now
+ * sets both \`background-color\` and \`color\` to the SAME brass-button pairing
+ * every recipe and every direction already solves and audits —
+ * 'background-button-primary' / 'text-on-accent', audited as "Button label on
+ * brass" in audit.mjs. The chart-blue-and-white element becomes, in effect,
+ * an ordinary brass button; no new audit check is needed because this is the
+ * SAME pairing every recipe already proves, generically, for any accent hue.
+ *
+ * The rule is keyed to the exact utility PAIRING the collapse breaks —
+ * \`.bg-chart-blue.text-white\` — not to the update pill by name, so any other
+ * element Codex ever renders with this same pairing gets the same fix.
+ *
+ * DEGRADATION. If Codex ever stops pairing these two utilities, this rule
+ * silently stops matching and the pill reverts to white-on-brass — a
+ * legibility regression on that one element, not app breakage, and the
+ * landmark's \`required: false\` lets the injector's degradation report
+ * surface it rather than fail the build.
+ */
+${ANY_MODE_SCOPE} .bg-chart-blue.text-white {
+  background-color: var(${tokenProperty('background-button-primary')}) !important;
+  color: var(${tokenProperty('text-on-accent')}) !important;
 }`;
 }
 

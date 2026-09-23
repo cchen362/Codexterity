@@ -1,9 +1,11 @@
 # Plan 0004 — Re-target the theme at Codex's new token layer (the "OWL" update)
 
-**Status:** **OPEN. M1 and M2 DONE 2026-09-23; M3 is next.** Owner answered Q1 and Q2 (see "Owner
-rulings"). M1 measured the new Codex and found a rename, not a redesign. M2 re-targeted the engine,
-and Captain's Cabin's regenerated `theme.css` is proven painted in an isolated instance. It is not
-yet rebuilt into a package or installed (M4). Read M2's outcome before scoping M3.
+**Status:** **OPEN. M1, M2 and M3 DONE 2026-09-23; M4 is next.** Owner answered Q1 and Q2 (see "Owner
+rulings"). M1 measured the new Codex and found a rename, not a redesign. M2 re-targeted the engine.
+M3 opened every remaining Chat/Work screen plus the terminal and a diff in an isolated instance. It
+fixed the two things that did not follow the tokens (D-0004-4, the Chat bubble) and recorded the
+Pierre diff colours as a deliberate gap (D-0004-5). Nothing is rebuilt into a package or installed
+yet (M4). **Read M3's "harness limits" before M4's owner launch.**
 
 **Depends on:** [Plan 0001](0001-captains-cabin-architecture.md) (architecture authority — D-0001-2's
 styling strategy is the thing this plan amends), [Plan 0003](0003-image-led-theme-authoring.md) (the
@@ -320,12 +322,89 @@ Ordered so nothing is re-mapped by guesswork: measure first, then change, then p
   stock" or M1 shows they already follow the core tokens, this milestone is **closed as not needed**
   with the evidence, not silently dropped.
 
+  **DONE 2026-09-23. Gate met, with two harness limits handed to M4 (below).** Every Chat/Work screen
+  the account offers is themed and **painted** in both modes. So are the terminal and the diff. Measured
+  on Codex `26.917` with a stock run (`2026-09-23T11-12-59.421Z`) and a final themed run
+  (`2026-09-23T11-29-29.527Z`), 11 scenarios × 2 modes, all OK. Captures were reviewed by eye.
+  Ground, sidebar, ink and brass read `#0E141F`/`#F0E7D5`, `#0B111C`/`#EBE2D0`,
+  `#F4EAD4`/`#182336` and `#C0A454`/`#896D15` on every screen that shows them. All three faces are
+  loaded. `npm test` **374/374** (347 → +27). `audit.mjs` **292/292** (unchanged). The emitter's AA
+  refusal and probe assertion pass for both recipes. Deep Navy Portrait was emitted to a temp
+  directory only. Byte gate moved deliberately: `theme.css` `8335dd…e20c79` (486,270 B),
+  `manifest.json` `a35808…537683` (2,415 B, one new landmark). `syntax.json` is unchanged
+  (`36dad6…211feb`).
+  **How the new screens are reached**, measured by read-only scouting in throwaway instances (the
+  owner's app mode was restored every run). **Work past its home** is a project thread opened in
+  ChatGPT mode; its row carries a leaf `Work` badge. A **Chat conversation** is a "Recents" row without
+  that badge; it sits below the fold and loads over the network. **Images** is the sidebar nav item. The
+  **terminal** and the **review panel** open from Codex's own View menu (`Open Terminal`,
+  `Toggle Review Panel`), invoked from the main process via `MenuItem.click`. A **diff** opens from a
+  thread's "Edited N files" card, then its file header in the review panel. The driver clicks only
+  those, types nothing, and verifies each screen from the DOM, with failure diagnostics and a
+  screenshot.
+  **What needed a fix: two things. Everything else followed the tokens.**
+  1. **Chat conversation, user-message bubble.** Light mode still painted stock pale blue
+     (`#e8f3fe` / `#0c274a`). Codex sets both as per-mode literals, the same shape as M2's mode toggle.
+     Now `background-button-secondary` / `text-primary` in both modes. That pairing is already audited
+     ("Body text on secondary button"), so there is no new pair. `-compact` takes the same role.
+  2. **App-update pill (D-0004-4).** In dark mode its white glyph and label sat on the brass that
+     D-0001-11 made of chart-blue: **3.11:1, below AA**. Stock white-on-blue had passed. There is no
+     token route (`text-white` is a constant), so one declared rule, `.bg-chart-blue.text-white`, makes
+     it the solved brass-button pairing: fill **and** ink, 6.19:1 dark / 4.61:1 light. This is the
+     optional landmark `white-on-accent-fill`. A first version re-inked only the text. The directions
+     catalogue caught it: `neon-fathom` failed the audit check it needed, because that pair is not
+     solved for an arbitrary hue. So it was re-pointed at the solved pair and the check was dropped.
+  **Resolved without a fix:**
+  - **The citation-link blue** (M1's one untraced colour) is the link-text span inside
+    `a[href^="http"]`: stock `rgb(130,182,230)` / `rgb(40,88,164)`. Themed, it paints brass-derived
+    `rgb(186,161,93)` / `rgb(94,77,17)` in Codex and Work threads. Chat conversations show source
+    *chips* instead, and those paint the theme's supporting ink.
+  - **Terminal:** Monaspace Neon, ink on navy, in dark mode. D-0001-19's rule holds on OWL. Codex's
+    terminal reads `--color-codex-terminal-*`, which the theme resolves per mode (light: `#182336`
+    on `#F0E7D5`).
+  - **Diff:** the ground, the Monaspace face, and the added and removed line tints come from tokens,
+    which inherit into the renderer's shadow root. The code text stays OpenAI's Pierre palette by owner
+    ruling. That is **D-0004-5**, with its measured light-mode cost recorded.
+  - **`<webview>` guests** (an MCP visualisation sandbox and the ChatGPT pricing page) are OpenAI web
+    content, hidden by default. They are not Codex UI and are out of the theme's reach by design.
+  **Census, triaged.** `unmoved-tokens.mjs` stock → final themed: **206 unmoved, 16 PAINT, 166 read**.
+  - **All 16 PAINT rows are shared `#fff`/`#000` constants**, traced by sample. `#000` is the default
+    fill on the root `<svg>` of each icon, whose paths paint `currentColor` (M2's known false positive).
+    `#fff` is the caption text on the **Images template cards**, over OpenAI's own dark gradient on each
+    photograph. It is deliberately left stock: theme ink over arbitrary photos would read worse.
+  - **The 166 read-only tokens** painted on none of the 21 screens. 102 are ChatGPT's status palettes
+    (success, danger, warning, discovery, caution, info); the rest are file-type, avatar, focus-ring,
+    activity-control and device chips. They are left stock and unproven. A screen that shows one (an
+    error banner, say) is the thing to look for in M4's owner review.
+  **Harness limits, handed to M4 and not claimed here.** The isolated instance's account is dark, so
+  Codex's own state stays dark while the driver flips `data-theme`. Codex's terminal and diff read
+  their colours **from that state when they mount**, and write their own inner `data-theme`. So the
+  *light* captures of those two surfaces show dark-mounted colours: the terminal keeps dark ink over
+  parchment, and the diff renders on dark rows. **The stock run shows the same dark rows**, which is
+  how this was told apart from a theme defect. The theme's light terminal tokens resolve correctly.
+  **M4's owner launch in real light mode must look at a terminal and a diff.**
+  **Instrument:** `driver-preload.js` gained six scenarios (`codex-thread-links`, `codex-terminal`,
+  `codex-diff`, `chatgpt-conversation`, `chatgpt-work-thread`, `chatgpt-images`). It also gained
+  surface captures the probe census cannot see: diff lines inside the shadow root plus a dump of its
+  CSS, terminal colours, link text colours, the update pill, inner `[data-theme]` scopes and the
+  webContents list. The theme-check now runs in stock runs too. Three driver defects were found by
+  running it and fixed at the root:
+  1. Row verification accepted *any* active row, including the previous thread's, so it clicked 15 rows
+     in 3 ms. It now requires the clicked row itself to be active.
+  2. Clicks landed off-screen for below-the-fold rows. The driver now scrolls into view and refuses an
+     out-of-viewport point.
+  3. The inner-scope rewrite was undone when a panel remounted. It is now re-applied just before each
+     capture.
+
 - **M4 — Both themes in the real app, installed, and the record corrected.**
   Regenerate Deep Navy Portrait from its recipe (it is gitignored build output, D-0003-6) and install
   it to `%USERPROFILE%\Codexterity\dist\` (D-0003-8); rebuild both `.ccskin`s and the Windows
   installer; launch **through the real Codexterity shortcut** (owner launch — this is the check the
   isolated instance cannot substitute for) in both modes with both themes, and read
   `injector.log` to close fact 12. `cdx restore` round trip still yields plain, working Codex.
+  *(Added by M3.)* In **real** light mode, the owner opens a **terminal** and a **diff**. The isolated
+  instance cannot show those two surfaces mounted in light mode (see M3's harness limits). The owner
+  also looks for any status banner or chip (M3's 166 read-only tokens) on the screens they use.
   **Docs:** `ENGINEERING.md` (the "survives Codex updates" section gets this update's honest result;
   the "no open plan" line), `docs/specs/customizable-ui-inventory.md` and `css-architecture.md` to the
   new names, `DECISIONS.md`. macOS stays **built and documented unverified** (D-0001-16 as amended) —

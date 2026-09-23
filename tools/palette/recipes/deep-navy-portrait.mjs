@@ -300,6 +300,17 @@ const LANDMARKS = [
     governedBy: 'D-0001-9',
     required: false,
   },
+  {
+    // Plan 0004 M3 — the app-update pill's white label on the chart-blue fill
+    // D-0001-11 collapses into brass. See D-0004-4 in emit-theme.mjs for the
+    // measured numbers and why this is keyed to the utility pairing rather
+    // than the pill by name.
+    name: 'white-on-accent-fill',
+    selector: '.bg-chart-blue.text-white',
+    probe: '.bg-chart-blue.text-white',
+    governedBy: 'D-0004-4',
+    required: false,
+  },
 ];
 
 export default {

@@ -60,8 +60,8 @@ const PRELOAD_PATH = path.join(__dirname, 'driver-preload.js');
 // exports `{ start }`.
 const INJECTOR_PRELOAD_PATH = path.join(REPO_ROOT, 'injector', 'core', 'preload.js');
 
-const CODEX_EXIT_TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes, per spec
-const SAFETY_MARGIN_MS = 15 * 1000; // grace period after the driver's own 5-minute quit
+const CODEX_EXIT_TIMEOUT_MS = 13 * 60 * 1000; // 13 minutes — the driver's own safety timeout is 12 (Plan 0004 M3)
+const SAFETY_MARGIN_MS = 15 * 1000; // grace period after the driver's own 12-minute quit
 
 function parseArgs(argv) {
   const args = { out: null, theme: null };
@@ -246,13 +246,15 @@ function printSummary(manifest) {
 }
 
 /**
- * Read every theme-check-<scenario>-<mode>.json the driver wrote (Plan 0004
- * M2, --theme mode only) and print one compact, human-readable row per
- * scenario x mode: scenario, mode, surface, sidebar, ink, brass and which of
- * the three shipped faces loaded. This is deliberately the ONLY place that
- * table is built — the driver writes raw painted-value JSON per file, not a
- * pre-formatted table, so the same JSON stays useful for a script diffing
- * against the theme's own hex values without also having to parse a table.
+ * Read every theme-check-<scenario>-<mode>.json the driver wrote — since
+ * Plan 0004 M3 this file is written in EVERY run, stock or `--theme`, not
+ * only `--theme` mode (only the painted-surface poll stays themed-only) —
+ * and print one compact, human-readable row per scenario x mode: scenario,
+ * mode, surface, sidebar, ink, brass and which of the three shipped faces
+ * loaded. This is deliberately the ONLY place that table is built — the
+ * driver writes raw painted-value JSON per file, not a pre-formatted table,
+ * so the same JSON stays useful for a script diffing against the theme's own
+ * hex values without also having to parse a table.
  */
 function printThemeCheckSummary(outDir) {
   let entries;
@@ -263,7 +265,7 @@ function printThemeCheckSummary(outDir) {
     return;
   }
   if (!entries.length) {
-    console.log('\n(no theme-check-*.json files found — was --theme given?)');
+    console.log('\n(no theme-check-*.json files found — did every scenario FAIL before capturing one?)');
     return;
   }
   entries.sort();
@@ -301,6 +303,87 @@ function printThemeCheckSummary(outDir) {
   for (const row of rows) {
     console.log('  ' + row.map((cell, col) => String(cell).padEnd(widths[col])).join('  '));
   }
+}
+
+function nonEmpty(val) {
+  if (val === null || val === undefined) return false;
+  if (Array.isArray(val)) return val.length > 0;
+  if (typeof val === 'object') return Object.keys(val).length > 0;
+  return true;
+}
+
+/**
+ * Plan 0004 M3 — a second, compact summary block over the same
+ * theme-check-*.json files printThemeCheckSummary reads, printing one line
+ * per file that captured any of the new M3 fields (updatePill,
+ * externalLinks, terminal, diff, innerThemeScopes). Skips files with none of
+ * those, so a plain home/thread screen (which has none of them) does not
+ * pad the output with an empty line.
+ */
+function printSurfaceCaptures(outDir) {
+  let entries;
+  try {
+    entries = fs.readdirSync(outDir).filter((f) => f.startsWith('theme-check-') && f.endsWith('.json'));
+  } catch (err) {
+    return;
+  }
+  if (!entries.length) return;
+  entries.sort();
+  const lines = [];
+  for (const file of entries) {
+    let check;
+    try {
+      check = JSON.parse(fs.readFileSync(path.join(outDir, file), 'utf8'));
+    } catch (err) {
+      continue;
+    }
+    const hasAny =
+      nonEmpty(check.updatePill) ||
+      nonEmpty(check.externalLinks) ||
+      nonEmpty(check.terminal) ||
+      nonEmpty(check.diff) ||
+      nonEmpty(check.innerThemeScopes);
+    if (!hasAny) continue;
+
+    const tag = file.replace(/^theme-check-/, '').replace(/\.json$/, '');
+    const parts = [tag];
+
+    if (check.diff) {
+      const fmt = (row) => {
+        if (!row) return '?';
+        const bg = (row.gutter && row.gutter.background) || (row.content && row.content.background) || '?';
+        const fg = (row.gutter && row.gutter.color) || (row.content && row.content.color) || '?';
+        return `${bg}/${fg}`;
+      };
+      const lt = check.diff.lineTypes || {};
+      parts.push(
+        `diff: ctx=${fmt(lt.context)} add=${fmt(lt['change-addition'])} del=${fmt(lt['change-deletion'])} ` +
+          `sep=${(check.diff.separator && check.diff.separator.background) || '?'} ` +
+          `ink=${(check.diff.pre && check.diff.pre.color) || '?'}`
+      );
+    }
+    if (check.externalLinks && check.externalLinks.length) {
+      // The painted link colour lives on the inner text span (textColor),
+      // not the anchor itself (measured stock: anchorColor reads ink,
+      // textColor reads the actual link blue) — fall back to anchorColor
+      // only when textColor could not be resolved.
+      const colours = check.externalLinks.map((l) => l.textColor || l.anchorColor).slice(0, 3);
+      parts.push(`links: n=${check.externalLinks.length} [${colours.join(', ')}]`);
+    }
+    if (check.terminal) {
+      parts.push(`term: ${check.terminal.fontFamily} ${check.terminal.color} on ${check.terminal.background}`);
+    }
+    if (check.updatePill) {
+      parts.push(`pill: ${check.updatePill.background}/${check.updatePill.color}`);
+    }
+    if (check.innerThemeScopes && check.innerThemeScopes.length) {
+      parts.push(`scopes: ${check.innerThemeScopes.length}`);
+    }
+    lines.push('  ' + parts.join('  '));
+  }
+  if (!lines.length) return;
+  console.log('\nSurface captures:');
+  for (const line of lines) console.log(line);
 }
 
 async function main() {
@@ -406,7 +489,10 @@ async function main() {
     }
   }
 
-  if (themePath) printThemeCheckSummary(outDir);
+  // theme-check-*.json is now written in every run (Plan 0004 M3), so both
+  // summaries print regardless of --theme.
+  printThemeCheckSummary(outDir);
+  printSurfaceCaptures(outDir);
 
   console.log(`\nOutput directory: ${outDir}`);
   process.exitCode = ok ? 0 : 1;

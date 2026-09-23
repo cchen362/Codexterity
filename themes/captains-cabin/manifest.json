@@ -52,6 +52,12 @@
       "selector": ".\\[container-name\\:home-main-content\\]:has(.heading-xl)",
       "governedBy": "D-0001-9",
       "required": false
+    },
+    {
+      "name": "white-on-accent-fill",
+      "selector": ".bg-chart-blue.text-white",
+      "governedBy": "D-0004-4",
+      "required": false
     }
   ],
   "assets": [

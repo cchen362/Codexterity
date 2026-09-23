@@ -258,6 +258,29 @@ export function tokenGroups(accentName) {
       // them provable ("Body text on sidebar" is this exact pairing).
       ['--color-background-composer-action-bar', 'background-surface-under'],
     ]],
+
+    // ── Added Plan 0004 M3 — the Chat conversation user-message bubble ─────────
+    // Measured by the themed-vs-stock isolated run comparing Chat/Work screens:
+    // Codex sets these to per-mode LITERAL hex values Codex itself does not
+    // derive from any primitive. Light mode's stock pair (#e8f3fe background /
+    // #0c274a text — a pale blue bubble) painted stock on the themed light
+    // screen (the unmoved-token census flagged div.bg-user-message.text-user-message
+    // as PAINT rows on chatgpt-conversation-light). Dark mode already derives its
+    // pair from --color-text (a 5% ink wash under ink text), so only light was
+    // actually broken — but both modes are mapped here to one solved role so the
+    // bubble reads the same in both rather than only fixing the mode that was
+    // caught. background-button-secondary/text-primary is ALREADY the audited
+    // "Body text on secondary button" pairing, so no audit.mjs change is needed
+    // for this group. --color-background-user-message-compact takes the same
+    // fill role — its stock value is Codex's own neutral grey pair
+    // (var(--lightningcss-light,var(--gray-fixed-75))var(--lightningcss-dark,var(--gray-fixed-600))),
+    // read but not observed painted on a sampled screen; same role, mapped for
+    // consistency rather than left as the one surface still wearing stock grey.
+    ['Chat conversation user-message bubble (Plan 0004 M3)', [
+      ['--color-background-user-message', 'background-button-secondary'],
+      ['--color-background-user-message-compact', 'background-button-secondary'],
+      ['--color-text-user-message', 'text-primary'],
+    ]],
   ];
 }
 
@@ -306,6 +329,12 @@ export const TOKEN_ALIASES = {
 // wearing OpenAI's palette. `-error` has no dedicated syntax role, so it
 // takes the theme's general error ink (p['text-error']) — the same choice
 // ansiSlots() makes for the terminal's Red/BrightRed slots.
+//
+// D-0004-5 — these slots do NOT reach Codex's diff view; its code colours stay OpenAI's Pierre palette by owner ruling.
+// The diff body (@pierre/diffs) renders in a shadow root with per-word inline
+// colours chosen from Codex's app state, so none of these properties feeds it.
+// That matches the look approved on 2026-08-05. Do not add a rule to force it
+// inside a parity change; see docs/DECISIONS.md D-0004-5 for the measured cost.
 export function codexSyntaxSlots(syn, p) {
   return {
     '--color-codex-syntax-comment': syn.comment,

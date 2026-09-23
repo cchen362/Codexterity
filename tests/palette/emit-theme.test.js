@@ -609,3 +609,61 @@ describe('Plan 0004 M2 -- the OWL token/selector remap, guarded against its own 
     assert.ok(!css.includes('--color-text-quaternary'));
   });
 });
+
+// =====================================================================
+// H. PLAN 0004 M3 — the Chat user-message bubble and the chart-blue accent
+// pill (D-0004-4). Guards against the two silent-failure shapes found by the
+// themed-vs-stock Chat/Work run: a component token left un-mapped so it keeps
+// painting Codex's own stock literal, and a structural landmark whose rule
+// never actually reaches the emitted sheet.
+// =====================================================================
+
+describe('Plan 0004 M3 -- the user-message bubble tokens and the white-on-accent-fill landmark', () => {
+  let css;
+
+  before(() => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdx-emit-theme-m3-'));
+    try {
+      const outDir = tmpDir + path.sep;
+      const result = emitTheme(captainsCabin, { outDir, assetsDir: REAL_THEME_DIR });
+      css = result.css;
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('the .bg-chart-blue.text-white rule sets BOTH background-color and color to the solved brass-button pairing, with !important', () => {
+    assert.match(
+      css,
+      /\.bg-chart-blue\.text-white \{\s*\n\s*background-color: var\(--app-color-background-button-primary\) !important;\s*\n\s*color: var\(--app-color-text-on-accent\) !important;\s*\n\}/
+    );
+  });
+
+  test('the three user-message tokens are declared in both dark and light scopes with their mapped role values', () => {
+    const darkStart = css.indexOf(':is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]) {');
+    const lightStart = css.indexOf(':is([data-codex-window-type][data-theme="light"], [data-codex-window-type] [data-theme="light"]) {');
+    assert.ok(darkStart >= 0 && lightStart >= 0);
+    const darkBlock = css.slice(darkStart, lightStart);
+    const lightBlock = css.slice(lightStart, lightStart + 20000);
+
+    for (const [scopeName, block] of [['dark', darkBlock], ['light', lightBlock]]) {
+      assert.match(block, /--color-background-user-message: .+ !important;/, `${scopeName} missing --color-background-user-message`);
+      assert.match(block, /--color-background-user-message-compact: .+ !important;/, `${scopeName} missing --color-background-user-message-compact`);
+      assert.match(block, /--color-text-user-message: .+ !important;/, `${scopeName} missing --color-text-user-message`);
+    }
+
+    // The mapped values are the palette's own background-button-secondary /
+    // text-primary roles -- same-name tokens under tokenProperty(), so the
+    // declared value must equal what those tokens themselves resolve to in
+    // the SAME mode block, not merely be present.
+    const secondaryDarkMatch = darkBlock.match(/--app-color-background-button-secondary: (.+?) !important;/);
+    const userBgDarkMatch = darkBlock.match(/--color-background-user-message: (.+?) !important;/);
+    assert.ok(secondaryDarkMatch && userBgDarkMatch);
+    assert.equal(userBgDarkMatch[1], secondaryDarkMatch[1]);
+
+    const primaryDarkMatch = darkBlock.match(/--color-text-primary: (.+?) !important;/);
+    const userTextDarkMatch = darkBlock.match(/--color-text-user-message: (.+?) !important;/);
+    assert.ok(primaryDarkMatch && userTextDarkMatch);
+    assert.equal(userTextDarkMatch[1], primaryDarkMatch[1]);
+  });
+});
