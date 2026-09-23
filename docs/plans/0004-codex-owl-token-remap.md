@@ -1,11 +1,12 @@
 # Plan 0004 — Re-target the theme at Codex's new token layer (the "OWL" update)
 
-**Status:** **OPEN. M1, M2 and M3 DONE 2026-09-23; M4 is next.** Owner answered Q1 and Q2 (see "Owner
-rulings"). M1 measured the new Codex and found a rename, not a redesign. M2 re-targeted the engine.
-M3 opened every remaining Chat/Work screen plus the terminal and a diff in an isolated instance. It
-fixed the two things that did not follow the tokens (D-0004-4, the Chat bubble) and recorded the
-Pierre diff colours as a deliberate gap (D-0004-5). Nothing is rebuilt into a package or installed
-yet (M4). **Read M3's "harness limits" before M4's owner launch.**
+**Status:** **CLOSED 2026-09-23. M1–M4 all DONE.** M1 measured the new Codex and found a rename, not
+a redesign. M2 re-targeted the engine. M3 themed every remaining Chat/Work screen plus the terminal
+and a diff. M4 rebuilt and installed both themes, and **the owner confirmed both on sight through the
+real Codexterity shortcut** on Codex `26.917.6896.0`, in both modes, with a light-mode terminal and diff.
+Fact 12 is closed and the `cdx restore` round trip holds. The records are corrected. One finding
+surfaced in M4: the D-0003-7 trip-wire fired. It was resolved by a Codex setting, not a theme change
+(see M4's block).
 
 **Depends on:** [Plan 0001](0001-captains-cabin-architecture.md) (architecture authority — D-0001-2's
 styling strategy is the thing this plan amends), [Plan 0003](0003-image-led-theme-authoring.md) (the
@@ -411,6 +412,64 @@ Ordered so nothing is re-mapped by guesswork: measure first, then change, then p
   the package builder is rebuilt, not verified on a Mac.
   **Gate:** owner confirms both themes on sight in the running app; `git diff --check` clean; plan
   closed.
+
+  **DONE 2026-09-23. Gate met. PLAN CLOSED.** No engine, emitter, loader or injector code changed in
+  M4. The only source change is a comment in Deep Navy Portrait's recipe (D-0003-7, below). Captain's
+  Cabin's three tracked files are **byte-identical** to M3's (`8335dd…e20c79`, `a35808…537683`,
+  `36dad6…211feb`); re-emitting leaves `git status` clean. `npm test` **374/374**, `audit.mjs`
+  **292/292**, and the emitter's AA refusal passes 73/73 per mode for both recipes.
+  **Built:** Deep Navy Portrait re-emitted from its recipe (gitignored build output, D-0003-6). Both
+  `.ccskin`s were packed, and the Windows installer and the macOS package were rebuilt. macOS stays
+  **built and documented unverified** (D-0001-16 as amended).
+  **The built packages were proven before any owner launch.** `run-inventory.mjs --theme dist/<id>.ccskin`
+  ran for **both** packages, not the theme directories: 11 scenarios × 2 modes, all OK. They paint the
+  same values M3 measured (ground `#0E141F`/`#F0E7D5`, sidebar `#0B111C`/`#EBE2D0`, ink
+  `#F4EAD4`/`#182336`, brass `#C0A454`/`#896D15`), and all three faces load.
+  **Installed** by running the rebuilt `Install.ps1 -NoDesktop`. The owner had no Desktop shortcut, and
+  the switch keeps it that way. The reinstall wiped the stale pre-OWL packages and re-applied Captain's
+  Cabin, as D-0003-8 anticipates. Deep Navy Portrait was then copied into
+  `%USERPROFILE%\Codexterity\dist\`. The installed packages are byte-identical to the tested ones, and
+  the installed `injector/` is identical to the repo's. It was stale since M2, and only a reinstall
+  moves it. **The repo's `dist/` was renamed away for all three owner launches**, re-proving Plan 0003
+  M5's independence claim on OWL.
+  **The owner's three launches, all through the real Start-menu shortcut on `26.917.6896.0`:**
+  1. **Captain's Cabin.** Confirmed on sight in both modes: Codex home and threads, ChatGPT Chat and
+     Work, and a **diff in real light mode**. The diff was parchment ground, navy ink, added/removed tints
+     and Monaspace, with Pierre code colours per D-0004-5. `injector.log`: package loaded from the install
+     root, `injected OK` ×6, hero `PAINTING … emptyStateHeading=yes`, and **five landmarks PRESENT**
+     (`sidebar-panel`, `sidebar-active-row`, `heading-display`, `home-hero`, `white-on-accent-fill`).
+  2. **Deep Navy Portrait.** Confirmed on sight in both modes, portrait behind the heading, plus a
+     **terminal in real light mode**: navy ink on parchment in Monaspace, which closes M3's harness
+     limit (a). Log: loaded from the install root, hero painting, and the same five landmarks PRESENT.
+  3. **`cdx restore`, then launch.** Plain, working Codex with no error dialog. The launcher logged
+     *"Unthemed launch (-NoTheme)"* with the hook removed, `injector.log` is **0 bytes**, and restore
+     removed `~/.codexterity/` entirely (D-0001-24). Deep Navy Portrait was re-applied afterwards, as
+     the owner chose.
+  **Fact 12 is closed, as far as it can be.** The real shortcut path on `26.917` writes a full
+  `injector.log` (50 KB), so the shortcut is not at fault. The 0-byte log after the 2026-09-03/04
+  launch cannot be re-examined: that launch was themed (`NODE_OPTIONS` set, per `launcher.log`), but
+  Codex `26.901` is no longer installed. It stays unexplained and is recorded as such, not guessed at.
+  **Status banners and chips (harness limit c):** the owner reported nothing stock or unreadable on the
+  screens they use. The 166 read-only tokens stay **unproven**, not proven. No screen the owner opened
+  showed one.
+  **THE FINDING: the D-0003-7 trip-wire fired, and its pre-recorded remedy does not work.** Deep Navy
+  Portrait's built-package capture showed Codex's **"Suggested prompts"** as normal-size lines over the
+  photograph. Codex **dims** them until they are hovered. Dark mode measured ~**1.3:1**, against stock ~5.3:1
+  and Captain's Cabin ~5.7:1. Light mode was fine at ~5.4:1. Two candidates were rendered as throwaway
+  previews in the isolated instance. The ruling's own remedy, a 4.5:1 re-solve (0.60 / 0.56), measured
+  ~**1.7:1**, because it assumes full-strength ink. An **opaque backing** behind the rows measured
+  5.0:1 / 6.2:1. **The owner chose neither: they turned the rows off in Codex (Settings → General →
+  Suggested prompts).** No theme byte changed. D-0003-7 is **amended** in `docs/DECISIONS.md`, and the
+  recipe's comments now say the backing, not a heavier veil, is the measured fix if the rows return.
+  The recipe prose ships as a CSS comment, so Deep Navy Portrait was re-emitted and re-installed. Its
+  rules are **identical after stripping comments** to the package the owner verified.
+  **Docs corrected:** `ENGINEERING.md` has the open-plan line and a new "first update it did not survive
+  unchanged" record (the architecture held, the vocabulary did not). Both specs moved to OWL names.
+  The inventory spec's Fonts table had silently missed D-0001-7's two re-closures (Fraunces/Xenon →
+  Fraunces/**Literata**/Monaspace **Neon**) and was corrected. `DECISIONS.md` carries D-0003-7's
+  amendment. `manifest.json`'s `verifiedAgainst` still reads `26.727.6591.0`: no digest moved in M4,
+  and this plan's out-of-scope rule allows a change only as a by-product of one (D-0001-31: nothing reads
+  it). **Not pushed:** the plan's commits remain local, per the owner.
 
 ---
 

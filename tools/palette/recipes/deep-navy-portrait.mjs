@@ -123,7 +123,9 @@ const HERO = {
   // D-0003-7 — solved against the LARGE-TEXT threshold (3:1), not 4.5:1,
   // because the only text over this image is the empty state's heading. Verify
   // at 3.01:1 dark and 3.06:1 light. The margin is thin on purpose; read the
-  // ruling before changing either number, and note the trip-wire it names.
+  // ruling before changing either number, and note the trip-wire it names —
+  // which fired on 2026-09-23, and whose old "re-solve at 4.5:1" remedy was
+  // measured NOT to work (see the prose below).
   scrim: {
     dark: [[0, 0.51], [1, 0.51]],
     light: [[0, 0.47], [1, 0.47]],
@@ -161,12 +163,23 @@ const HERO = {
  * THE TRIP-WIRE, because this reasoning is contingent on Codex's layout and
  * not on anything this repo controls. If Codex ever puts NORMAL-SIZE text over
  * the empty-state background — a subtitle under the heading, a caption, a hint
- * line — or makes those card and composer surfaces translucent, then 4.5:1
- * becomes the governing threshold and BOTH scrims must be re-solved at that
- * target (dark 0.60, light 0.56 were measured for exactly that case). The
- * heading is large today at roughly 30px; large text is 24px regular or
- * 18.66px bold, so a heading that shrinks past 24px also trips this. Re-solve
- * with solveScrimStops(); do not nudge the alphas by hand.
+ * line — or makes those card and composer surfaces translucent, the heading's
+ * 3:1 no longer covers the screen. The heading is large today at roughly 30px;
+ * large text is 24px regular or 18.66px bold, so a heading that shrinks past
+ * 24px also trips this. Re-solve with solveScrimStops(); never nudge an alpha
+ * by hand.
+ *
+ * IT FIRED ON 2026-09-23 (Plan 0004 M4), AND A HEAVIER SCRIM DID NOT FIX IT.
+ * On Codex 26.917 the home screen can show "Suggested prompts" — normal-size
+ * lines over the photograph that Codex deliberately DIMS until hovered.
+ * Measured in dark mode: about 1.3:1 at this scrim. The 4.5:1 re-solve this
+ * note used to prescribe (dark 0.60 / light 0.56) was rendered and measured
+ * at 1.7:1, because those alphas assume full-strength ink and the dimmed rows
+ * are not. What did fix it was an opaque panel behind the rows (5.0:1 dark,
+ * 6.2:1 light). The owner chose neither: they turned the rows off in Codex
+ * (Settings > General > Suggested prompts). So nothing here changed, and if
+ * those rows come back on, the measured fix is the backing, not a heavier
+ * veil. See D-0003-7 in docs/DECISIONS.md.
  *
  * WHY THE MARGIN IS DELIBERATELY THIN. The owner asked twice for more of the
  * photograph, was shown rendered ladders both times, and chose this veil
