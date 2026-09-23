@@ -312,6 +312,10 @@ Ordered so nothing is re-mapped by guesswork: measure first, then change, then p
   *(After M1: the two home screens DO follow the core tokens, so M3 shrinks to what M1 did not open —
   a ChatGPT-mode conversation, Images, the Work view past its home, plus the citation-link blue — each
   verified painted after M2's re-map, and anything that does not follow the tokens fixed here.)*
+  *(Added after M2: M3 also opens a Codex **terminal** and a **diff** in the isolated themed run —
+  both were unrun in M1 and M2 — so D-0001-18/-19's font rules and the terminal/diff colours are
+  proven before M4 spends an owner launch. It triages the 169 "read, not painted" tokens
+  `tools/inventory/unmoved-tokens.mjs` lists against the screens it opens, and the app-update pill.)*
   Same discipline as M2: map from measurement, audit any new pairing, verify painted. If Q1 is "leave
   stock" or M1 shows they already follow the core tokens, this milestone is **closed as not needed**
   with the evidence, not silently dropped.
