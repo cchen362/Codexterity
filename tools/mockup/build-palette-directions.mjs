@@ -50,6 +50,7 @@
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve, extname } from 'node:path';
+import { MODE_SCOPE } from '../palette/codex-surface.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const THEME = resolve(ROOT, 'themes/captains-cabin');
@@ -110,28 +111,41 @@ const FONTS = [
 // visually with the options it is displaying — unaffected by the per-option
 // dark/light toggle, which only ever touches the mock windows.
 const css = readFileSync(resolve(THEME, 'theme.css'), 'utf8');
-function tokens(selector) {
-  const m = new RegExp(`\\${selector}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css);
-  if (!m) throw new Error(`could not find ${selector} in theme.css`);
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Plan 0004 M2 — same parser shape as tools/mockup/build-mockup.mjs: the
+// block to parse is MODE_SCOPE.dark (codex-surface.mjs), every value now
+// carries a trailing '!important' (D-0004-2) to strip, and a renamed
+// '--app-color-X' from theme.css is folded back to this file's own
+// '--color-X' convention (see build-mockup.mjs's tokens() for the full
+// reasoning) so shippedVarBlock()'s downstream consumers — the sheet's own
+// chrome CSS, hand-written against '--color-*' names — need no other change.
+function tokens(scope) {
+  const m = new RegExp(`${escapeRegExp(scope)}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css);
+  if (!m) throw new Error(`could not find ${scope} in theme.css`);
   const out = {};
   for (const line of m[1].split('\n')) {
-    const t = /^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);/.exec(line);
-    if (t) out[t[1]] = t[2].trim();
+    const t = /^\s*(--[a-z0-9-]+)\s*:\s*(.+?)\s*!important\s*;/.exec(line);
+    if (!t) continue;
+    const rawName = t[1];
+    const name = rawName.startsWith('--app-color-') ? `--color-${rawName.slice('--app-color-'.length)}` : rawName;
+    out[name] = t[2].trim();
   }
   return out;
 }
-const SHIPPED_DARK = tokens('.electron-dark');
+const SHIPPED_DARK = tokens(MODE_SCOPE.dark);
 if (!SHIPPED_DARK['--color-background-surface']) throw new Error('shipped dark block parsed but has no surface token');
 
 // TWO KEY SHAPES — same trap build-palette-recommendation.mjs's own comment
 // named, carried forward because it is what caused a page nobody could read
 // to ship once already (Plan 0003 M3, measured fact #5). palette-engine
 // palettes are keyed BARE ('text-primary'); tokens() above parses theme.css
-// and returns keys that ALREADY carry '--color-'. Passing the second through
-// the bare-key formatter defines '--color---color-text-primary', which is
-// not a CSS error — every affected property silently falls back to its
-// initial value. varBlock() is for bare palette-engine keys ONLY;
-// shippedVarBlock() is for parsed theme.css keys ONLY. Never swap them.
+// and returns keys that ALREADY carry '--color-' (normalized, per the note
+// above). Passing the second through the bare-key formatter defines
+// '--color---color-text-primary', which is not a CSS error — every affected
+// property silently falls back to its initial value. varBlock() is for bare
+// palette-engine keys ONLY; shippedVarBlock() is for parsed theme.css keys
+// ONLY. Never swap them.
 const varBlock = (t) => Object.entries(t).map(([k, v]) => `--color-${k}:${v};`).join('');
 const shippedVarBlock = (t) => Object.entries(t)
   .map(([k, v]) => `${k}:${v.replace(/\s*!important$/, '')};`)

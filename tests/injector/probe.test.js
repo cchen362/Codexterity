@@ -204,3 +204,22 @@ test('buildProbeScript() output embeds the new pure functions by name', () => {
   assert.ok(script.includes('home-mode-toggle'), 'expected the new home-mode-toggle paint-trace target');
   assert.ok(script.includes('paintCoverageCensus'), 'expected the paint-coverage census to be present');
 });
+
+// ---------------------------------------------------------------------
+// Plan 0004 M2 — the OWL-era mode hook (data-theme / data-codex-window-type
+// on <html>, replacing the .electron-dark / .electron-light root class) must
+// be read by the generated in-page script, not only rootClass, or a report
+// captured on OWL is silently missing the one fact that tells dark from
+// light apart.
+// ---------------------------------------------------------------------
+
+test('buildProbeScript() output reads the OWL-era data-theme / data-codex-window-type root attributes', () => {
+  const script = buildProbeScript({ maxRulesPerElement: 40, maxClassNames: 250, dumpCss: false });
+  assert.ok(script.includes("getAttribute('data-theme')"), 'expected the root data-theme attribute to be read');
+  assert.ok(
+    script.includes("getAttribute('data-codex-window-type')"),
+    'expected the root data-codex-window-type attribute to be read'
+  );
+  assert.ok(script.includes('dataTheme:'), 'expected dataTheme to be a field of the returned meta object');
+  assert.ok(script.includes('windowType:'), 'expected windowType to be a field of the returned meta object');
+});

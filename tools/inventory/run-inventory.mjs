@@ -19,13 +19,26 @@
  * is deleted at the end of every run, successful or not.
  *
  * Usage:
- *   node tools/inventory/run-inventory.mjs [--out <dir>]
+ *   node tools/inventory/run-inventory.mjs [--out <dir>] [--theme <path>]
  *
  * `--out` must resolve OUTSIDE this repository — the captured screens can
  * contain the owner's private project and thread names, and the repo is
  * public (see docs/DECISIONS.md D-0003-10 for why that boundary matters
  * here). The default output directory is under the OS temp dir, which is
  * outside the repo by construction.
+ *
+ * `--theme <path>` (Plan 0004 M2) — a theme DIRECTORY (e.g.
+ * themes/captains-cabin) or a `.ccskin` file, exactly what
+ * `injector/theme-loader/index.js`'s `loadTheme()` already accepts. When
+ * given, the throwaway instance is launched with the REAL injector attached
+ * (`injector/core/preload.js` — the same entry point the launcher points
+ * NODE_OPTIONS at; requiring `injector/core/inject.js` directly would do
+ * nothing, since it only exports `{ start }` and never calls it itself) in
+ * ADDITION to this driver's own preload, so the theme is actually applied
+ * and can be measured PAINTED, not merely probed stock. `CDX_PROBE` is
+ * deliberately never set in this mode — it suppresses theming, which is the
+ * opposite of what a themed run is for. Without `--theme` this tool behaves
+ * exactly as it did before (probe-only inventory, no theme applied).
  *
  * Exit code is non-zero if any scenario FAILED or manifest.json is missing.
  */
@@ -40,21 +53,60 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const PRELOAD_PATH = path.join(__dirname, 'driver-preload.js');
+// The launcher's own entry point (D-0001-1) — the file NODE_OPTIONS actually
+// points at in the real product, per launcher/windows/launch.ps1. It is a
+// one-liner (`require('./inject.js').start()`); requiring inject.js itself
+// would load the module without ever calling start(), since inject.js only
+// exports `{ start }`.
+const INJECTOR_PRELOAD_PATH = path.join(REPO_ROOT, 'injector', 'core', 'preload.js');
 
 const CODEX_EXIT_TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes, per spec
 const SAFETY_MARGIN_MS = 15 * 1000; // grace period after the driver's own 5-minute quit
 
 function parseArgs(argv) {
-  const args = { out: null };
+  const args = { out: null, theme: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--out') {
       args.out = argv[i + 1];
+      i++;
+    } else if (argv[i] === '--theme') {
+      args.theme = argv[i + 1];
       i++;
     } else {
       throw new Error(`Unrecognized argument: ${argv[i]}`);
     }
   }
   return args;
+}
+
+/**
+ * Resolve and validate `--theme <path>` up front (fail loudly, before
+ * spawning anything) — a theme directory (containing manifest.json) or a
+ * `.ccskin` file, exactly what `loadTheme()` accepts. This does not run the
+ * full validating loader (that happens inside Codex's own process, via the
+ * real injector); it only confirms the path exists and is a plausible theme
+ * source, so a typo fails immediately instead of burning a 6-minute Codex
+ * launch to discover "STARTUP FAILED [SOURCE_NOT_FOUND]" in injector.log.
+ */
+function resolveThemePath(themeArg) {
+  const resolved = path.resolve(themeArg);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`--theme path does not exist: ${resolved}`);
+  }
+  const stat = fs.statSync(resolved);
+  if (stat.isDirectory()) {
+    const manifestPath = path.join(resolved, 'manifest.json');
+    if (!fs.existsSync(manifestPath)) {
+      throw new Error(
+        `--theme directory ${resolved} has no manifest.json — not a valid theme package directory.`
+      );
+    }
+  } else if (!resolved.toLowerCase().endsWith('.ccskin')) {
+    throw new Error(
+      `--theme path ${resolved} is neither a theme directory nor a .ccskin file.`
+    );
+  }
+  return resolved;
 }
 
 function defaultOutDir() {
@@ -193,10 +245,70 @@ function printSummary(manifest) {
   }
 }
 
+/**
+ * Read every theme-check-<scenario>-<mode>.json the driver wrote (Plan 0004
+ * M2, --theme mode only) and print one compact, human-readable row per
+ * scenario x mode: scenario, mode, surface, sidebar, ink, brass and which of
+ * the three shipped faces loaded. This is deliberately the ONLY place that
+ * table is built — the driver writes raw painted-value JSON per file, not a
+ * pre-formatted table, so the same JSON stays useful for a script diffing
+ * against the theme's own hex values without also having to parse a table.
+ */
+function printThemeCheckSummary(outDir) {
+  let entries;
+  try {
+    entries = fs.readdirSync(outDir).filter((f) => f.startsWith('theme-check-') && f.endsWith('.json'));
+  } catch (err) {
+    console.error(`could not list ${outDir} for theme-check files: ${err.message}`);
+    return;
+  }
+  if (!entries.length) {
+    console.log('\n(no theme-check-*.json files found — was --theme given?)');
+    return;
+  }
+  entries.sort();
+  console.log('\nTheme-check summary (painted values, --theme mode):');
+  const header = ['scenario', 'mode', 'surface', 'sidebar', 'ink', 'brass', 'fonts'];
+  const rows = [header];
+  for (const file of entries) {
+    let check;
+    try {
+      check = JSON.parse(fs.readFileSync(path.join(outDir, file), 'utf8'));
+    } catch (err) {
+      rows.push([file, 'PARSE ERROR', err.message, '', '', '', '']);
+      continue;
+    }
+    const tag = file.replace(/^theme-check-/, '').replace(/\.json$/, '');
+    const lastDash = tag.lastIndexOf('-');
+    const scenario = lastDash === -1 ? tag : tag.slice(0, lastDash);
+    const mode = lastDash === -1 ? '' : tag.slice(lastDash + 1);
+    const fonts = check.fonts
+      ? Object.entries(check.fonts)
+          .map(([family, info]) => `${family}=${info && info.check ? 'Y' : 'N'}`)
+          .join(' ')
+      : '';
+    rows.push([
+      scenario,
+      mode,
+      (check.mainSurface && check.mainSurface.background) || '',
+      (check.sidebar && check.sidebar.background) || '',
+      (check.ink && check.ink.color) || '',
+      (check.sidebarActiveRow && check.sidebarActiveRow.background) || '(none open)',
+      fonts,
+    ]);
+  }
+  const widths = header.map((_, col) => Math.max(...rows.map((r) => String(r[col]).length)));
+  for (const row of rows) {
+    console.log('  ' + row.map((cell, col) => String(cell).padEnd(widths[col])).join('  '));
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = path.resolve(args.out || defaultOutDir());
   assertOutsideRepo(outDir);
+
+  const themePath = args.theme ? resolveThemePath(args.theme) : null;
 
   const profileDir = path.join(outDir, 'profile');
   fs.mkdirSync(profileDir, { recursive: true });
@@ -207,14 +319,29 @@ async function main() {
   console.log(`Codex exe:        ${codexExe}`);
   console.log(`Throwaway profile: ${profileDir}`);
   console.log(`Output directory:  ${outDir}`);
+  if (themePath) console.log(`Theme:             ${themePath}`);
 
   const stdoutPath = path.join(outDir, 'codex-stdout.txt');
   const stdoutFd = fs.openSync(stdoutPath, 'a');
 
+  // Quoted the same way as the driver's own preload path (forward slashes,
+  // wrapped in double quotes) — NODE_OPTIONS is tokenized by Node's own
+  // CLI-option parser, same as launcher/windows/launch.ps1's comment on this
+  // explains for the real launcher.
+  let nodeOptions = `--require "${preloadForNodeOptions}"`;
   const env = Object.assign({}, process.env, {
-    NODE_OPTIONS: `--require "${preloadForNodeOptions}"`,
     CDX_INVENTORY_OUT: outDir,
   });
+  if (themePath) {
+    const injectorPreloadForNodeOptions = INJECTOR_PRELOAD_PATH.split(path.sep).join('/');
+    nodeOptions += ` --require "${injectorPreloadForNodeOptions}"`;
+    env.CDX_THEME_PACKAGE = themePath;
+    env.CDX_DEBUG_LOG_PATH = path.join(outDir, 'injector.log');
+    // CDX_PROBE must NOT be set here — it suppresses theming, and a themed
+    // run exists specifically to measure the theme actually applied.
+    delete env.CDX_PROBE;
+  }
+  env.NODE_OPTIONS = nodeOptions;
 
   let child;
   try {
@@ -278,6 +405,8 @@ async function main() {
       }
     }
   }
+
+  if (themePath) printThemeCheckSummary(outDir);
 
   console.log(`\nOutput directory: ${outDir}`);
   process.exitCode = ok ? 0 : 1;

@@ -75,6 +75,19 @@ export const CHECKS = [
   ['Warning edge on ground', 'border-warning', 'background-surface', 3.0],
   ['Modified decoration on ground', 'decoration-modified', 'background-surface', 4.5],
   ['Unchanged decoration on ground', 'decoration-unchanged', 'background-surface', 3.0],
+
+  // ── OWL primitives (Plan 0004 M2) ────────────────────────────────────────────
+  // Five new text/surface pairings created by filling the 22 previously-unmapped
+  // --app-color-* primitives from docs/research/owl-token-inventory.md §3 — see
+  // tools/palette/codex-surface.mjs's "OWL primitives" tokenGroups() entry for the
+  // pairings themselves. All five were computed to pass on both grounds and both
+  // modes; the lowest measured is 4.80. (The send glyph is the ground colour on
+  // the ink pill: the body-text pairing inverted, checked here under its own name.)
+  ['Tip badge text on tip badge', 'text-accent', 'background-accent', 4.5],
+  ['Error ink on popover', 'text-error', 'background-elevated-secondary', 4.5],
+  ['Warning ink on popover', 'text-warning', 'background-elevated-secondary', 4.5],
+  ['Error ink on code surface', 'text-error', 'token-diff-surface', 4.5],
+  ['Send control glyph on ink pill', 'background-surface', 'text-foreground', 4.5],
 ];
 
 export function run(p) {

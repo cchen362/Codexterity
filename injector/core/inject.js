@@ -84,6 +84,15 @@ let activeTheme = null;
 // fixes, and a single end-to-end number cannot tell them apart.
 let applyCount = 0;
 
+// D-0004-1 — which injection route actually applied on the LAST successful
+// attempt, set from the main-process side where insertCSS()/executeJavaScript
+// are actually called, and read by reportRootEnvironment()'s diagnostic log.
+// Needed because the DOM-side evidence alone is ambiguous on OWL: insertCSS
+// success leaves no <style id="codexterity-theme"> element at all (see that
+// route's own comment), so a diagnostic that only checked the DOM cannot tell
+// "insertCSS worked" apart from "nothing applied".
+let lastAppliedRoute = null;
+
 // Gate 0 diagnostic aid: stdout capture from a packaged GUI-subsystem
 // Electron process launched through unusual activation paths is itself an
 // open question, so every log line is ALSO appended to a plain file when
@@ -129,11 +138,23 @@ function resolveThemePackagePath() {
 /**
  * Report the facts the whole styling strategy rests on, read from the live DOM.
  *
- * D-0001-2 assumes Codex toggles .electron-dark / .electron-light on the root
- * element and exposes a semantic --color-* layer. That came from static analysis
- * of a shipped bundle, never from a running app. If either assumption is wrong,
- * the theme is inert no matter how well the injection works — so this is checked
- * every run rather than trusted.
+ * D-0001-2 (ORIGINAL, pre-OWL) assumed Codex toggles .electron-dark /
+ * .electron-light on the root element and exposes a semantic --color-* layer.
+ * That came from static analysis of a shipped bundle, never from a running
+ * app, and it held until Codex's 2026-09 "OWL" runtime update.
+ *
+ * D-0004-1 (Plan 0004 M1/M2, measured 2026-09-23) — Codex `26.917` replaced
+ * the mode hook and renamed 60 of the 77 primitive colour tokens this theme
+ * overrides. The root element no longer carries `.electron-dark` /
+ * `.electron-light` at all (rootClass now reads "(none)", which is itself
+ * informative, not a bug); the mode hook is `data-theme="dark"|"light"` on
+ * `<html>`, alongside `data-codex-window-type="electron"`. Most primitive
+ * tokens moved from `--color-X` to `--app-color-X` (e.g.
+ * `--color-background-surface` -> `--app-color-background-surface`); the
+ * rest (e.g. `--color-text-primary`, `--color-token-side-bar-background`,
+ * `--color-token-charts-purple`, `--color-token-text-link-foreground`) kept
+ * their old names. Both facts are checked here every run rather than
+ * trusted, exactly as the original D-0001-2 comment intended.
  */
 async function reportRootEnvironment(webContents) {
   // async because the font check must await document.fonts.load();
@@ -144,19 +165,28 @@ async function reportRootEnvironment(webContents) {
       const cs = getComputedStyle(root);
       // Two kinds of token, on purpose.
       //
-      // The first four are ones WE define, and prove the sheet applied at all.
-      // The rest are DOWNSTREAM of ours — Codex derives them through its own
-      // four-stage chain (see docs/research/phase3-inventory-findings.md §1),
-      // and they are what actually paints the sidebar, the menu bar, links and
-      // the empty-state card icons. Checking only our own names would prove the
-      // stylesheet landed while the app still looked stock, which is exactly the
-      // gap Gate 0 fell into. 47 of our tokens are also set INLINE on <html>, so
-      // this is also the standing check that the cascade still goes our way.
-      const probe = ['--color-background-surface', '--color-text-primary',
-                     '--color-background-button-primary', '--radius-lg',
-                     '--color-background-surface-under', '--color-accent-purple',
+      // The first several are ones WE define, and prove the sheet applied at
+      // all. The rest are DOWNSTREAM of ours — Codex derives them through its
+      // own chain (see docs/research/owl-token-inventory.md, superseding
+      // phase3-inventory-findings.md for the running version), and they are
+      // what actually paints the sidebar, the menu bar, links and the
+      // empty-state card icons. Checking only our own names would prove the
+      // stylesheet landed while the app still looked stock, which is exactly
+      // the gap Gate 0 fell into.
+      //
+      // D-0004-1 — names updated for Codex's OWL runtime (measured
+      // 2026-09-23, docs/research/owl-token-inventory.md). Most primitives
+      // moved from --color-X to --app-color-X; --color-text-primary and
+      // the two --color-token-* derived tokens below kept their old names
+      // (confirmed present in the M1 corpus,
+      // corpus-codex-home-dark.css) and are still worth checking because they
+      // sit downstream of Codex's own multi-stage chain, not because we set
+      // them ourselves.
+      const probe = ['--app-color-background-surface', '--color-text-primary',
+                     '--app-color-background-button-primary', '--radius-lg',
+                     '--app-color-background-surface-under', '--app-color-accent-purple',
                      '--color-token-charts-purple', '--color-token-text-link-foreground',
-                     '--color-background-application-menu', '--color-token-side-bar-background'];
+                     '--app-color-background-application-menu', '--color-token-side-bar-background'];
       const tokens = {};
       for (const t of probe) tokens[t] = cs.getPropertyValue(t).trim() || '(unset)';
 
@@ -251,6 +281,9 @@ async function reportRootEnvironment(webContents) {
 
       // Character pass: the title bar reads --codex-titlebar-tint through
       // --header-tint. Report the colour it actually computes, not our token.
+      // This hashed CSS-module class is fine as a diagnostic only (never a
+      // shipped landmark) — D-0004-1: confirmed still present, unchanged, in
+      // the M1 corpus captured against OWL (26.917), so left as-is.
       const titleBar = document.querySelector('[class*="ApplicationMenuTopBar"]');
       const tint = titleBar
         ? getComputedStyle(titleBar).backgroundColor
@@ -797,6 +830,13 @@ async function reportRootEnvironment(webContents) {
         bodyFont,
         rootClass: root.className || '(none)',
         bodyClass: document.body ? (document.body.className || '(none)') : '(no body)',
+        // D-0004-1 — the mode hook moved from a root CLASS to root ATTRIBUTES.
+        // rootClass is kept (it now correctly reads "(none)" on OWL, which is
+        // itself informative — a class-based check would silently look for
+        // something that no longer exists) and the two attributes that
+        // replaced it are read alongside it.
+        dataTheme: root.getAttribute('data-theme') || '(unset)',
+        windowType: root.getAttribute('data-codex-window-type') || '(unset)',
         styleTagPresent: !!document.getElementById('codexterity-theme'),
         tokens,
         bodyBg: document.body ? getComputedStyle(document.body).backgroundColor : '(no body)',
@@ -808,7 +848,19 @@ async function reportRootEnvironment(webContents) {
     const env = await webContents.executeJavaScript(script, true);
     log(`  root class:  ${env.rootClass}`);
     log(`  body class:  ${env.bodyClass}`);
-    log(`  our <style> present: ${env.styleTagPresent}   stylesheets: ${env.sheetCount}`);
+    log(`  root data-theme: ${env.dataTheme}   data-codex-window-type: ${env.windowType}`);
+    // D-0004-1 (measured 2026-09-23) — on OWL, insertCSS() SUCCEEDS, and a
+    // successful insertCSS never creates the <style id="codexterity-theme">
+    // element at all (that element is only the style-tag FALLBACK route's
+    // marker). So "our <style> present: false" here is the EXPECTED, healthy
+    // reading for a theme that applied via insertCSS, not a sign of failure —
+    // reporting it bare, as this line used to, would read as a false alarm on
+    // every working OWL launch. lastAppliedRoute (set on the main-process side,
+    // where the actual insertCSS/style-tag attempt happened) is the ground
+    // truth for which route applied; the DOM marker is reported alongside it
+    // only as corroborating detail.
+    log(`  injection route applied: ${lastAppliedRoute || '(none recorded yet this process)'}` +
+        `   <style id="codexterity-theme"> present: ${env.styleTagPresent}   stylesheets: ${env.sheetCount}`);
     log(`  body background: ${env.bodyBg}`);
     for (const [name, value] of Object.entries(env.tokens)) {
       log(`  ${name}: ${value}`);
@@ -1000,23 +1052,44 @@ async function reportLandmarks(webContents, phase) {
 }
 
 /**
- * D-0001-1 (amended 2026-08-01) — THE SHIPPED PRIMARY INJECTION ROUTE.
+ * D-0001-1 (amended 2026-08-01) — THE FALLBACK INJECTION ROUTE.
  *
- * insertCSS() is attempted first only because it is the cleaner API where it
- * works; on this Electron fork it always throws, and this is what actually
- * applies the theme. Gate 0 measured that; docs/DECISIONS.md records it.
+ * HISTORICAL RECORD, pre-OWL (through Codex 26.730): insertCSS() was
+ * attempted first only because it is the cleaner API where it works; on
+ * every Electron fork measured through 2026-08, it always threw, and THIS
+ * style-tag route was what actually applied the theme. Gate 0 measured that;
+ * docs/DECISIONS.md records it.
+ *
+ * D-0004-2 (Plan 0004 M1/M2, measured 2026-09-23) — THIS CHANGED ON OWL.
+ * Against Codex `26.917`'s OWL runtime, `insertCSS(css, {cssOrigin:'user'})`
+ * SUCCEEDS (logs "injected OK via insertCSS" — see applyTheme() above), so
+ * this style-tag function is now the FALLBACK, exercised only if insertCSS
+ * itself throws. The origin argument stops being a detail once insertCSS
+ * works: `cssOrigin: 'user'` inserts a USER-origin stylesheet, and per the
+ * CSS cascade a user-origin declaration beats an author-origin one only when
+ * it carries `!important` — an ordinary user-origin rule does NOT
+ * automatically out-rank an unmarked author rule the way this file's older
+ * "later wins at equal specificity" reasoning (below) assumed. This
+ * style-tag route, by contrast, is AUTHOR origin, same as Codex's own rules.
+ * Specificity is also no longer the load-bearing argument for either route:
+ * Codex's OWL-era token blocks are zero-specificity `:where(...)` rules
+ * inside `@layer theme` (docs/research/owl-token-inventory.md), so an
+ * unlayered author rule already beats them by layer order regardless of
+ * specificity, and a user-origin rule beats them regardless of layer or
+ * specificity, PROVIDED it is `!important` for the user-origin case. The
+ * emitter marks every declaration `!important` precisely so the same
+ * stylesheet wins by whichever of the two routes actually applies.
  *
  * Appends (or replaces) a single <style> element via webContents
  * .executeJavaScript. This is a DIFFERENT main->renderer IPC channel from the
  * one insertCSS uses, which matters: insertCSS reaches the renderer through the
- * sandboxed webFrame proxy, and that proxy is where this Electron fork fails.
+ * sandboxed webFrame proxy, and pre-OWL that proxy is where injection failed.
  *
  * Still an official Electron API. Still no debug port. Two real differences
- * from insertCSS, both of which Gate 0 must measure rather than assume:
- *   - Author origin, not user origin. Our overrides are variable definitions on
- *     .electron-dark / .electron-light at equal specificity to Codex's own, so
- *     later-wins should carry them; a stock !important author rule would not be
- *     beaten the way a user-origin sheet beats it.
+ * from insertCSS, both of which Gate 0 (and, for OWL, D-0004-2) had to
+ * measure rather than assume:
+ *   - Author origin, not user origin — see D-0004-2 above for what that means
+ *     once insertCSS itself is the primary, working route.
  *   - A DOM node can be removed by the app's own re-rendering, where an
  *     inserted stylesheet cannot. The stable id makes re-application idempotent.
  */
@@ -1069,6 +1142,7 @@ async function applyTheme(webContents, reason) {
 
   try {
     await webContents.insertCSS(css, { cssOrigin: 'user' });
+    lastAppliedRoute = 'insertCSS (user origin)';
     log(`injected OK via insertCSS on ${label} — ${bytes} bytes`);
     await reportLandmarks(webContents, 'apply-time (dom-ready/navigate)');
     return;
@@ -1085,6 +1159,7 @@ async function applyTheme(webContents, reason) {
     const tScriptBuilt = process.hrtime.bigint();
     const result = await applyThemeViaStyleTag(webContents, script);
     const tDone = process.hrtime.bigint();
+    lastAppliedRoute = 'style-tag executeJavaScript (author origin)';
     log(
       `injected OK via executeJavaScript style tag on ${label} — ` +
         `${result.bytes} chars, lastChildOfHead=${result.lastChildOfHead}`

@@ -75,6 +75,11 @@ literal hex per mode, not derived from primitives — the theme's `syntax.json` 
   **unlayered** declaration beats every layered one regardless of specificity, and
   `webContents.insertCSS()` produces an unlayered author sheet. So the theme wins the token layer
   without any specificity contest. *(Stated as a CSS rule, not yet observed painting — M2 proves it.)*
+  **Corrected by M2:** the premise was wrong. `insertCSS` is called with `cssOrigin: 'user'`, and it
+  now succeeds, so the theme is a **user**-origin sheet. Layers only order declarations *within* an
+  origin. A user-origin normal declaration loses to every author declaration, and a user-origin
+  `!important` beats them all. The theme wins because every declaration is `!important` (D-0004-2),
+  not because it is unlayered. Painting is now proven: see Plan 0004 M2.
 - **The 13 unlayered `--color-*` definitions** are all scoped to `[data-codex-window-type=browser]` /
   `chrome-extension` windows or define names the theme does not override. None collides.
 - **Codex's mode selectors are zero-specificity** — 517 definitions sit under a selector that is
@@ -270,7 +275,9 @@ Main-area and composer containers are **build-hashed CSS modules** (`._MainConte
 4. **Accent policy (D-0001-11):** the blue family is now `--app-color-accent-blue`,
    `--app-color-text-accent`, `--app-color-icon-accent`, `--app-color-border-focus`, the tip badge,
    **and the light-mode composer send control `--color-background-composer-primary: #3a83f7`** (plan
-   fact 15) — all collapse to brass.
+   fact 15) — all collapse to brass. *(Corrected by M2: the send control is **ink**, not brass.
+   D-0001-15 records it painted by the ink token on the build the owner approved, and Plan 0004's
+   goal is parity — see D-0004-1.)*
 5. **Syntax:** `--color-codex-syntax-*` are literal per mode — set them from `syntax.json`.
 6. **Replace or retire three Layer 2 hooks** (§5). `[data-radix-menu-content]` is the candidate for the
    menu treatment; the title-bar tint and scroll fade need a fresh look in the running app.

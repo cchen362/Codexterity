@@ -46,7 +46,14 @@ function makeBrokenThemeDir() {
     assets: [],
   };
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
-  fs.writeFileSync(path.join(dir, 'theme.css'), '.electron-dark { --color-background-surface: #0E141F; }');
+  // Plan 0004 M2 — fixture CSS only, updated to the post-OWL mode scope
+  // (codex-surface.mjs's MODE_SCOPE.dark) so it stays representative of a
+  // real theme.css; nothing in this test parses the selector or the
+  // '--app-color-' prefix, so the shape change carries no other meaning here.
+  fs.writeFileSync(
+    path.join(dir, 'theme.css'),
+    ':is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]) { --app-color-background-surface: #0E141F; }'
+  );
   fs.writeFileSync(path.join(dir, 'syntax.json'), '{"keyword":"#000"}');
   return dir;
 }

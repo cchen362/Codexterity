@@ -199,6 +199,181 @@ const HOME_EMPTY_STATE_GONE_EXPR =
   '})()';
 
 // ---------------------------------------------------------------------------
+// Plan 0004 M2 — the in-page "theme check" script, run only when --theme was
+// given to run-inventory.mjs. It reads PAINTED values (getComputedStyle),
+// not our own declared token strings, for exactly the reason probe.js's own
+// header explains for its census: a resolved token is not a painted pixel.
+//
+// Built by string concatenation (array.join, same convention as
+// killLeftoverProcesses's PowerShell script in run-inventory.mjs) rather than
+// a template literal, deliberately: this file's own header already warns
+// that nested backticks and unescaped regex characters inside a template
+// literal silently corrupt the generated page script (see probe.js's own
+// scars on this), and string concatenation has no such hazard. No regex is
+// used in the script body below for the same reason — alpha/quote handling
+// is done with plain string ops instead.
+// ---------------------------------------------------------------------------
+
+const THEME_CHECK_TOKENS = [
+  '--app-color-background-surface',
+  '--color-text-primary',
+  '--app-color-background-button-primary',
+  '--app-color-background-surface-under',
+  '--app-color-accent-blue',
+  '--color-background-composer-primary',
+  '--font-sans',
+  '--font-mono',
+];
+
+const THEME_CHECK_FONT_FAMILIES = ['Literata', 'Fraunces', 'Monaspace Neon'];
+
+function buildThemeCheckScript() {
+  return [
+    '(async () => {',
+    '  var root = document.documentElement;',
+    '  var rootCs = getComputedStyle(root);',
+    '  var html = {',
+    '    dataTheme: root.getAttribute("data-theme") || "(unset)",',
+    '    windowType: root.getAttribute("data-codex-window-type") || "(unset)"',
+    '  };',
+    '  var TOKENS = ' + JSON.stringify(THEME_CHECK_TOKENS) + ';',
+    '  var tokens = {};',
+    '  for (var ti = 0; ti < TOKENS.length; ti++) {',
+    '    tokens[TOKENS[ti]] = rootCs.getPropertyValue(TOKENS[ti]).trim() || "(unset)";',
+    '  }',
+    // Rasterise any CSS colour Chromium accepts (oklab(), color(srgb ...),
+    // etc — the OWL runtime's composited menus already measured this way in
+    // probe.js) to 8-bit sRGB via a 1x1 canvas, so two colours authored in
+    // different colour spaces still compare equal when they paint the same
+    // pixel. Not imported from probe.js because probe.js defines this logic
+    // only as a closure inside buildProbeScript(), never as an exported,
+    // reusable function — there is nothing to require here.
+    '  var cnv = document.createElement("canvas");',
+    '  cnv.width = 1; cnv.height = 1;',
+    '  var cx = cnv.getContext("2d", { willReadFrequently: true });',
+    '  function rasterise(css) {',
+    '    try {',
+    '      cx.clearRect(0, 0, 1, 1);',
+    '      cx.fillStyle = "#000000";',
+    '      cx.fillRect(0, 0, 1, 1);',
+    '      cx.fillStyle = css;',
+    '      cx.fillRect(0, 0, 1, 1);',
+    '      var d = cx.getImageData(0, 0, 1, 1).data;',
+    '      return "rgb(" + d[0] + ", " + d[1] + ", " + d[2] + ")";',
+    '    } catch (err) { return null; }',
+    '  }',
+    // Alpha, read from the raw string rather than a regex: an rgb(...) form
+    // has no alpha channel (opaque); an rgba(...) form's fourth component is
+    // the alpha. "transparent" is the only bare keyword getComputedStyle
+    // ever returns for full transparency.
+    '  function alphaOf(bg) {',
+    '    if (!bg || bg === "transparent") return 0;',
+    '    if (bg.indexOf("rgba(") !== 0) return 1;',
+    '    var inner = bg.slice(5, bg.length - 1);',
+    '    var parts = inner.split(",");',
+    '    if (parts.length < 4) return 1;',
+    '    var a = parseFloat(parts[3]);',
+    '    return isNaN(a) ? 1 : a;',
+    '  }',
+    '  function firstPaintedBg(start) {',
+    '    for (var el = start; el; el = el.parentElement) {',
+    '      var bg = getComputedStyle(el).backgroundColor;',
+    '      if (alphaOf(bg) > 0) return { el: el, background: rasterise(bg) };',
+    '    }',
+    '    return null;',
+    '  }',
+    // Fonts: document.fonts.check() alone cannot distinguish "loadable" from
+    // "no such family declared at all" (both read false for a family with no
+    // matching text on screen, and — per Plan 0004's own note — check() can
+    // read true for an undeclared family too), so a FontFace census is taken
+    // alongside it. No regex for quote-stripping — plain character checks.
+    '  function unquote(s) {',
+    '    var c0 = s.charCodeAt(0);',
+    '    if (s.length >= 2 && (c0 === 34 || c0 === 39) && s.charCodeAt(s.length - 1) === c0) {',
+    '      return s.slice(1, -1);',
+    '    }',
+    '    return s;',
+    '  }',
+    '  var FAMILIES = ' + JSON.stringify(THEME_CHECK_FONT_FAMILIES) + ';',
+    '  var fonts = {};',
+    '  for (var fi = 0; fi < FAMILIES.length; fi++) {',
+    '    var family = FAMILIES[fi];',
+    '    var checkResult = null;',
+    '    try { checkResult = document.fonts.check(\'16px "\' + family + \'"\'); } catch (err) { checkResult = null; }',
+    '    var faceExists = false;',
+    '    var faceStatus = null;',
+    '    document.fonts.forEach(function (face) {',
+    '      if (!faceExists && unquote(face.family) === family) { faceExists = true; faceStatus = face.status; }',
+    '    });',
+    '    fonts[family] = { check: checkResult, faceExists: faceExists, faceStatus: faceStatus };',
+    '  }',
+    '  var W = window.innerWidth, H = window.innerHeight;',
+    '  var centreEl = document.elementFromPoint(W / 2, H / 2);',
+    '  var mainSurface = centreEl ? firstPaintedBg(centreEl) : null;',
+    // Ink: the nearest element at the sampled point that owns visible text of
+    // its own (child text node, not inherited from a descendant), same
+    // "own text only" rule probe.js's floating-surface ink census uses.
+    '  var inkColor = null;',
+    '  if (centreEl) {',
+    '    var node = centreEl;',
+    '    while (node && node !== document.documentElement) {',
+    '      var ownText = "";',
+    '      for (var ci = 0; ci < node.childNodes.length; ci++) {',
+    '        var child = node.childNodes[ci];',
+    '        if (child.nodeType === 3 && child.textContent && child.textContent.trim()) ownText += child.textContent;',
+    '      }',
+    '      if (ownText.trim()) { inkColor = rasterise(getComputedStyle(node).color); break; }',
+    '      node = node.parentElement;',
+    '    }',
+    '  }',
+    '  var sidebarPanel = document.querySelector(".app-shell-left-panel");',
+    '  var sidebar = sidebarPanel ? { background: rasterise(getComputedStyle(sidebarPanel).backgroundColor) } : null;',
+    '  var activeRow = document.querySelector(\'.sidebar-item[data-app-action-sidebar-thread-active="true"]\');',
+    '  var sidebarActiveRow = null;',
+    '  if (activeRow) {',
+    '    var b = getComputedStyle(activeRow, "::before");',
+    '    sidebarActiveRow = { background: rasterise(b.backgroundColor), content: b.content };',
+    '  }',
+    '  var heading = document.querySelector(".heading-xl, .heading-lg, .heading-2xl, .heading-display");',
+    '  var headingFontFamily = heading ? getComputedStyle(heading).fontFamily : null;',
+    '  var editor = document.querySelector(".ProseMirror");',
+    '  var composerSurface = null;',
+    '  if (editor) {',
+    '    var cur = editor.parentElement;',
+    '    while (cur) {',
+    '      var cbg = getComputedStyle(cur).backgroundColor;',
+    '      if (alphaOf(cbg) > 0) { composerSurface = { background: rasterise(cbg) }; break; }',
+    '      cur = cur.parentElement;',
+    '    }',
+    '  }',
+    '  var bodyFontFamily = document.body ? getComputedStyle(document.body).fontFamily : null;',
+    '  var titleBarTint = rootCs.getPropertyValue("--codex-titlebar-tint").trim() || "(unset)";',
+    '  return {',
+    '    html: html,',
+    '    tokens: tokens,',
+    '    fonts: fonts,',
+    '    mainSurface: mainSurface ? { background: mainSurface.background } : null,',
+    '    ink: inkColor ? { color: inkColor } : null,',
+    '    sidebar: sidebar,',
+    '    sidebarActiveRow: sidebarActiveRow,',
+    '    headingFontFamily: headingFontFamily,',
+    '    composerSurface: composerSurface,',
+    '    bodyFontFamily: bodyFontFamily,',
+    '    titleBarTint: titleBarTint',
+    '  };',
+    '})()',
+  ].join('\n');
+}
+
+// A theme's own painted surface must differ from Codex's OWN stock value for
+// this to count as "themed, not merely slept for". Values measured against
+// OWL (26.917) — Plan 0004's Verified facts, fact 9 — as the raw hex string
+// Codex declares for --app-color-background-surface in each mode, compared
+// case-insensitively against the SAME custom property's raw (undecomposed)
+// value, which is why this does not need the canvas rasteriser above.
+const STOCK_SURFACE_HEX = { dark: '#111111', light: '#ffffff' };
+
+// ---------------------------------------------------------------------------
 // Electron-dependent runtime. Built once `require("electron")` has resolved
 // (see the setImmediate deferral at the bottom — same load-order fix as
 // injector/core/inject.js's start(), and same reason: a synchronous
@@ -234,6 +409,61 @@ function buildRuntime(electron) {
       JSON.stringify(theme) +
       '; document.documentElement.dataset.theme;';
     return wc.executeJavaScript(script, true);
+  }
+
+  const THEMED_RUN = !!process.env.CDX_THEME_PACKAGE;
+
+  /** The raw (undecomposed) declared value of --app-color-background-surface. */
+  async function getSurfaceRawValue(wc) {
+    const script =
+      'getComputedStyle(document.documentElement).getPropertyValue(' +
+      JSON.stringify('--app-color-background-surface') +
+      ').trim()';
+    try {
+      return await wc.executeJavaScript(script, true);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /**
+   * Poll (rather than merely sleep longer) until the surface token's raw
+   * value differs from Codex's OWN stock value for `mode` (STOCK_SURFACE_HEX,
+   * measured against OWL) — the sign that a theme is actually PAINTED, not
+   * only that time has passed since setTheme(). Bounded: after `timeoutMs`,
+   * returns whatever the last reading was, themed=false, and the caller logs
+   * that as a fact rather than treating a timeout as success.
+   */
+  async function waitForThemedSurface(wc, mode, timeoutMs) {
+    const stock = (STOCK_SURFACE_HEX[mode] || '').toLowerCase();
+    const started = Date.now();
+    let value = await getSurfaceRawValue(wc);
+    let themed = !!value && value.toLowerCase() !== stock;
+    while (!themed && Date.now() - started < timeoutMs) {
+      await sleep(500);
+      value = await getSurfaceRawValue(wc);
+      themed = !!value && value.toLowerCase() !== stock;
+    }
+    return { value, themed };
+  }
+
+  /** Run the theme-check in-page script and write theme-check-<tag>.json. */
+  async function themeCheckAndSave(wc, outDir, tag) {
+    let report;
+    try {
+      report = await wc.executeJavaScript(buildThemeCheckScript(), true);
+    } catch (err) {
+      log(`  THEME CHECK FAILED (${tag}): ${err.message}`);
+      return null;
+    }
+    const outPath = path.join(outDir, `theme-check-${tag}.json`);
+    try {
+      fs.writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8');
+      log(`  theme-check -> ${outPath}`);
+    } catch (err) {
+      log(`  could not write ${outPath}: ${err.message}`);
+    }
+    return report;
   }
 
   async function getPathname(wc) {
@@ -442,7 +672,11 @@ function buildRuntime(electron) {
     return path.basename(filePath);
   }
 
-  /** For each theme in `themes`: set it, verify, probe, screenshot. Records facts/files on `record`. */
+  /**
+   * For each theme in `themes`: set it, verify, (if --theme) wait for it to
+   * actually PAINT and save a theme-check, probe, screenshot. Records
+   * facts/files on `record`.
+   */
   async function forEachTheme(wc, scenarioTag, outDir, record, themes, state) {
     record.facts.themes = record.facts.themes || {};
     record.files = record.files || [];
@@ -457,6 +691,23 @@ function buildRuntime(electron) {
       }
       record.facts.themes[theme] = { verified: true };
       const tag = `${scenarioTag}-${theme}`;
+      if (THEMED_RUN) {
+        // The injector applies at dom-ready/navigation, asynchronously — the
+        // existing 2500ms settle above is the mode switch's own settle time,
+        // not evidence the theme repainted. Poll a PAINTED value instead of
+        // guessing a longer sleep (see waitForThemedSurface's own doc).
+        const painted = await waitForThemedSurface(wc, theme, 5000);
+        record.facts.themes[theme].painted = painted;
+        if (!painted.themed) {
+          log(
+            `  THEME NOT YET PAINTED for "${theme}" after settle+poll: ` +
+              `--app-color-background-surface still reads "${painted.value}" ` +
+              `(Codex's own stock for this mode). Capturing theme-check/probe/screenshot anyway — ` +
+              `this is a finding, not a skip.`
+          );
+        }
+        await themeCheckAndSave(wc, outDir, tag);
+      }
       const file = await probeAndScreenshot(wc, outDir, tag, state);
       record.files.push(file);
     }
@@ -539,10 +790,18 @@ function buildRuntime(electron) {
       return { ok: false, reason: `could not set dark theme for the overlay scenario (dataset.theme is "${actual}")` };
     }
     record.facts.themes = { dark: { verified: true } };
+    if (THEMED_RUN) {
+      const painted = await waitForThemedSurface(wc, 'dark', 5000);
+      record.facts.themes.dark.painted = painted;
+      if (!painted.themed) {
+        log(`  THEME NOT YET PAINTED for the overlay scenario after settle+poll: still "${painted.value}"`);
+      }
+    }
     const clicked = await clickElementByFinder(wc, SWITCH_MODE_EXPR, 'switch mode button (open menu)');
     if (!clicked) return { ok: false, reason: 'switch mode button not found (cannot open the overlay)' };
     await sleep(1500);
     const tag = 'overlay-mode-menu-dark';
+    if (THEMED_RUN) await themeCheckAndSave(wc, outDir, tag);
     const file = await probeAndScreenshot(wc, outDir, tag, state);
     record.files = [file];
     await pressEscape(wc);
@@ -778,4 +1037,7 @@ setImmediate(() => {
   }
 });
 
-module.exports = { isMainWindowUrl, pickMenuItemExpr, homeToggleButtonExpr };
+module.exports = {
+  isMainWindowUrl, pickMenuItemExpr, homeToggleButtonExpr,
+  buildThemeCheckScript, THEME_CHECK_TOKENS, THEME_CHECK_FONT_FAMILIES, STOCK_SURFACE_HEX,
+};

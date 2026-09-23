@@ -15,6 +15,7 @@
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { MODE_SCOPE } from '../palette/codex-surface.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const THEME = resolve(ROOT, 'themes/captains-cabin');
@@ -22,18 +23,30 @@ const OUT = process.argv[2] || resolve(ROOT, 'docs/mockups/0003-typography-compa
 
 // ── read the shipped theme (ground/ink/accent only — no product code touched) ─
 const css = readFileSync(resolve(THEME, 'theme.css'), 'utf8');
-function tokens(selector) {
-  const m = new RegExp(`\\${selector}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css);
-  if (!m) throw new Error(`could not find ${selector} in theme.css`);
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Plan 0004 M2 — same parser shape as tools/mockup/build-mockup.mjs: the
+// block to parse is MODE_SCOPE.dark/.light (codex-surface.mjs), every value
+// now carries a trailing '!important' (D-0004-2) to strip, and a renamed
+// '--app-color-X' from theme.css is folded back to this file's own
+// '--color-X' convention so the template below (which addresses tokens under
+// their pre-OWL spelling) needs no other change. See build-mockup.mjs's
+// tokens() for the full reasoning.
+function tokens(scope) {
+  const m = new RegExp(`${escapeRegExp(scope)}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css);
+  if (!m) throw new Error(`could not find ${scope} in theme.css`);
   const out = {};
   for (const line of m[1].split('\n')) {
-    const t = /^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);/.exec(line);
-    if (t) out[t[1]] = t[2].trim();
+    const t = /^\s*(--[a-z0-9-]+)\s*:\s*(.+?)\s*!important\s*;/.exec(line);
+    if (!t) continue;
+    const rawName = t[1];
+    const name = rawName.startsWith('--app-color-') ? `--color-${rawName.slice('--app-color-'.length)}` : rawName;
+    out[name] = t[2].trim();
   }
   return out;
 }
-const DARK = tokens('.electron-dark');
-const LIGHT = tokens('.electron-light');
+const DARK = tokens(MODE_SCOPE.dark);
+const LIGHT = tokens(MODE_SCOPE.light);
 for (const [name, t] of [['dark', DARK], ['light', LIGHT]]) {
   if (!t['--color-background-surface']) throw new Error(`${name} block parsed but has no surface token`);
 }

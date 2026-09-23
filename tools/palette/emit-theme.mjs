@@ -1,9 +1,9 @@
-// Codexterity — generic theme emitter (Plan 0003 M2)
+// Codexterity — generic theme emitter (Plan 0003 M2, remapped Plan 0004 M2)
 // -----------------------------------------------------
 // Emits <theme>/theme.css, syntax.json and manifest.json from a RECIPE, so
 // adding a theme is "write a recipe" and never "edit this file". This module
-// owns MECHANISM and facts about CODEX (every CSS rule, every D-0001-*
-// mechanism comment, the emitted file structure); a recipe under
+// owns MECHANISM and facts about CODEX (every CSS rule, every D-0001-*/
+// D-0004-* mechanism comment, the emitted file structure); a recipe under
 // tools/palette/recipes/ owns IDENTITY and AUTHORED VALUES (palette inputs,
 // accent role, typography roles and font assets, shape values, hero
 // configuration, syntax policy, manifest landmarks, and the theme's own
@@ -18,7 +18,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildDark, buildLight, buildSyntax, GROUNDS, ratio } from './palette-engine.mjs';
 import { run, runSyntax } from './audit.mjs';
 import {
-  ROOT_CLASSES, tokenGroups, TOKEN_ALIASES, ansiSlots, FONT_FAMILY_TOKENS, HEADING_CLASSES,
+  MODE_SCOPE, ANY_MODE_SCOPE, tokenGroups, TOKEN_ALIASES, tokenProperty, ansiSlots,
+  codexSyntaxSlots, FONT_FAMILY_TOKENS, HEADING_CLASSES,
 } from './codex-surface.mjs';
 
 // ── Recipe validation — fail loudly, by name ────────────────────────────────
@@ -86,20 +87,29 @@ function buildFontFaces(recipe, assetsDir) {
   return recipe.typography.faces.map((f) => faceBlock(f, assetsDir)).join('\n\n');
 }
 
-// Every token declaration is marked !important, and that is a measured
-// requirement rather than a specificity shortcut. See the D-0001-12 note in the
-// generated file header for the full reasoning.
+// Every declaration below (outside @font-face descriptors, which cannot take
+// !important) is marked !important, and that is a measured requirement — see
+// the D-0004-2 note in the generated file header for the full reasoning.
 const decl = (name, value) => `  ${name}: ${value} !important;`;
 
 // ── The per-mode token block ─────────────────────────────────────────────────
-function tokenBlock(rootClass, p, syn, label, recipe) {
-  const lines = [`.${rootClass} {`, `  /* ${label} */`];
+function tokenBlock(scope, p, syn, label, recipe) {
+  const lines = [`${scope} {`, `  /* ${label} */`];
   for (const [title, keys] of tokenGroups(recipe.accent.name)) {
     lines.push('', `  /* ${title} */`);
-    for (const k of keys) lines.push(decl(`--color-${k}`, p[k]));
+    for (const k of keys) {
+      if (Array.isArray(k)) {
+        const [cssName, paletteKey] = k;
+        lines.push(decl(cssName, p[paletteKey]));
+      } else {
+        lines.push(decl(tokenProperty(k), p[k]));
+      }
+    }
   }
   lines.push('', '  /* Aliased spellings of the same values */');
-  for (const [alias, src] of Object.entries(TOKEN_ALIASES)) lines.push(decl(`--color-${alias}`, p[src]));
+  for (const [alias, src] of Object.entries(TOKEN_ALIASES)) lines.push(decl(tokenProperty(alias), p[src]));
+  lines.push('', "  /* Syntax — Codex's own literal per-mode palette (docs/research/owl-token-inventory.md §1) */");
+  for (const [name, hex] of Object.entries(codexSyntaxSlots(syn, p))) lines.push(decl(name, hex));
   lines.push('', '  /* Terminal — the 16 ANSI slots, under Codex\'s VS Code spellings */');
   for (const [slot, hex] of Object.entries(ansiSlots(p, syn))) {
     lines.push(decl(`--vscode-terminal-ansi${slot}`, hex));
@@ -117,9 +127,9 @@ function tokenBlock(rootClass, p, syn, label, recipe) {
 }
 
 // ── Header comment ───────────────────────────────────────────────────────────
-// Mostly mechanism prose about THIS ENGINE (D-0001-2, D-0001-12, D-0001-6),
-// true of any theme it emits; only the title, its underline, and the two
-// blurb lines are the recipe's own voice.
+// Mostly mechanism prose about THIS ENGINE (D-0001-2, D-0001-6, D-0004-1,
+// D-0004-2), true of any theme it emits; only the title, its underline, and
+// the two blurb lines are the recipe's own voice.
 function buildHeader(recipe, groundHex) {
   const [blurb0, blurb1] = recipe.voice.blurbLines(groundHex);
   return `/*
@@ -137,34 +147,41 @@ function buildHeader(recipe, groundHex) {
  * check in tools/palette/audit.mjs. Regenerate with:  node tools/palette/emit-theme.mjs
  *
  * D-0001-2 — Token-first styling. Every rule below redefines one of Codex's own
- * semantic custom properties on its root theme class. Codex is Tailwind v4 with a
+ * semantic custom properties, scoped to its mode hook — the [data-theme] attribute
+ * on a [data-codex-window-type] document (D-0004-1). Codex is Tailwind v4 with a
  * token layer, so a single override cascades through every bg-token- and
  * text-token- utility — including UI OpenAI has not shipped yet. Structural
  * selectors are a last resort; each one is a declared LANDMARK, marked as such
  * below, and degrades to the stock look rather than breaking if it stops matching.
  *
- * D-0001-12 — Every declaration below is !important, and it has to be.
+ * D-0004-2 — Every declaration below is !important, and it has to be, for a
+ * DIFFERENT reason than the one that first introduced it.
  *
- * Codex writes 67 custom properties as an INLINE style on <html> a moment after
- * boot, and 47 of them are ones this theme also defines. An inline declaration
- * outranks every non-important author rule at any specificity, so without
- * !important the theme applies at dom-ready and is then silently reverted: our
- * <style> element is still in the document (verified present), still last in
- * <head>, and simply outranked. Measured directly — with CDX_VERIFY_AT=15000 the
- * settled re-check read --color-background-surface back as Codex's stock
- * #111111 while our own inert token --color-text-primary, which Codex never
- * writes inline, still read #F4EAD4.
+ * HISTORY (superseded, kept for the record). Pre-OWL Codex wrote 67 custom
+ * properties as an INLINE style on <html> a moment after boot, 47 of which this
+ * theme also defined; without !important the theme was silently reverted at
+ * dom-ready. That inline-token contest does not recur on Codex 26.917 — measured
+ * directly in docs/research/owl-token-inventory.md §2: "Nothing colour-related is
+ * set inline on <html>" on any of nine sampled screens.
  *
- * This is the author-origin cost recorded in D-0001-1's amendment coming due. A
- * USER-origin stylesheet — what webContents.insertCSS() would have given us —
- * beats inline styles without !important, but insertCSS is broken on this
- * Electron fork. !important is not a specificity shortcut here; it is the only
- * cascade mechanism that reaches an inline declaration at all.
+ * THE CURRENT REASON. On Codex 26.917 ("OWL"), webContents.insertCSS() SUCCEEDS
+ * where it previously always threw (docs/research/owl-token-inventory.md, Plan
+ * 0004's background) — the injector's primary route now works, and the sheet it
+ * installs is USER-origin CSS. A normal (non-important) USER-origin declaration
+ * loses to EVERY author-origin declaration regardless of specificity or cascade
+ * layer; a user-origin !important declaration beats every author declaration,
+ * including an author !important one. The injector's style-tag fallback remains
+ * AUTHOR-origin, where !important also wins normally. !important is therefore the
+ * ONLY marking that wins under BOTH routes, which is what makes the theme
+ * independent of which one actually applied it — not a specificity shortcut, a
+ * cross-origin necessity.
  *
- * It is safe in scope: these are custom-property DEFINITIONS. Marking a
- * definition important fixes which value the variable holds; it forces nothing
- * on the properties that read it, so Codex's own layout and state rules keep
- * winning normally.
+ * It is safe in scope. Most declarations are custom-property DEFINITIONS:
+ * marking a definition important fixes which value the variable holds and
+ * forces nothing on the properties that read it, so Codex's own layout and
+ * state rules keep winning normally. The few REAL properties (font faces, the
+ * sidebar and hero backgrounds, selection, scrollbars, the active-row mark) sit
+ * on declared hooks and are exactly the paint this theme exists to own.
  *
  * D-0001-6 — Surfaces are FLAT token colour. No tiling texture, no gradient wash
  * behind content. Every contrast figure this theme claims is computed against a
@@ -180,8 +197,7 @@ function buildShapeBlock(recipe) {
   return `/*
  * ${recipe.shape.note}
  */
-.electron-dark,
-.electron-light {
+${ANY_MODE_SCOPE} {
   --radius-sm: ${r.sm} !important;
   --radius-md: ${r.md} !important;
   --radius-lg: ${r.lg} !important;
@@ -195,9 +211,10 @@ function buildShapeBlock(recipe) {
 
 // ── Heading selector — the ten .heading-* classes, wrapped exactly as a hand
 // -formatted CSS file would: the continuation line indents to the width of
-// ".<root-class> :is(", so dark and light naturally indent differently. ────
-function headingSelector(rootClass, classes) {
-  const prefix = `.${rootClass} :is(`;
+// "<scope prefix> :is(". `scopePrefix` is a full scope selector string
+// (ANY_MODE_SCOPE), not a bare class, since Plan 0004 M2. ────────────────────
+function headingSelector(scopePrefix, classes) {
+  const prefix = `${scopePrefix} :is(`;
   const indent = ' '.repeat(prefix.length);
   const first = classes.slice(0, 5).map((c) => `.${c}`).join(', ');
   const rest = classes.slice(5).map((c) => `.${c}`).join(', ');
@@ -214,44 +231,46 @@ function buildTypographyBlock(recipe) {
   const display = recipe.typography.roles.display;
 
   const rootRule = `${recipe.voice.typographyProse}
-/* UI and body — Literata. Inherited from the theme class, which covers the rules
+/* UI and body — Literata. Inherited from the mode scope, which covers the rules
  * that hardcode a font stack rather than reading --font-sans. */
-.electron-dark,
-.electron-light {
+${ANY_MODE_SCOPE} {
   font-family: ${ui.stack} !important;
-  font-variation-settings: ${ui.variationSettings};
+  font-variation-settings: ${ui.variationSettings} !important;
 }`;
 
   const bodyRule = `/* D-0001-18 — RE-DECLARED ON <body>, AND IT HAS TO BE.
  *
- * Codex sets this same token on BODY, measured in the probe corpus:
+ * Codex sets this same token on BODY. Measured pre-OWL, quoted here as HISTORY:
  *
  *   :is([data-codex-window-type=browser],[…=chrome-extension],[…=electron]) body {
  *     --vscode-editor-font-family: ui-monospace, "SFMono-Regular", …, monospace;
  *   }
  *
- * Our block above declares it on .electron-dark / .electron-light, which are on
- * <html>. Custom properties INHERIT, so a value set on body wins for body and
- * everything under it no matter what html says — this is not a specificity
- * contest, and !important on the html declaration cannot win it. Measured
- * consequence: the diff and terminal panels rendered in ui-monospace, i.e.
- * Consolas on Windows, so D-0001-7's code face was absent from the one surface
+ * Re-measured on Codex 26.917 ("OWL") in
+ * docs/research/owl-token-inventory.md §2: the only body-scoped collision left is
+ * the benign '.electron-opaque body' re-point of
+ * --app-color-background-elevated-primary to its -opaque twin, the same pattern
+ * this note already called harmless — now under the '--app-' name, and still
+ * gated on a class this window does not carry. --vscode-editor-font-family
+ * itself was READ but DEFINED NOWHERE on the sampled screens, i.e. this specific
+ * collision was not reproduced there — but no terminal or diff was open on those
+ * samples either, so that is unmeasured, not cleared, and this rule stays.
+ *
+ * Our block above declares this on the mode scope ([data-theme] on <html>).
+ * Custom properties INHERIT, so a value set on body wins for body and everything
+ * under it no matter what <html> says — this is not a specificity contest, and
+ * !important on the html-scoped declaration cannot win it on its own. Historical
+ * consequence, pre-OWL: the diff and terminal panels rendered in ui-monospace
+ * (Consolas on Windows), so D-0001-7's code face was absent from the one surface
  * most made of code while every colour around it was correctly themed.
  *
- * Same shape as D-0001-12, one level down: that one handled Codex writing tokens
- * inline on <html>, and nobody checked whether it also wrote any on <body>. A
- * corpus sweep says it sets 17 custom properties there and exactly two collide
- * with this theme. The other, --color-background-elevated-primary, is benign —
- * it re-points our token to our own --color-background-elevated-primary-opaque,
- * which this emitter always gives the same value, and its rule is gated on
- * .electron-opaque which this window does not carry. It is listed here so the
- * next person does not have to re-derive that it is safe.
- *
- * Matching Codex's own selector shape (both land on body at equal specificity)
- * means later-wins would already carry it; the !important makes it independent
- * of sheet order. */
-.electron-dark body,
-.electron-light body {
+ * Same shape as D-0004-2's inline-style history, one level down: that one
+ * handled tokens Codex wrote inline on <html>; this one handles a token Codex
+ * writes directly on <body>, which the html-scoped rule can never reach by
+ * inheritance alone regardless of specificity or origin. Matching Codex's own
+ * selector shape (both land on body) means later-wins would already carry it;
+ * the !important makes it independent of sheet order. */
+${ANY_MODE_SCOPE} body {
   --vscode-editor-font-family: ${mono.stack} !important;
 }`;
 
@@ -292,12 +311,9 @@ function buildTypographyBlock(recipe) {
  * VERIFY BY LOOKING AT A LIVE TERMINAL -- type a command, move the cursor,
  * drag a selection. Correct glyphs with a misaligned cursor is the signature of
  * a measurement/paint split, and no contrast figure will show it. */
-.electron-dark .xterm,
-.electron-light .xterm,
-.electron-dark .xterm-rows,
-.electron-light .xterm-rows,
-.electron-dark .xterm-char-measure-element,
-.electron-light .xterm-char-measure-element {
+${ANY_MODE_SCOPE} .xterm,
+${ANY_MODE_SCOPE} .xterm-rows,
+${ANY_MODE_SCOPE} .xterm-char-measure-element {
   font-family: ${mono.stack} !important;
 }`;
 
@@ -314,17 +330,15 @@ function buildTypographyBlock(recipe) {
  * font-optical-sizing lets the browser drive it from the rendered size, which is
  * what a display face is for. The old rule pinned 'opsz' 14 because Fraunces was
  * doing double duty as the UI face; that constraint is gone with the split. */
-${headingSelector(ROOT_CLASSES.dark, HEADING_CLASSES)},
-${headingSelector(ROOT_CLASSES.light, HEADING_CLASSES)} {
+${headingSelector(ANY_MODE_SCOPE, HEADING_CLASSES)} {
   font-family: ${display.stack} !important;
-  font-optical-sizing: ${display.opticalSizing};
-  font-variation-settings: ${display.variationSettings};
+  font-optical-sizing: ${display.opticalSizing} !important;
+  font-variation-settings: ${display.variationSettings} !important;
 }`;
 
-  const codeRule = `.electron-dark :is(pre, code, kbd, samp),
-.electron-light :is(pre, code, kbd, samp) {
-  font-family: ${mono.stack};
-  font-variation-settings: ${mono.variationSettings};
+  const codeRule = `${ANY_MODE_SCOPE} :is(pre, code, kbd, samp) {
+  font-family: ${mono.stack} !important;
+  font-variation-settings: ${mono.variationSettings} !important;
 }`;
 
   return `${rootRule}
@@ -344,7 +358,7 @@ ${codeRule}`;
 // regeneration — or a future recipe with a different accent token — recolours
 // this layer automatically.
 function buildLayer2Block(recipe) {
-  const accent = `var(--color-${recipe.accent.token})`;
+  const accent = `var(${tokenProperty(recipe.accent.token)})`;
   return `/*
  * Layer 2 — Named-hook rules (the "character pass").
  *
@@ -354,13 +368,15 @@ function buildLayer2Block(recipe) {
  *
  * Every rule here decorates CHROME — title bar, scrollbars, popovers, selection.
  * None of it puts luminance variation behind body text, so D-0001-6 and the
- * 152/152 contrast proof are untouched. That scoping is the whole reason this
- * layer is permitted; do not extend it onto a content surface.
+ * palette's own contrast proof are untouched. That scoping is the whole reason
+ * this layer is permitted; do not extend it onto a content surface.
  *
  * The accent is always read through ${accent} so a
  * palette regeneration recolours this layer automatically.
  *
- * NO STRUCTURAL SELECTORS — re-derived 2026-08-01 against the running app.
+ * NO STRUCTURAL SELECTORS beyond the two declared landmarks below — re-derived
+ * 2026-08-01 against the running app and unaffected by the OWL rename, which
+ * touched custom-property names and the mode hook, not Codex's markup.
  *
  * This layer originally targeted four named classes from
  * docs/specs/customizable-ui-inventory.md §Tier 2. Gate 0 found that ALL FOUR
@@ -384,18 +400,16 @@ function buildLayer2Block(recipe) {
  */
 
 /* Selection — no landmark required, so this is the layer's most durable rule. */
-.electron-dark ::selection,
-.electron-light ::selection {
-  background: color-mix(in oklab, ${accent} 34%, transparent);
-  color: var(--color-text-primary);
+${ANY_MODE_SCOPE} ::selection {
+  background: color-mix(in oklab, ${accent} 34%, transparent) !important;
+  color: var(${tokenProperty('text-primary')}) !important;
 }
 
 /* Scrollbars. \`scrollbar-color\` is a standard property and inherits, so it
  * reaches every scroll container without a structural selector. */
-.electron-dark,
-.electron-light {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, ${accent} 45%, transparent) transparent;
+${ANY_MODE_SCOPE} {
+  scrollbar-width: thin !important;
+  scrollbar-color: color-mix(in oklab, ${accent} 45%, transparent) transparent !important;
 }
 
 /* HOOK — --codex-titlebar-tint. The app's own title-bar tint variable, read 3×
@@ -403,25 +417,22 @@ function buildLayer2Block(recipe) {
  * measured, supported replacement for the dead .app-header-tint landmark: the
  * title bar's rule is \`--header-tint: var(--codex-titlebar-tint, transparent)\`,
  * so one custom property tints it with no selector to go stale. */
-.electron-dark,
-.electron-light {
-  --codex-titlebar-tint: var(--color-background-application-menu) !important;
+${ANY_MODE_SCOPE} {
+  --codex-titlebar-tint: var(${tokenProperty('background-application-menu')}) !important;
 }
 
 /* HOOKS — the composer tray. Two more variables Codex reads and never defines
  * (\`background\` and \`border\`/\`border-color\` on the tray above the composer).
  * The composer was one of the three regions Gate 0 saw stay stock. */
-.electron-dark,
-.electron-light {
-  --composer-top-tray-background: var(--color-background-elevated-primary) !important;
-  --composer-top-tray-border: 1px solid var(--color-border) !important;
+${ANY_MODE_SCOPE} {
+  --composer-top-tray-background: var(${tokenProperty('background-elevated-primary')}) !important;
+  --composer-top-tray-border: 1px solid var(${tokenProperty('border')}) !important;
 }
 
 /* HOOK — --app-shell-tab-background. Read for a background-color and a gradient
  * stop on the shell tabs. */
-.electron-dark,
-.electron-light {
-  --app-shell-tab-background: var(--color-background-surface-under) !important;
+${ANY_MODE_SCOPE} {
+  --app-shell-tab-background: var(${tokenProperty('background-surface-under')}) !important;
 }
 
 /*
@@ -430,9 +441,9 @@ function buildLayer2Block(recipe) {
  * D-0001-13 — the theme must PAINT the sidebar; no token override can.
  *
  * Measured 2026-08-02 in the running app, in confirmed light mode
- * (rootClass=electron-light), walking the ancestor chain to <html>: EVERY
- * ancestor of the sidebar is background-color rgba(0,0,0,0), alpha 0. Nothing
- * in the document paints it. Codex's own rule that would is
+ * (pre-OWL: rootClass=electron-light), walking the ancestor chain to <html>:
+ * EVERY ancestor of the sidebar is background-color rgba(0,0,0,0), alpha 0.
+ * Nothing in the document paints it. Codex's own rule that would is
  *
  *   [data-codex-window-type=electron]:not([data-codex-window-chrome=application-menu])
  *     .app-shell-left-panel { background: ... }
@@ -441,7 +452,9 @@ function buildLayer2Block(recipe) {
  * :not() excludes this window exactly. On Windows the main window owns the
  * application menu (File/Edit/View/Help), so Codex deliberately declines to
  * paint that panel and lets the OS window material — Windows 11 Mica/acrylic —
- * show through.
+ * show through. This selector fact is a fact about data-codex-window-* markup,
+ * which the OWL rename did not touch (only [data-theme] and the --color- /
+ * --app-color- primitive names moved).
  *
  * WHAT THE OWNER SAW. A "pale mint-green sidebar" in light mode. It is the
  * DESKTOP WALLPAPER, composited through the transparent panel. Sampled from the
@@ -468,22 +481,20 @@ function buildLayer2Block(recipe) {
  * build hash. If Codex renames it, the panel returns to the stock translucent
  * look: the pre-fix appearance, not breakage.
  *
- * WHY !important HERE, on a real property rather than a token definition.
- * Codex's own rule above scores (0,3,0) — two attribute selectors plus a class —
- * where '.electron-light .app-shell-left-panel' scores (0,2,0). On THIS window
- * that rule does not match, so nothing competes. On a window WITHOUT the
- * application-menu chrome it does match and would outrank us, and the macOS
- * build is the obvious such case. This is not verified on macOS (no access), so
- * the declaration is made unconditionally rather than assuming a platform
- * difference that has not been measured. Cross-platform verification remains
- * outstanding per docs/ENGINEERING.md.
+ * WHY !important HERE, on a real property rather than a token definition. Under
+ * D-0004-2 every declaration in this stylesheet is !important regardless of
+ * selector specificity or CSS origin, which is sufficient on its own. That
+ * supersedes the pre-OWL specificity contest this note originally reasoned
+ * through (Codex's own rule scored higher than '.electron-light
+ * .app-shell-left-panel' on a window WITHOUT the application-menu chrome, the
+ * likely macOS case) — kept here as background, not as the live justification:
+ * cross-platform verification remains outstanding per docs/ENGINEERING.md.
  *
- * The value is --color-background-surface-under, which palette-engine.mjs
+ * The value is --app-color-background-surface-under, which palette-engine.mjs
  * derives for exactly this job ("the sidebar sits a step BELOW the ground").
  */
-.electron-dark .app-shell-left-panel,
-.electron-light .app-shell-left-panel {
-  background: var(--color-background-surface-under) !important;
+${ANY_MODE_SCOPE} .app-shell-left-panel {
+  background: var(${tokenProperty('background-surface-under')}) !important;
 }
 
 /*
@@ -501,7 +512,8 @@ function buildLayer2Block(recipe) {
  * brass mark that says "you are here".
  *
  * THE HOOKS, both measured in the running app on a screen with an open
- * conversation (28 sidebar rows, exactly one active):
+ * conversation (28 sidebar rows, exactly one active), and re-confirmed present
+ * on Codex 26.917 in docs/research/owl-token-inventory.md §5:
  *
  *   [data-app-action-sidebar-thread-active="true"]   Codex's own app-action
  *                                                    contract name — authored
@@ -521,24 +533,22 @@ function buildLayer2Block(recipe) {
  *
  * ACCENT DISCIPLINE. This is a 2px rule on ONE row, not a fill. The design
  * floor's "one accent, used sparingly, never as a background fill" holds: the
- * row's own surface stays --color-background-button-secondary-hover, which the
- * palette already solves and which every ink tier is already audited against.
- * No contrast figure changes, because no text sits on the brass.
+ * row's own surface stays --app-color-background-button-secondary-hover, which
+ * the palette already solves and which every ink tier is already audited
+ * against. No contrast figure changes, because no text sits on the brass.
  */
-.electron-dark .sidebar-item[data-app-action-sidebar-thread-active="true"]::before,
-.electron-dark .sidebar-item[aria-current="page"]::before,
-.electron-light .sidebar-item[data-app-action-sidebar-thread-active="true"]::before,
-.electron-light .sidebar-item[aria-current="page"]::before {
-  content: "";
-  position: absolute;
-  inset-inline-start: 0;
-  top: 50%;
-  height: 16px;
-  width: 2px;
-  border-radius: 1px;
-  transform: translateY(-50%);
-  background: ${accent};
-  pointer-events: none;
+${ANY_MODE_SCOPE} .sidebar-item[data-app-action-sidebar-thread-active="true"]::before,
+${ANY_MODE_SCOPE} .sidebar-item[aria-current="page"]::before {
+  content: "" !important;
+  position: absolute !important;
+  inset-inline-start: 0 !important;
+  top: 50% !important;
+  height: 16px !important;
+  width: 2px !important;
+  border-radius: 1px !important;
+  transform: translateY(-50%) !important;
+  background: ${accent} !important;
+  pointer-events: none !important;
 }`;
 }
 
@@ -548,14 +558,15 @@ function buildLayer2Block(recipe) {
 // proves are literally the stops this renders.
 function renderScrimStop([fraction, alpha]) {
   const fractionPct = Math.round(fraction * 100);
+  const surfaceVar = `var(${tokenProperty('background-surface')})`;
   if (alpha >= 1) {
     // color-mix(in srgb, X 100%, transparent) IS X — this is not a special
     // case, it is a correct simplification, so alpha===1 renders the surface
     // colour directly rather than through a no-op color-mix().
-    return `var(--color-background-surface) ${fractionPct}%`;
+    return `${surfaceVar} ${fractionPct}%`;
   }
   const alphaPct = Math.round(alpha * 100);
-  return `color-mix(in srgb, var(--color-background-surface) ${alphaPct}%, transparent) ${fractionPct}%`;
+  return `color-mix(in srgb, ${surfaceVar} ${alphaPct}%, transparent) ${fractionPct}%`;
 }
 
 // heroLayerValue is the second background-image layer's CSS value — either
@@ -567,22 +578,22 @@ function buildHeroModeRule(recipe, mode, heroLayerValue) {
     const rendered = renderScrimStop(s);
     return `      ${rendered}${i === stops.length - 1 ? '),' : ','}`;
   });
-  const rootClass = ROOT_CLASSES[mode];
-  return `.${rootClass} .\\[container-name\\:home-main-content\\]:has(.heading-xl) {
+  const scope = MODE_SCOPE[mode];
+  return `${scope} .\\[container-name\\:home-main-content\\]:has(.heading-xl) {
   /* FULL BLEED, under a computed scrim — two layers, scrim first (on top).
      The image fills the panel; the scrim is what makes text over it provable. */
   background-image:
     linear-gradient(to bottom,
 ${stopLines.join('\n')}
-    ${heroLayerValue};
-  background-size: cover, cover;
+    ${heroLayerValue} !important;
+  background-size: cover, cover !important;
   /* '${recipe.hero.position}', not 'top': on a tall panel cover scales by height, so nothing is
      cropped vertically and this only centres horizontally. On a SHORT panel it
      crops top and bottom evenly, which drops the lamp — the brightest part of
      the frame — instead of holding it behind the heading. 'top center' would do
      the opposite and put the worst pixels where the text is. */
-  background-position: ${recipe.hero.position}, ${recipe.hero.position};
-  background-repeat: no-repeat, no-repeat;
+  background-position: ${recipe.hero.position}, ${recipe.hero.position} !important;
+  background-repeat: no-repeat, no-repeat !important;
 }`;
 }
 
@@ -602,10 +613,10 @@ ${stopLines.join('\n')}
 // consumers of the identical bytes. Mapping heroB64 into each mode's rule
 // inline, as the pre-fix code did, wrote the ~2M-char base64 string twice —
 // measured at 92.7% of that theme's 4.3MB stylesheet. The fix is to write
-// the payload once, on the container element itself (not :root — this is a
-// THEME-PRIVATE payload, and a global custom property name for it would be
-// visible, and collidable, from every other rule in the cascade for no
-// benefit: nothing outside this container ever needs to read it).
+// the payload once, on the container element itself (not the mode scope —
+// this is a THEME-PRIVATE payload, and a global custom property name for it
+// would be visible, and collidable, from every other rule in the cascade for
+// no benefit: nothing outside this container ever needs to read it).
 function buildHeroBlock(recipe, heroB64) {
   const heroUrl = `url(data:${recipe.hero.mime};base64,${heroB64})`;
 
@@ -617,18 +628,19 @@ ${rules.join('\n\n')}`;
 
   // Two-plus consumers: emit the payload once, referenced by both mode
   // rules through a custom property scoped to the container that paints it.
-  // The container selector carries no root-class prefix (unlike the mode
-  // rules below it) because only one of .electron-dark/.electron-light is
-  // ever present on <html> at a time (D-0001-2's own root-class scoping),
-  // so this single declaration reaches whichever mode is active without
-  // needing to be duplicated per mode itself — duplicating THIS rule would
-  // reintroduce exactly the repetition it exists to remove.
+  // The container selector carries no mode-scope prefix (unlike the mode
+  // rules below it) because only one of [data-theme="dark"]/[data-theme="light"]
+  // is ever present on <html> at a time (D-0004-1's own mode-scope selector
+  // matches exactly one at once), so this single declaration reaches
+  // whichever mode is active without needing to be duplicated per mode
+  // itself — duplicating THIS rule would reintroduce exactly the repetition
+  // it exists to remove.
   const heroVarRule = `.\\[container-name\\:home-main-content\\]:has(.heading-xl) {
   /* The hero payload, written ONCE and shared by every mode rule below via
      var(--codexterity-hero) — see D-0003-9(b) in emit-theme.mjs's
      buildHeroBlock for why this indirection exists only when the hero has
      more than one mode. */
-  --codexterity-hero: ${heroUrl};
+  --codexterity-hero: ${heroUrl} !important;
 }`;
   const rules = recipe.hero.modes.map((mode) => buildHeroModeRule(recipe, mode, 'var(--codexterity-hero)'));
   return `${recipe.hero.prose}
@@ -654,8 +666,8 @@ const MOTION_NOTE = `/*
 // ── The full stylesheet ──────────────────────────────────────────────────────
 function buildCss(recipe, { dark, light, synDark, synLight, groundHex, fontFaces, heroB64 }) {
   const header = buildHeader(recipe, groundHex);
-  const darkBlock = tokenBlock(ROOT_CLASSES.dark, dark, synDark, recipe.voice.modeLabels.dark, recipe);
-  const lightBlock = tokenBlock(ROOT_CLASSES.light, light, synLight, recipe.voice.modeLabels.light, recipe);
+  const darkBlock = tokenBlock(MODE_SCOPE.dark, dark, synDark, recipe.voice.modeLabels.dark, recipe);
+  const lightBlock = tokenBlock(MODE_SCOPE.light, light, synLight, recipe.voice.modeLabels.light, recipe);
   const shapeBlock = buildShapeBlock(recipe);
   const typographyBlock = buildTypographyBlock(recipe);
   const layer2Block = buildLayer2Block(recipe);
@@ -695,17 +707,15 @@ const asset = (dir, p) => ({ path: p, bytes: statSync(dir + p).size });
 // a check a theme author is trusted to run separately.
 //
 // This refusal is ALSO the answer to "how does an audit bind to a recipe".
-// audit.mjs's CLI sweeps a registry of GROUNDS (navy and oak) — 68 checks x
-// 2 modes x 2 grounds = 272 — and 136 of those prove a ground that ships in
-// NO theme. So `272/272` is an ENGINE-level proof, not a per-theme one, and
-// a theme reusing an existing ground adds no checks to it. The per-theme
-// proof is this refusal, which audits exactly the two palettes THIS recipe
-// produces and nothing else.
+// audit.mjs's CLI sweeps a registry of GROUNDS (navy and oak) x both modes x
+// CHECKS — an ENGINE-level proof, not a per-theme one, and a theme reusing an
+// existing ground adds no checks to it. The per-theme proof is this refusal,
+// which audits exactly the two palettes THIS recipe produces and nothing else.
 //
 // EXPORTED so it can be unit-tested directly against a synthetic failing
 // palette without touching palette-engine.mjs (both real GROUNDS entries are
-// 272/272 clean) — this is the SAME function emitTheme() calls below, not a
-// copy, so a test against it proves what the emitter itself does.
+// clean per audit.mjs) — this is the SAME function emitTheme() calls below,
+// not a copy, so a test against it proves what the emitter itself does.
 export function assertPalettesPassAA(modes) {
   const summary = {};
   for (const [name, p, s] of modes) {

@@ -256,7 +256,9 @@ const LANDMARKS = [
   {
     name: 'sidebar-panel',
     selector: '.app-shell-left-panel',
-    probe: '.electron-light .app-shell-left-panel',
+    // Plan 0004 M2 — the end of ANY_MODE_SCOPE (codex-surface.mjs) plus the
+    // landmark class. Was '.electron-light .app-shell-left-panel' pre-OWL.
+    probe: '[data-theme]) .app-shell-left-panel',
     governedBy: 'D-0001-13',
     required: true,
   },
@@ -270,7 +272,9 @@ const LANDMARKS = [
   {
     name: 'terminal',
     selector: '.xterm, .xterm-rows, .xterm-char-measure-element',
-    probe: '.electron-light .xterm-char-measure-element',
+    // Plan 0004 M2 — same shape as sidebar-panel's probe, above. Was
+    // '.electron-light .xterm-char-measure-element' pre-OWL.
+    probe: '[data-theme]) .xterm-char-measure-element',
     governedBy: 'D-0001-19',
     required: false,
   },

@@ -13,6 +13,7 @@
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, extname } from 'node:path';
+import { MODE_SCOPE } from '../palette/codex-surface.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const THEME = resolve(ROOT, 'themes/captains-cabin');
@@ -20,18 +21,36 @@ const OUT = process.argv[2] || resolve(ROOT, 'docs/mockups/0002-captains-cabin-c
 
 // ── read the shipped theme ───────────────────────────────────────────────────
 const css = readFileSync(resolve(THEME, 'theme.css'), 'utf8');
-function tokens(selector) {
-  const m = new RegExp(`\\${selector}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css);
-  if (!m) throw new Error(`could not find ${selector} in theme.css`);
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Plan 0004 M2 — the block to parse is now MODE_SCOPE.dark/.light
+// (codex-surface.mjs), not a literal '.electron-dark'/'.electron-light'
+// class, and every value now carries a trailing '!important' (D-0004-2)
+// this parser must strip. NORMALIZATION: this mockup's OWN template below
+// (varBlock, and every hand-written 'var(--color-*)' reference in its CSS)
+// keeps addressing tokens under their PRE-OWL '--color-*' spelling — that is
+// an internal convention of THIS FILE, not a claim about what Codex itself
+// reads, so a renamed '--app-color-X' from theme.css is folded back to
+// '--color-X' here rather than rewriting every var() reference in the
+// template below. tokenProperty() in codex-surface.mjs is the inverse of
+// this normalization and is not reused here because it goes the other
+// direction (bare key -> real CSS name); this parser goes real CSS name ->
+// this file's own bare-'--color-' convention.
+function tokens(scope) {
+  const m = new RegExp(`${escapeRegExp(scope)}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css);
+  if (!m) throw new Error(`could not find ${scope} in theme.css`);
   const out = {};
   for (const line of m[1].split('\n')) {
-    const t = /^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);/.exec(line);
-    if (t) out[t[1]] = t[2].trim();
+    const t = /^\s*(--[a-z0-9-]+)\s*:\s*(.+?)\s*!important\s*;/.exec(line);
+    if (!t) continue;
+    const rawName = t[1];
+    const name = rawName.startsWith('--app-color-') ? `--color-${rawName.slice('--app-color-'.length)}` : rawName;
+    out[name] = t[2].trim();
   }
   return out;
 }
-const DARK = tokens('.electron-dark');
-const LIGHT = tokens('.electron-light');
+const DARK = tokens(MODE_SCOPE.dark);
+const LIGHT = tokens(MODE_SCOPE.light);
 for (const [name, t] of [['dark', DARK], ['light', LIGHT]]) {
   if (!t['--color-background-surface']) throw new Error(`${name} block parsed but has no surface token`);
 }

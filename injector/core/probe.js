@@ -1311,6 +1311,13 @@ function buildProbeScript(options) {
       viewport: { w: W, h: H },
       elementCount: all.length,
       rootClass: document.documentElement.className || '(none)',
+      // Plan 0004 fact 5 / D-0004-1 — on OWL the mode hook is no longer a
+      // root CLASS at all (rootClass reads "(none)" above); it moved to
+      // these two root ATTRIBUTES. Both are read here alongside rootClass so
+      // a report from either era is self-describing rather than silently
+      // reporting an empty class as if it meant "no theme applied".
+      dataTheme: document.documentElement.getAttribute('data-theme') || '(unset)',
+      windowType: document.documentElement.getAttribute('data-codex-window-type') || '(unset)',
       bodyClass: document.body ? document.body.className || '(none)' : '(no body)',
       ourStyleTagPresent: !!document.getElementById('codexterity-theme'),
       sheetCount: document.styleSheets.length,
@@ -1389,6 +1396,7 @@ async function runProbe(webContents, log, outDir, tag) {
   log(`  PROBE ${tag} -> ${outPath}`);
   log(`    url=${m.url} elements=${m.elementCount} sheets=${m.sheetCount} ` +
       `parsedRules=${m.parsedRuleCount} cssBytes=${m.totalCssBytes} ourStyleTag=${m.ourStyleTagPresent}`);
+  log(`    rootClass=${m.rootClass} dataTheme=${m.dataTheme} windowType=${m.windowType}`);
   for (const s of report.sheets) {
     log(`    sheet ${s.method} ${s.bytes}B ${s.href}${s.error ? ' ERROR=' + s.error : ''}`);
   }

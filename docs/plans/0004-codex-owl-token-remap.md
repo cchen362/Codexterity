@@ -1,8 +1,9 @@
 # Plan 0004 — Re-target the theme at Codex's new token layer (the "OWL" update)
 
-**Status:** **OPEN. M1 DONE 2026-09-23; M2 is next.** Owner answered Q1 and Q2 (see "Owner
-rulings"). M1 measured the new Codex and found a rename, not a redesign — read its outcome under M1
-before scoping M2. Nothing that ships has changed yet.
+**Status:** **OPEN. M1 and M2 DONE 2026-09-23; M3 is next.** Owner answered Q1 and Q2 (see "Owner
+rulings"). M1 measured the new Codex and found a rename, not a redesign. M2 re-targeted the engine,
+and Captain's Cabin's regenerated `theme.css` is proven painted in an isolated instance. It is not
+yet rebuilt into a package or installed (M4). Read M2's outcome before scoping M3.
 
 **Depends on:** [Plan 0001](0001-captains-cabin-architecture.md) (architecture authority — D-0001-2's
 styling strategy is the thing this plan amends), [Plan 0003](0003-image-led-theme-authoring.md) (the
@@ -253,6 +254,57 @@ Ordered so nothing is re-mapped by guesswork: measure first, then change, then p
   settled check shows the theme **painted** (surface, ink, brass, sidebar, title-bar tint, the three
   faces by `document.fonts.check()`), not merely defined, in dark mode, and in light mode if M1(f)
   allows.
+
+  **DONE 2026-09-23. Gate met.** Captain's Cabin is **painted** on Codex `26.917` in both modes, on
+  Codex home, a Codex thread, and the ChatGPT Chat and Work homes. The proof is an isolated themed
+  run (`node tools/inventory/run-inventory.mjs --theme themes/captains-cabin`, which now loads the
+  real injector) that samples computed paint and captures every screen. Measured, dark / light:
+  ground `#0E141F` / `#F0E7D5`, sidebar `#0B111C` / `#EBE2D0`, ink `#F4EAD4` / `#182336`,
+  active-row brass `#C0A454` / `#896D15`, title-bar tint `#151B26`. Literata, Fraunces and
+  Monaspace Neon each exist as a loaded `FontFace`, not merely `fonts.check()` true. Headings paint
+  in Fraunces, body in Literata, inline code in Monaspace, and the citation link paints brass.
+  Captures were reviewed by eye. The injector log reads `injected OK via insertCSS` on every window.
+  `npm test` **347/347** (330 → +17). `audit.mjs` **292/292** (+5 checks, below). The emitter's AA
+  refusal (73/73 per mode) and probe assertion pass for **both** recipes; Deep Navy Portrait was
+  emitted into a temp directory only, since its rebuild is M4. The byte gate moved deliberately in
+  this commit: `theme.css` SHA-256 `352957…9af8` (482,912 bytes). `syntax.json` (`36DAD6…1FEB`) and
+  `manifest.json` (`0E44FF…5DB5`) are **unchanged**, because neither encodes a selector.
+  **What changed:** `codex-surface.mjs` now owns every name. `MODE_SCOPE` / `ANY_MODE_SCOPE` replace
+  `ROOT_CLASSES`, and `tokenProperty()` decides `--color-` vs `--app-color-`. The emitter's 34 literal
+  root classes and every `var()` it writes interpolate from there. Each recipe changed two probes.
+  The records are **D-0004-1** (selector and names), **D-0004-2** (`!important` everywhere) and
+  **D-0004-3** (new Codex only), with D-0001-2, -12 and -18 amended in `docs/DECISIONS.md`.
+  **Deviations from the scope above, each measured:**
+  1. **`insertCSS` now works, and that changed the cascade argument.** Fact 1 read it as mere health.
+     But `insertCSS` installs a *user*-origin sheet, where only `!important` beats author CSS. So
+     M1's "unlayered wins by cascade order" (inventory §2) described the wrong origin. The rules
+     that lacked `!important` (code face, selection, scrollbars, the active-row mark, the hero) would
+     have lost. Every declaration is now `!important`, and a test enforces it (D-0004-2).
+  2. **The composer send control is ink, not brass.** Fact 15 and inventory §6.4 said brass.
+     D-0001-15 records it painted ink on the build the owner approved, and this plan's goal is
+     parity.
+  3. **Five component tokens M1's map could not see**, found by the first themed run still
+     painting stock. They are the Chat/Work mode toggle (track, selected pill, border, inactive
+     label) and the utility bar under every home composer. Codex sets them to per-mode literals
+     that no primitive feeds. They now take solved roles. The utility bar is now opaque: stock dark
+     is a 3% wash, so on a hero theme its labels sat over the photograph unproven (D-0003-7's
+     trip-wire shape). The new instrument is
+     [`tools/inventory/unmoved-tokens.mjs`](../../tools/inventory/unmoved-tokens.mjs): it compares a
+     stock run with a themed run and lists every colour token the theme did not move.
+  4. **Audit grew by five checks** for the new pairings: tip badge, error and warning ink on a
+     popover, error ink on code, and the send glyph on its ink pill. The total is 272 → 292 (5 × 2
+     modes × 2 grounds).
+  5. **Three Layer 2 hooks needed no replacement.** `.app-header-tint`, `.popupContent` and the top
+     fade had no rule in the emitter to port (Gate 0 had already replaced them with Codex's own tint
+     variables, all four of which are still read on OWL). Parity holds without a Radix hook.
+  **Handed to M3, with the census as the instrument:** the census lists 169 tokens that are read
+  somewhere but painted on no sampled screen. Almost all are ChatGPT's design-system palette: the
+  danger / success / info / discovery / caution variants, the user-message bubble, text selection,
+  and the `primary-solid` hover. They are candidates for the screens M3 opens. Also for M3: the
+  **app-update pill** (white label and glyph, shown only while an update is waiting), and
+  `--app-color-simple-scrim`, which is deliberately left stock (a neutral ink wash; brass would be a
+  fill). **Not verified in M2:** the terminal and a diff (still unrun), and the owner's real
+  shortcut launch (M4).
 
 - **M3 — The Chat / Work surfaces. Expected (owner ruling 1); confirmed after M1.**
   Needed if M1 shows those areas do not simply follow the core tokens. Full coverage or nothing:

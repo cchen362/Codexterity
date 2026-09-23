@@ -46,7 +46,9 @@ const stock = (report, name) => {
 const HASHED_COMPONENT = /^\._[A-Za-z][\w-]*_[a-z0-9]{5}_\d+/;
 
 const css = fs.readFileSync(themeCss, 'utf8');
-const overridden = [...new Set([...css.matchAll(/(--color-[a-z0-9-]+)\s*:/g)].map((m) => m[1]))];
+// Both spellings: since Plan 0004 M2 a theme writes most primitives under Codex's
+// OWL-era --app-color-* names, and the rest under --color-*.
+const overridden = [...new Set([...css.matchAll(/(--(?:app-)?color-[a-z0-9-]+)\s*:/g)].map((m) => m[1]))];
 
 const rows = [];
 const tally = { renamed: 0, 'same name': 0, 'component-only': 0, gone: 0 };

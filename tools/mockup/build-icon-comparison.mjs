@@ -25,6 +25,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { oklchToHex } from '../palette/palette-engine.mjs';
+import { MODE_SCOPE, tokenProperty } from '../palette/codex-surface.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
@@ -39,19 +40,24 @@ const OUT = path.join(REPO, 'docs', 'mockups', '0004-shortcut-icon-comparison.ht
 const css = fs.readFileSync(THEME_CSS, 'utf8');
 
 /**
- * Pull one token's value out of a specific root-theme block. theme.css declares
- * `.electron-dark { … }` and `.electron-light { … }` with the SAME token names and
- * different values, so a whole-file regex would silently return whichever came
- * first. Scope the search to the requested block.
+ * Pull one token's value out of a specific mode-scope block. theme.css declares
+ * one block per mode (MODE_SCOPE.dark / MODE_SCOPE.light, codex-surface.mjs) with
+ * the SAME token names and different values, so a whole-file regex would
+ * silently return whichever came first. Scope the search to the requested
+ * block, and resolve `name` (this engine's bare palette-role key, e.g.
+ * 'background-surface') to its real CSS property name via tokenProperty() —
+ * Plan 0004 M2 renamed 60 of 77 such properties to '--app-color-*'.
  */
 function token(mode, name) {
-  const blockStart = css.indexOf(`.electron-${mode}`);
-  if (blockStart === -1) throw new Error(`theme.css has no .electron-${mode} block`);
+  const scope = MODE_SCOPE[mode];
+  const blockStart = css.indexOf(`${scope} {`);
+  if (blockStart === -1) throw new Error(`theme.css has no ${scope} block`);
   const blockEnd = css.indexOf('\n}', blockStart);
-  if (blockEnd === -1) throw new Error(`.electron-${mode} block is unterminated in theme.css`);
+  if (blockEnd === -1) throw new Error(`${scope} block is unterminated in theme.css`);
   const block = css.slice(blockStart, blockEnd);
-  const m = block.match(new RegExp(`--color-${name}\\s*:\\s*(#[0-9A-Fa-f]{3,8})`));
-  if (!m) throw new Error(`token --color-${name} not found in .electron-${mode}`);
+  const cssName = tokenProperty(name);
+  const m = block.match(new RegExp(`${cssName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*(#[0-9A-Fa-f]{3,8})`));
+  if (!m) throw new Error(`token ${cssName} not found in ${scope}`);
   return m[1];
 }
 

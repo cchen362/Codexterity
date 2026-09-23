@@ -17,12 +17,15 @@ const REAL_THEME_DIR = path.join(REPO_ROOT, 'themes', 'captains-cabin') + path.s
 let emitTheme;
 let assertPalettesPassAA;
 let captainsCabin;
+let tokenProperty;
 
 before(async () => {
   const mod = await import(pathToFileURL(path.join(REPO_ROOT, 'tools', 'palette', 'emit-theme.mjs')).href);
   ({ emitTheme, assertPalettesPassAA } = mod);
   const recipeMod = await import(pathToFileURL(path.join(REPO_ROOT, 'tools', 'palette', 'recipes', 'captains-cabin.mjs')).href);
   captainsCabin = recipeMod.default;
+  const surfaceMod = await import(pathToFileURL(path.join(REPO_ROOT, 'tools', 'palette', 'codex-surface.mjs')).href);
+  ({ tokenProperty } = surfaceMod);
 });
 
 function makeTempDir() {
@@ -382,14 +385,16 @@ describe('a recipe declaring hero.modes = [dark, light] emits one hero rule per 
     fs.rmSync(tmpOut, { recursive: true, force: true });
   });
 
-  test('a hero rule is emitted under BOTH .electron-dark and .electron-light', () => {
-    assert.match(css, /\.electron-dark \.\\\[container-name\\:home-main-content\\\]:has\(\.heading-xl\) \{/);
-    assert.match(css, /\.electron-light \.\\\[container-name\\:home-main-content\\\]:has\(\.heading-xl\) \{/);
+  test('a hero rule is emitted under BOTH the dark and light mode scopes', () => {
+    // Plan 0004 M2 — mode selectors are now MODE_SCOPE.dark/.light
+    // (codex-surface.mjs), not '.electron-dark'/'.electron-light'.
+    assert.match(css, /:is\(\[data-codex-window-type\]\[data-theme="dark"\], \[data-codex-window-type\] \[data-theme="dark"\]\) \.\\\[container-name\\:home-main-content\\\]:has\(\.heading-xl\) \{/);
+    assert.match(css, /:is\(\[data-codex-window-type\]\[data-theme="light"\], \[data-codex-window-type\] \[data-theme="light"\]\) \.\\\[container-name\\:home-main-content\\\]:has\(\.heading-xl\) \{/);
   });
 
   test("each mode's own scrim stops appear in its own rule, and not the other mode's", () => {
-    const darkRuleStart = css.indexOf('.electron-dark .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
-    const lightRuleStart = css.indexOf('.electron-light .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    const darkRuleStart = css.indexOf(':is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]) .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    const lightRuleStart = css.indexOf(':is([data-codex-window-type][data-theme="light"], [data-codex-window-type] [data-theme="light"]) .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
     assert.ok(darkRuleStart >= 0 && lightRuleStart >= 0);
 
     // Rules are emitted dark-then-light (recipe.hero.modes order), so the
@@ -397,17 +402,22 @@ describe('a recipe declaring hero.modes = [dark, light] emits one hero rule per 
     const darkRuleText = css.slice(darkRuleStart, lightRuleStart);
     const lightRuleText = css.slice(lightRuleStart, lightRuleStart + 1000);
 
+    // Plan 0004 M2 -- 'background-surface' is one of the 60 tokens Codex
+    // renamed under '--app-' (docs/research/owl-token-inventory.md §3), so
+    // renderScrimStop() now reads it through tokenProperty() as
+    // '--app-color-background-surface', not '--color-background-surface'.
+    //
     // dark: [[0,0],[0.3,0.5],[1,0.5]] -> 50% alpha at the 30% and 100% stops.
-    assert.match(darkRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 50%, transparent\) 30%/);
-    assert.match(darkRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 50%, transparent\) 100%/);
+    assert.match(darkRuleText, /color-mix\(in srgb, var\(--app-color-background-surface\) 50%, transparent\) 30%/);
+    assert.match(darkRuleText, /color-mix\(in srgb, var\(--app-color-background-surface\) 50%, transparent\) 100%/);
     // light's own 40% alpha must NOT appear in the dark rule.
-    assert.doesNotMatch(darkRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 40%, transparent\)/);
+    assert.doesNotMatch(darkRuleText, /color-mix\(in srgb, var\(--app-color-background-surface\) 40%, transparent\)/);
 
     // light: [[0,0],[0.3,0.4],[1,0.4]] -> 40% alpha at the 30% and 100% stops.
-    assert.match(lightRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 40%, transparent\) 30%/);
-    assert.match(lightRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 40%, transparent\) 100%/);
+    assert.match(lightRuleText, /color-mix\(in srgb, var\(--app-color-background-surface\) 40%, transparent\) 30%/);
+    assert.match(lightRuleText, /color-mix\(in srgb, var\(--app-color-background-surface\) 40%, transparent\) 100%/);
     // dark's own 50% alpha must NOT appear in the light rule.
-    assert.doesNotMatch(lightRuleText, /color-mix\(in srgb, var\(--color-background-surface\) 50%, transparent\)/);
+    assert.doesNotMatch(lightRuleText, /color-mix\(in srgb, var\(--app-color-background-surface\) 50%, transparent\)/);
   });
 
   // D-0003-9(b) -- the payload is written ONCE, on a --codexterity-hero
@@ -432,8 +442,8 @@ describe('a recipe declaring hero.modes = [dark, light] emits one hero rule per 
 
     // Both mode rules must read the payload back through the variable --
     // this is what makes ONE embed sufficient for TWO rules that need it.
-    const darkRuleStart = css.indexOf('.electron-dark .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
-    const lightRuleStart = css.indexOf('.electron-light .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    const darkRuleStart = css.indexOf(':is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]) .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    const lightRuleStart = css.indexOf(':is([data-codex-window-type][data-theme="light"], [data-codex-window-type] [data-theme="light"]) .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
     const darkRuleText = css.slice(darkRuleStart, lightRuleStart);
     const lightRuleText = css.slice(lightRuleStart, lightRuleStart + 1000);
     assert.match(darkRuleText, /var\(--codexterity-hero\)/);
@@ -461,5 +471,141 @@ describe('a recipe declaring hero.modes = [dark, light] emits one hero rule per 
     assert.ok(!css.includes('BW_Jisoo'));
     assert.ok(!css.includes('deep-navy-portrait'));
     assert.ok(!css.includes('hero-sources'));
+  });
+});
+
+// =====================================================================
+// G. PLAN 0004 M2 — THE OWL REMAP. Codex 26.917 renamed the hooks this
+// theme hangs on: '.electron-dark'/'.electron-light' became
+// [data-theme="dark"|"light"] on a [data-codex-window-type] document, and 60
+// of 77 '--color-*' custom properties moved under '--app-'. These tests
+// guard the specific silent-failure shapes that change invites: a stray old
+// selector that quietly matches nothing, a var() reference to a name this
+// stylesheet never defines (an undefined custom property fails silently --
+// see docs/../MEMORY.md "An undefined CSS variable fails silently"), a
+// declaration that lost its !important on the rewrite, and the one token
+// (--color-text-quaternary) that no longer exists upstream at all.
+// =====================================================================
+
+// Shared parsing helpers, local to this describe block. Comments are
+// stripped first so a HISTORICAL quote (e.g. the D-0001-18 prose's
+// "'.electron-opaque body' re-point", which names a still-real, unrelated
+// Codex class, or the sidebar landmark's prose quoting the pre-OWL
+// specificity contest) never fails a test that is checking ACTUAL rules, not
+// prose. @font-face blocks are stripped separately because their
+// descriptors (font-weight ranges, font-style, font-display) cannot take
+// !important and are not part of what D-0004-2 governs.
+function stripComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+function stripFontFaceBlocks(text) {
+  return text.replace(/@font-face\s*\{[^{}]*\}/g, '');
+}
+// Every remaining rule in this stylesheet is a single, non-nested
+// '<selector> { <declarations> }' block (no @media, no nesting), so a
+// non-greedy match between the first '{' and its own '}' is exact -- this
+// would need to change if a future layer introduces a nested rule.
+function ruleBodies(text) {
+  const bodies = [];
+  const re = /\{([^{}]*)\}/g;
+  let m;
+  while ((m = re.exec(text))) bodies.push(m[1]);
+  return bodies;
+}
+// A plain body.split(';') is wrong here: a data: URI's OWN internal
+// semicolon-free syntax is safe, but its "image/webp;base64," MIME prefix
+// contains a literal ';' inside url(...), and a naive split cuts the
+// background-image declaration in half right there. Split only at
+// paren-depth 0, so a ';' inside url(...) or color-mix(...) does not count.
+function splitDeclarations(body) {
+  const out = [];
+  let cur = '';
+  let depth = 0;
+  for (const ch of body) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ';' && depth === 0) { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  if (cur.trim()) out.push(cur);
+  return out;
+}
+
+describe('Plan 0004 M2 -- the OWL token/selector remap, guarded against its own silent-failure shapes', () => {
+  let css;
+
+  before(() => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdx-emit-theme-owl-remap-'));
+    try {
+      const outDir = tmpDir + path.sep;
+      const result = emitTheme(captainsCabin, { outDir, assetsDir: REAL_THEME_DIR });
+      css = result.css;
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("no '.electron-' selector survives in the emitted Captain's Cabin CSS outside of a historical comment", () => {
+    // Checked against ACTUAL RULES only (comments stripped) -- prose is
+    // permitted, and required, to keep historical measurements like
+    // "rootClass=electron-light" and the quoted pre-OWL specificity contest.
+    // '.electron-opaque' is Codex's OWN class (D-0001-18), unrelated to the
+    // mode-hook rename this plan made, and is asserted separately below as a
+    // narrower, still-meaningful check: the OLD mode-hook classes this theme
+    // itself used to write must be gone.
+    const withoutComments = stripComments(css);
+    assert.ok(!withoutComments.includes('.electron-dark'), 'expected no .electron-dark selector in the emitted rules');
+    assert.ok(!withoutComments.includes('.electron-light'), 'expected no .electron-light selector in the emitted rules');
+  });
+
+  test('every var(--name) reference in the emitted CSS resolves to a custom property this stylesheet itself declares', () => {
+    // The allowlist for a name this stylesheet reads but never defines --
+    // Codex's own hooks it would be legitimate to read back after another
+    // rule sets them. Empty today: every var() this emitter writes is a
+    // token or alias it also declares (verified below), and the three
+    // Layer-2 HOOKS (--codex-titlebar-tint, --composer-top-tray-*,
+    // --app-shell-tab-background) are WRITE-only from this stylesheet's side
+    // -- Codex's own CSS is what reads them back, never us. Kept as a named,
+    // documented allowlist rather than an inline exception so a future
+    // legitimate case has one place to add its name.
+    const CODEX_OWN_HOOK_ALLOWLIST = new Set([]);
+
+    const withoutComments = stripComments(css);
+    const varRefs = new Set();
+    for (const m of withoutComments.matchAll(/var\((--[a-zA-Z0-9-]+)/g)) varRefs.add(m[1]);
+    const declared = new Set();
+    for (const m of withoutComments.matchAll(/(?:^|[\s{;])(--[a-zA-Z0-9-]+)\s*:/gm)) declared.add(m[1]);
+
+    const undefinedRefs = [...varRefs].filter((v) => !declared.has(v) && !CODEX_OWN_HOOK_ALLOWLIST.has(v));
+    assert.deepEqual(undefinedRefs, [], `every var() reference must resolve to a declared property or the allowlist; found undefined: ${JSON.stringify(undefinedRefs)}`);
+    assert.ok(varRefs.size > 0, 'expected at least one var() reference in the emitted CSS (sanity check on the parser itself)');
+  });
+
+  test('every declaration outside @font-face blocks ends with !important (D-0004-2)', () => {
+    const stripped = stripFontFaceBlocks(stripComments(css));
+    const offenders = [];
+    for (const body of ruleBodies(stripped)) {
+      for (const raw of splitDeclarations(body)) {
+        const d = raw.trim();
+        if (!d) continue;
+        if (!/!important$/.test(d)) offenders.push(d.replace(/\s+/g, ' ').slice(0, 120));
+      }
+    }
+    assert.deepEqual(offenders, [], `expected every declaration to end with !important, found: ${JSON.stringify(offenders)}`);
+  });
+
+  test('tokenProperty() maps a same-name key to --color-, a renamed key to --app-color-, and throws on text-quaternary', () => {
+    assert.equal(tokenProperty('text-primary'), '--color-text-primary');
+    assert.equal(tokenProperty('border'), '--color-border');
+    assert.equal(tokenProperty('background-surface'), '--app-color-background-surface');
+    assert.equal(tokenProperty('background-button-primary'), '--app-color-background-button-primary');
+    assert.throws(
+      () => tokenProperty('text-quaternary'),
+      /text-quaternary/
+    );
+  });
+
+  test("the emitted CSS contains no '--color-text-quaternary' (gone upstream on OWL)", () => {
+    assert.ok(!css.includes('--color-text-quaternary'));
   });
 });
