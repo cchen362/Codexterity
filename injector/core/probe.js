@@ -184,8 +184,100 @@ function handleBlock(prelude, body, sink, atProperties, condition) {
   }
 }
 
+/**
+ * Group every `--color-*` definition by (selector, condition, origin) and
+ * count how many distinct token names each group defines. Pure and defined
+ * at module level for the same reason as the parser above: it consumes the
+ * SAME `rules` array parseCss already produced, so it is unit-testable
+ * against a synthetic rule set in Node instead of only ever being exercised
+ * inside a live Codex window.
+ *
+ * This exists to answer Plan 0004's fact 7 in aggregate rather than per-name:
+ * an unlayered rule beats any `@layer` declaration regardless of specificity,
+ * and `:where(...)` carries zero specificity of its own — so "how many of
+ * Codex's --color-* definitions are layered, and how many sit behind a
+ * zero-specificity :where() selector" is the fact that decides whether the
+ * theme's own overrides need to out-specificity or out-layer them.
+ */
+function summarizeColorDefinitions(rules) {
+  const groups = {};       // key -> { selector, condition, origin, names: Set-like object }
+  let layered = 0;
+  let unlayered = 0;
+  let whereWrapped = 0;
+  let notWhereWrapped = 0;
+  for (let i = 0; i < rules.length; i++) {
+    const rule = rules[i];
+    let names = null;
+    for (let j = 0; j < rule.decls.length; j++) {
+      const prop = rule.decls[j][0];
+      if (prop.indexOf('--color-') !== 0) continue;
+      if (!names) names = {};
+      names[prop] = true;
+    }
+    if (!names) continue;
+    const nameCount = Object.keys(names).length;
+    if (rule.condition && /@layer\b/.test(rule.condition)) layered += nameCount;
+    else unlayered += nameCount;
+    // Counted as wrapped only when the WHOLE selector is one :where(...) group,
+    // i.e. the paren opened by the leading ":where(" closes on the last
+    // character. A leading-prefix test is not enough: Codex's own descendant
+    // form ":where(:root:not(...)) [data-theme=\"light\"]" starts with
+    // ":where(" yet carries (0,1,0) from the attribute selector after it —
+    // exactly the case this total exists to tell apart.
+    const trimmed = rule.selector.trim();
+    let wrapped = false;
+    if (trimmed.indexOf(':where(') === 0) {
+      let depth = 0;
+      let close = -1;
+      for (let k = 6; k < trimmed.length; k++) {
+        const c = trimmed[k];
+        if (c === '\\') { k++; continue; }
+        if (c === '(') depth++;
+        else if (c === ')') { depth--; if (depth === 0) { close = k; break; } }
+      }
+      wrapped = close === trimmed.length - 1;
+    }
+    if (wrapped) whereWrapped += nameCount;
+    else notWhereWrapped += nameCount;
+    const key = trimmed + '\u0000' + (rule.condition || '') + '\u0000' + (rule.origin || '');
+    if (!groups[key]) {
+      groups[key] = { selector: trimmed, condition: rule.condition || null, origin: rule.origin || null, names: {} };
+    }
+    for (const n in names) groups[key].names[n] = true;
+  }
+  const grouped = Object.keys(groups).map(function (key) {
+    const g = groups[key];
+    return { selector: g.selector, condition: g.condition, origin: g.origin, colorPropCount: Object.keys(g.names).length };
+  });
+  grouped.sort(function (a, b) { return b.colorPropCount - a.colorPropCount; });
+  return {
+    groups: grouped.slice(0, 40),
+    totals: { layered, unlayered, whereWrapped, notWhereWrapped },
+  };
+}
+
+
+/**
+ * Build a reverse index — canonical colour value -> [token names] — from
+ * `[name, canonicalValue]` pairs. Pure so the grouping logic (multiple
+ * tokens legitimately sharing one value) is testable without a DOM.
+ */
+function indexColorTokens(pairs) {
+  const index = {};
+  for (let i = 0; i < pairs.length; i++) {
+    const name = pairs[i][0];
+    const value = pairs[i][1];
+    if (!value) continue;
+    (index[value] = index[value] || []).push(name);
+  }
+  return index;
+}
+
 /** Source for the parser, injected verbatim into the in-page script. */
-const PARSER_SOURCE = [stripComments, splitTopLevel, parseCss, handleBlock]
+const PARSER_SOURCE = [
+  stripComments, splitTopLevel, parseCss, handleBlock, summarizeColorDefinitions,
+  indexColorTokens,
+]
   .map(function (fn) { return fn.toString(); })
   .join('\n\n');
 
@@ -316,6 +408,54 @@ function buildProbeScript(options) {
       sheetReports[sheetReports.length - 1].parseError = String(err);
     }
   }
+
+  // ---------------------------------------------------------------------
+  // COLOUR-DEFINITION SUMMARY — Plan 0004 fact 7: Codex's token blocks are
+  // now zero-specificity (:where(...)) and can nest (an inner [data-theme]
+  // re-declares for a subtree). This is the aggregate answer: how many
+  // --color-* definitions live behind an @layer, and how many behind a
+  // :where()-wrapped selector, across the whole parsed stylesheet corpus.
+  // ---------------------------------------------------------------------
+  const colorDefinitionSummary = summarizeColorDefinitions(rules);
+
+  // ---------------------------------------------------------------------
+  // THEME SCOPES — every element carrying [data-theme], not only <html>.
+  // Plan 0004 fact 7 measured that Codex's dark/light token blocks are
+  // defined for both \`:where(:root, [data-theme])\` and a descendant-space
+  // variant, meaning an INNER element can set its own [data-theme] and
+  // re-declare tokens for just that subtree — a root-level override would
+  // lose inside such a subtree regardless of specificity tricks. This asks
+  // the DOM directly rather than assuming <html> is the only mode hook.
+  // ---------------------------------------------------------------------
+  function ancestorPath(el, depth) {
+    const parts = [];
+    let cur = el.parentElement;
+    for (let i = 0; i < depth && cur; i++) {
+      parts.push(cur.tagName.toLowerCase() + (cur.id ? '#' + cur.id : '') +
+        (cur.className && typeof cur.className === 'string' ? '.' + cur.className.trim().split(/\\s+/).slice(0, 2).join('.') : ''));
+      cur = cur.parentElement;
+    }
+    return parts;
+  }
+  function themeScopeCensus() {
+    const nodes = Array.from(document.querySelectorAll('[data-theme]'));
+    if (document.documentElement.hasAttribute('data-theme') && nodes.indexOf(document.documentElement) === -1) {
+      nodes.unshift(document.documentElement);
+    }
+    const out = nodes.slice(0, 50).map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        tag: el.tagName.toLowerCase(),
+        id: el.id || null,
+        classNameSample: (typeof el.className === 'string' ? el.className : '').slice(0, 80),
+        dataTheme: el.getAttribute('data-theme'),
+        rect: { w: Math.round(r.width), h: Math.round(r.height) },
+        ancestorPath: ancestorPath(el, 3),
+      };
+    });
+    return { count: nodes.length, elements: out };
+  }
+  const themeScopes = themeScopeCensus();
 
   // ---------------------------------------------------------------------
   // What Codex DEFINES vs what Codex READS.
@@ -621,11 +761,62 @@ function buildProbeScript(options) {
     return { label, selector, found: true, firstPaintedAncestor: firstPainted, layers };
   }
 
+  // Composer surface: not the .ProseMirror editor itself (which is normally
+  // transparent) but the nearest ancestor that actually paints — the same
+  // "resolved token is not a painted pixel" distinction paintTrace exists
+  // for elsewhere in this file, applied to the composer specifically because
+  // Plan 0004's remap put the composer's background on a wrapper, not on the
+  // editable root.
+  function composerSurfaceSelector() {
+    const editor = document.querySelector('.ProseMirror');
+    if (!editor) return null;
+    let cur = editor.parentElement;
+    while (cur) {
+      const a = alphaOf(getComputedStyle(cur).backgroundColor);
+      if (a !== null && a > 0) return cur;
+      cur = cur.parentElement;
+    }
+    return null;
+  }
+  function paintTraceComposerSurface() {
+    const el = composerSurfaceSelector();
+    if (!el) return { label: 'composer surface', selector: '(nearest painted ancestor of .ProseMirror)', found: false };
+    // Reuse paintTrace's own walk-and-report by handing it a selector that
+    // resolves back to this exact element via its id/class, when possible;
+    // otherwise walk from here directly using the same layer-building logic.
+    const layers = [];
+    let firstPainted = null;
+    let cur = el;
+    while (cur) {
+      const cs = getComputedStyle(cur);
+      const bg = cs.backgroundColor;
+      const a = alphaOf(bg);
+      const layer = {
+        tag: cur.tagName.toLowerCase(),
+        id: cur.id || null,
+        classes: Array.from(cur.classList).slice(0, 10),
+        dataAttrs: dataAttrs(cur),
+        backgroundColor: bg,
+        alpha: a,
+        backgroundImage: cs.backgroundImage === 'none' ? null : cs.backgroundImage.slice(0, 200),
+        opacity: cs.opacity,
+      };
+      layers.push(layer);
+      if (firstPainted === null && a !== null && a > 0) {
+        firstPainted = { depth: layers.length - 1, tag: layer.tag, classes: layer.classes, backgroundColor: bg, alpha: a };
+      }
+      cur = cur.parentElement;
+    }
+    return { label: 'composer surface', selector: '(nearest painted ancestor of .ProseMirror)', found: true, firstPaintedAncestor: firstPainted, layers };
+  }
+
   const paintTraces = [
     paintTrace('sidebar panel', '.app-shell-left-panel'),
     paintTrace('sidebar row', '.sidebar-item'),
     paintTrace('composer input', '.ProseMirror'),
     paintTrace('empty-state heading', '.heading-xl'),
+    paintTrace('home mode toggle', '[class*="home-mode-toggle"]'),
+    paintTraceComposerSurface(),
   ];
 
   // ---------------------------------------------------------------------
@@ -677,6 +868,203 @@ function buildProbeScript(options) {
     return out;
   }
   const controls = controlCensus();
+
+  // ---------------------------------------------------------------------
+  // PAINT-COVERAGE CENSUS — "does every colour actually visible on this
+  // screen trace back to a root-level design token?"
+  //
+  // Every other census here answers "what does Codex define" or "what does
+  // one landmark paint". This one answers the theme's actual reach: walk
+  // every VISIBLE, ON-SCREEN element, read every colour it really paints
+  // (text, background, borders with real width, outline with real width,
+  // SVG fill/stroke), and check each one against the root's own
+  // --app-color-*/--color-*/--vscode-* tokens. A colour with no matching
+  // token is not a gap in our override list — it is a colour this theme
+  // CANNOT reach by overriding tokens at all, because nothing on the root
+  // resolves to it. That is a structurally different finding from "we
+  // haven't overridden this token yet", and conflating the two is how a
+  // theme ships with silently un-themeable patches of stock colour.
+  //
+  // Colours are normalised by rasterising them on a 1x1 canvas — see
+  // resolveColor() below for why a string parser is not enough here.
+  // ---------------------------------------------------------------------
+  function paintCoverageCensus() {
+    const scratch = document.createElement('span');
+    scratch.style.position = 'absolute';
+    scratch.style.left = '-9999px';
+    scratch.style.top = '-9999px';
+    scratch.style.opacity = '0';
+    scratch.style.pointerEvents = 'none';
+    document.body.appendChild(scratch);
+
+    // EVERY colour — a painted value and a token's value alike — goes through
+    // ONE path: rasterise it onto a 1x1 canvas and read the pixel back. This is
+    // not optional thoroughness. Chromium's computed colours are NOT always
+    // rgb()/rgba(): anything produced by color-mix() or an alpha-modified
+    // Tailwind utility comes back as oklab(...) or color(srgb ...) (measured on
+    // 26.917: the open menu's background computes to "oklab(0.2686 … / 0.9)").
+    // A string-parsing shortcut would report every such paint as matching NO
+    // token — a false gap. The canvas converts any CSS colour Chromium accepts
+    // to 8-bit sRGB, and because both sides of the comparison take the same
+    // path, equal colours always produce the same key. The price is 8-bit
+    // quantisation, which is identical on both sides and so cannot cause a
+    // mismatch between a paint and the token it came from.
+    const swatch = document.createElement('canvas');
+    swatch.width = 1;
+    swatch.height = 1;
+    const swatchCtx = swatch.getContext('2d', { willReadFrequently: true });
+    const SENTINEL = 'rgba(1, 2, 3, 0.5)';
+    function rasterise(value) {
+      swatchCtx.fillStyle = SENTINEL;
+      const before = swatchCtx.fillStyle;
+      swatchCtx.fillStyle = value;
+      // An invalid colour is IGNORED by the canvas (fillStyle keeps its old
+      // value), so an unchanged getter means "not a colour" — unless the input
+      // genuinely was the sentinel, which no real theme paints.
+      if (swatchCtx.fillStyle === before) return null;
+      swatchCtx.clearRect(0, 0, 1, 1);
+      swatchCtx.fillRect(0, 0, 1, 1);
+      const d = swatchCtx.getImageData(0, 0, 1, 1).data;
+      return 'rgba(' + d[0] + ', ' + d[1] + ', ' + d[2] + ', ' + Math.round((d[3] / 255) * 1000) / 1000 + ')';
+    }
+    function resolveColor(value) {
+      if (!value) return null;
+      let v = value;
+      // A token's raw value may be var()/color-mix()/light-dark() text; let
+      // the cascade resolve it to a computed colour first.
+      if (/var\\(|color-mix\\(|light-dark\\(/.test(v)) {
+        scratch.style.color = '';
+        scratch.style.color = v;
+        if (!scratch.style.color) return { value: value, unparsed: true };
+        v = getComputedStyle(scratch).color;
+      }
+      const px = rasterise(v);
+      if (px) return { value: px, unparsed: undefined };
+      return { value: value, unparsed: true };
+    }
+
+    const paints = {};   // canonical/raw value -> { count, properties, samples, unparsed }
+    function notePaint(resolved, prop, el) {
+      if (!resolved) return;
+      const key = resolved.value;
+      const rec = paints[key] = paints[key] || { count: 0, properties: {}, samples: [], unparsed: resolved.unparsed };
+      rec.count++;
+      rec.properties[prop] = (rec.properties[prop] || 0) + 1;
+      if (rec.samples.length < 3) {
+        const classes = Array.from(el.classList);
+        const authored = classes.filter((c) => !HASHED.test(c));
+        const r = el.getBoundingClientRect();
+        rec.samples.push({
+          tag: el.tagName.toLowerCase(),
+          classes: (authored.length ? authored : classes).slice(0, 4),
+          text: (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 40) || null,
+          rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+        });
+      }
+    }
+
+    const cvW = window.innerWidth, cvH = window.innerHeight;
+    const SVG_PAINT_TAGS = { svg: 1, path: 1, circle: 1, rect: 1, line: 1, polygon: 1, polyline: 1 };
+    const BORDER_SIDES = [
+      ['borderTopWidth', 'borderTopColor'], ['borderRightWidth', 'borderRightColor'],
+      ['borderBottomWidth', 'borderBottomColor'], ['borderLeftWidth', 'borderLeftColor'],
+    ];
+    let elementsScanned = 0;
+    for (const el of document.querySelectorAll('*')) {
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      // Intersects the viewport — an element with real dimensions can still
+      // be scrolled entirely out of view, and that colour is not "on screen".
+      if (r.right <= 0 || r.bottom <= 0 || r.left >= cvW || r.top >= cvH) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+      if ((parseFloat(cs.opacity) || 0) <= 0) continue;
+      elementsScanned++;
+
+      // 'color' only counts where the element itself owns visible text —
+      // otherwise every ancestor of every span would "paint" text colour it
+      // never actually renders a glyph in.
+      let hasDirectText = false;
+      for (const child of el.childNodes) {
+        if (child.nodeType === 3 && child.textContent && child.textContent.trim()) { hasDirectText = true; break; }
+      }
+      if (hasDirectText) notePaint(resolveColor(cs.color), 'color', el);
+
+      const bg = resolveColor(cs.backgroundColor);
+      if (bg && alphaOf(bg.value) > 0) notePaint(bg, 'background-color', el);
+
+      for (const [widthProp, colorProp] of BORDER_SIDES) {
+        if ((parseFloat(cs[widthProp]) || 0) <= 0) continue;
+        const side = resolveColor(cs[colorProp]);
+        if (side && alphaOf(side.value) > 0) notePaint(side, 'border-color', el);
+      }
+
+      if (cs.outlineStyle !== 'none' && (parseFloat(cs.outlineWidth) || 0) > 0) {
+        const outline = resolveColor(cs.outlineColor);
+        if (outline && alphaOf(outline.value) > 0) notePaint(outline, 'outline-color', el);
+      }
+
+      if (SVG_PAINT_TAGS[el.tagName.toLowerCase()]) {
+        if (cs.fill && cs.fill !== 'none') {
+          const fill = resolveColor(cs.fill);
+          if (fill && alphaOf(fill.value) > 0) notePaint(fill, 'fill', el);
+        }
+        if (cs.stroke && cs.stroke !== 'none') {
+          const stroke = resolveColor(cs.stroke);
+          if (stroke && alphaOf(stroke.value) > 0) notePaint(stroke, 'stroke', el);
+        }
+      }
+    }
+
+    // Reverse index: every root-level design token, resolved the same way.
+    // Read each token's OWN computed value (var() references are already
+    // substituted in a custom property's computed value) and rasterise that.
+    // Deliberately NOT "color: var(--x)" on a scratch element: when --x is
+    // not a colour, that declaration is invalid at computed-value time and
+    // silently falls back to the INHERITED colour, which would credit the
+    // token with painting whatever the body text colour happens to be.
+    const tokenPairs = [];
+    const rootStyle = getComputedStyle(document.documentElement);
+    for (const name of Array.from(rootStyle)) {
+      if (!/^--(app-color-|color-|vscode-)/.test(name)) continue;
+      const raw = rootStyle.getPropertyValue(name).trim();
+      if (!raw) continue;
+      const resolved = resolveColor(raw);
+      if (resolved && !resolved.unparsed) tokenPairs.push([name, resolved.value]);
+    }
+    const tokenIndex = indexColorTokens(tokenPairs);
+
+    scratch.remove();
+
+    const entries = Object.keys(paints).map((value) => {
+      const rec = paints[value];
+      return {
+        value,
+        count: rec.count,
+        properties: rec.properties,
+        tokens: (tokenIndex[value] || []).slice(0, 12),
+        samples: rec.samples,
+        unparsed: rec.unparsed,
+      };
+    });
+    entries.sort((a, b) => b.count - a.count);
+    const unmatched = entries.filter((e) => e.tokens.length === 0);
+    const matched = entries.filter((e) => e.tokens.length > 0);
+
+    return {
+      elementsScanned,
+      paints: entries.slice(0, 120),
+      unmatched,
+      summary: {
+        distinctValues: entries.length,
+        matchedValues: matched.length,
+        unmatchedValues: unmatched.length,
+        matchedPaintCount: matched.reduce((s, e) => s + e.count, 0),
+        unmatchedPaintCount: unmatched.reduce((s, e) => s + e.count, 0),
+      },
+    };
+  }
+  const paintCoverage = paintCoverageCensus();
 
   // ---------------------------------------------------------------------
   // MAIN-CONTENT SURFACE CENSUS — the empty-state cards, found by what they
@@ -935,12 +1323,15 @@ function buildProbeScript(options) {
     varReads,
     atProperties,
     tokenSources,
+    themeScopes,
+    colorDefinitionSummary,
     colours,
     topClasses,
     regions,
     paintTraces,
     windowGuards,
     controls,
+    paintCoverage,
     mainContent,
     overlays,
     codeSurfaceDetails,
@@ -1006,12 +1397,29 @@ async function runProbe(webContents, log, outDir, tag) {
       `root resolves ${Object.keys(report.rootTokens).length}`);
   log(`    root inline style: ${report.tokenSources.inlineStyleBytes} bytes, ` +
       `${report.tokenSources.inlineTokenCount} custom properties set inline on <html>`);
+  log(`    theme scopes: ${report.themeScopes.count} element(s) carry [data-theme]; values=` +
+      `${JSON.stringify(report.themeScopes.elements.map((e) => e.dataTheme))}`);
+  log(`    --color-* definitions: ${report.colorDefinitionSummary.totals.layered} inside @layer, ` +
+      `${report.colorDefinitionSummary.totals.unlayered} unlayered; ` +
+      `${report.colorDefinitionSummary.totals.whereWrapped} behind a :where()-wrapped selector, ` +
+      `${report.colorDefinitionSummary.totals.notWhereWrapped} not`);
   log(`    chromatic colours painted: ${report.colours.length} distinct`);
   log(`    window guards: ${JSON.stringify(report.windowGuards.windowTypeMatches)} ` +
       `.app-theme=${report.windowGuards.appThemeElements} ` +
       `htmlAttrs=${JSON.stringify(report.windowGuards.documentElementAttrs)}`);
   log(`    controls: ${report.controls.length} interactive; ` +
       `code surfaces described: ${report.codeSurfaceDetails.length}`);
+  {
+    const pc = report.paintCoverage;
+    log(`    paint coverage: ${pc.summary.distinctValues} distinct colours, ` +
+        `${pc.summary.matchedValues} matched a root token, ${pc.summary.unmatchedValues} unmatched ` +
+        `(${pc.summary.unmatchedPaintCount} of ${pc.summary.matchedPaintCount + pc.summary.unmatchedPaintCount} paints)`);
+    for (const u of pc.unmatched.slice(0, 10)) {
+      const s = u.samples[0];
+      log(`      unmatched ${u.value} x${u.count}` +
+          (s ? ` first: <${s.tag}${s.classes.length ? '.' + s.classes[0] : ''}> ${JSON.stringify(s.text)}` : ''));
+    }
+  }
   // The census is only trustworthy if the sidebar edge it clips against was
   // actually found; a missing panel would silently make leftEdge 0 and admit
   // the whole window. Report the edge so a wrong one is visible, not inferred.
@@ -1067,4 +1475,7 @@ async function runProbe(webContents, log, outDir, tag) {
 // The parser is exported alongside so it can be exercised against a captured
 // CSS corpus in Node — the check that would have caught the dropped
 // `.app-theme` rule the first time round.
-module.exports = { runProbe, buildProbeScript, parseCss, splitTopLevel, stripComments };
+module.exports = {
+  runProbe, buildProbeScript, parseCss, splitTopLevel, stripComments,
+  summarizeColorDefinitions, indexColorTokens,
+};
