@@ -13,7 +13,7 @@ This is an independent personal project and is not affiliated with or endorsed b
 
 ## Requirements
 
-- OpenAI Codex Desktop
+- OpenAI Codex Desktop, **version 26.917 or newer** (September 2026 onwards). That release of Codex renamed the interface names themes attach to. Codexterity v0.2.0 targets only the new names, so an older Codex shows stock. [v0.1.0](docs/releases/v0.1.0.md) is the build for an older Codex, and it is no longer maintained.
 - Node.js 22 or newer
 
 ## Using Codexterity
@@ -24,11 +24,11 @@ Use the installer included with a Windows release package, then launch **Codexte
 
 **Always launch from the Codexterity shortcut.** Launching Codex from **Codex's own** icon gives you plain, unthemed Codex. That is expected and cannot be worked around: the theme is attached at the moment Codex's process starts, so a Codex that Codexterity did not start is a stock Codex. It is the most common reason for "my theme is gone".
 
-The Windows installer and packaged launcher have been verified in the running app.
+The Windows installer and packaged launcher have been verified in the running app, on Codex 26.917, in both light and dark mode. The theme covers the whole app, including the ChatGPT Chat and Work areas that now live inside Codex. One deliberate exception: the code colours inside Codex's diff view stay OpenAI's own.
 
 ### macOS
 
-A macOS package is available for collaborator testing, but has not yet been verified on macOS hardware. See the [macOS package guide](packaging/macos/README.md) for the current setup and removal steps.
+A macOS package is built, but it has never been run on a Mac: not installed, not launched, not seen themed. Treat it as untested. See the [macOS package guide](packaging/macos/README.md) for the current setup and removal steps.
 
 ## Going back to stock Codex (Windows)
 
@@ -62,11 +62,13 @@ Codex itself, your account, your conversations and everything under Codex's own 
 
 ## When Codex updates
 
-Codex updates itself from the Microsoft Store on its own schedule, and the theme keeps applying. Codexterity styles Codex by overriding Codex's own colour, spacing and shadow variables rather than by matching its page structure, so an update that reorganises the interface generally costs nothing. Codexterity never checks which Codex version you have and never refuses to apply a theme because of one.
+Codex updates itself from the Microsoft Store on its own schedule. Codexterity styles Codex by overriding Codex's own named colour, spacing and shadow variables rather than by matching its page structure, so an update that reorganises the interface generally costs nothing. Codexterity never checks which Codex version you have and never refuses to apply a theme because of one.
 
-**This has now survived two real Codex updates with no change to Codexterity of any kind.** The stronger of the two carried a major browser-engine jump underneath Codex, not just new Codex code, and the theme still attached and painted every surface that was on screen. The weaker one changed only Codex itself. Neither needed a fix, a reinstall, or a re-apply.
+**Most updates cost nothing. One so far did.** Two updates in August 2026 needed no change at all, including one with a major browser-engine jump underneath Codex. Codex 26.917 (September 2026) was different. It moved onto a new runtime and **renamed the variables themes attach to**, so the theme still loaded without an error but matched nothing, and Codex looked stock. Nothing was blocked: the launcher, the theme engine and the package format all kept working unchanged. Fixing it took a new Codexterity release ([v0.2.0](docs/releases/v0.2.0.md)) that uses the new names.
 
-If some surface ever *does* look unstyled after an update, the injector log names the exact piece of Codex's interface that stopped matching. That path was proved by deliberately breaking every one of those references at once: Codex stayed fully usable and fully themed, and the log named each broken one individually.
+**If Codex looks completely stock after an update**, check that you launched from the Codexterity shortcut, then open `injector.log` (below). If it says `injected OK` and lists interface landmarks as `PRESENT`, the theme is reaching Codex and Codex has renamed what it attaches to. That needs a Codexterity update; reinstalling will not fix it.
+
+**If only some surface looks unstyled**, the same log names the exact piece of Codex's interface that stopped matching. That path was proved by deliberately breaking every one of those references at once: Codex stayed fully usable and fully themed, and the log named each broken one individually.
 
 ## Where the logs are
 
@@ -79,7 +81,7 @@ Get-Content "$env:USERPROFILE\Codexterity\logs\launcher.log" -Tail 40 -Encoding 
 
 `injector.log` is the theming record — the theme package it loaded, the colours it set, and the interface landmarks it found or did not find. `launcher.log` is the launch record — how Codex itself was started, and any error the failure dialog quotes back at you.
 
-If `injector.log` is missing or empty after a launch, the usual cause is that Codex was already running: Codexterity refuses to start a second copy over a running one, so nothing was themed and nothing was logged. Quit Codex completely and launch from the Codexterity shortcut again.
+An **empty** `injector.log` is correct after you have run `restore`: that launch attaches no theme, so there is nothing to log. Otherwise, if it is missing or empty after a launch, the usual cause is that Codex was already running: Codexterity refuses to start a second copy over a running one, so nothing was themed and nothing was logged. Quit Codex completely and launch from the Codexterity shortcut again.
 
 ## Working from the repository
 
@@ -90,7 +92,7 @@ npm test
 node tools/palette/audit.mjs
 ```
 
-Project contributors should begin with the [engineering guide](docs/ENGINEERING.md), then read the [decision log](docs/DECISIONS.md). Implementation plans live in [`docs/plans/`](docs/plans/), exploratory work in [`docs/research/`](docs/research/), and release notes in [`docs/releases/`](docs/releases/) — the current release is [v0.1.0](docs/releases/v0.1.0.md).
+Project contributors should begin with the [engineering guide](docs/ENGINEERING.md), then read the [decision log](docs/DECISIONS.md). Implementation plans live in [`docs/plans/`](docs/plans/), exploratory work in [`docs/research/`](docs/research/), and release notes in [`docs/releases/`](docs/releases/) — the current release is [v0.2.0](docs/releases/v0.2.0.md).
 
 ### Adding a theme
 
