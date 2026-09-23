@@ -1,8 +1,7 @@
 # Plan 0004 — Re-target the theme at Codex's new token layer (the "OWL" update)
 
-**Status:** **DRAFT, 2026-09-23 — awaiting owner review. No milestone started.** Nothing below is
-implemented. The two owner questions must be answered before M2; M1 can begin on approval of this
-draft because it changes nothing that ships.
+**Status:** **APPROVED 2026-09-23 — owner answered Q1 and Q2 (see "Owner rulings"). No milestone
+started; M1 is next.** Nothing below is implemented.
 
 **Depends on:** [Plan 0001](0001-captains-cabin-architecture.md) (architecture authority — D-0001-2's
 styling strategy is the thing this plan amends), [Plan 0003](0003-image-led-theme-authoring.md) (the
@@ -95,7 +94,21 @@ owner's running Codex. The technique is reusable and M1 relies on it.
 
 ---
 
-## Owner questions — answer before M2
+## Owner rulings, 2026-09-23
+
+1. **Q1 — Chat and Work: cover them FULLY, or not at all.** The owner's words: a formatted sidebar
+   next to a stock pane *"feels awful"*. The expectation is that the theme covers Chat and Work
+   completely. The final go/no-go is reviewed after M1 against its measured cost and rendered
+   captures, but the only acceptable outcomes are "every area themed" or "the theme is not shipped
+   half-done". **A partially themed Chat/Work is not an acceptable finish for M3**, and M4's gate
+   includes those areas.
+2. **Q2 — New Codex only.** No support for pre-OWL Codex (`.electron-*` / old token names). There is
+   currently **no other collaborator**; the macOS collaborator never installed the previous release,
+   so nothing depends on old-version support. `v0.1.0` stays the historical build for pre-OWL Codex,
+   and nothing is maintained for it. To be stamped as a **D-0004-n** decision in M2 alongside the
+   selector change.
+
+## Owner questions, as asked (answered above)
 
 ### Q1. Should the theme also cover the ChatGPT Chat and Work areas now inside Codex?
 
@@ -193,8 +206,9 @@ Ordered so nothing is re-mapped by guesswork: measure first, then change, then p
   faces by `document.fonts.check()`), not merely defined, in dark mode, and in light mode if M1(f)
   allows.
 
-- **M3 — The Chat / Work surfaces. CONDITIONAL on Q1.**
-  Only if M1 shows those areas do not follow the core tokens *and* the owner chose to theme them.
+- **M3 — The Chat / Work surfaces. Expected (owner ruling 1); confirmed after M1.**
+  Needed if M1 shows those areas do not simply follow the core tokens. Full coverage or nothing:
+  every Chat and Work screen M1 inventoried is themed and verified painted, both modes.
   Same discipline as M2: map from measurement, audit any new pairing, verify painted. If Q1 is "leave
   stock" or M1 shows they already follow the core tokens, this milestone is **closed as not needed**
   with the evidence, not silently dropped.
