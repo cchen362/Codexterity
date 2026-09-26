@@ -7,6 +7,13 @@
  * Entry point: `node injector/attach-cdp.js --port <n> --theme <package path>
  * [--timeout-ms <n>]`.
  *
+ * D-0005-1 — this file is the Windows PRIMARY injection route, and it gives up
+ * D-0001-1's "no debug port ever" on purpose: while a themed Codex runs, a
+ * DevTools endpoint is open on 127.0.0.1 on a random per-launch port. The
+ * owner accepted that on 2026-09-26 as the only route that satisfies Codex
+ * 26.924's package-identity check and still reaches the page. The port is
+ * chosen by the launcher, never fixed here; docs/DECISIONS.md has the ruling.
+ *
  * This is the Windows-primary route Plan 0005 builds (see that plan's "The
  * design" section for the full picture): Codex 26.924 requires a Windows
  * package identity to start at all, and a process launched that way does not

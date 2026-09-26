@@ -82,12 +82,16 @@ if (-not $nodeCmd) {
         'Install it from https://nodejs.org (the LTS build is fine), then re-run this installer.')
 }
 $nodeVersionRaw = (& node --version).Trim()
-if ($nodeVersionRaw -notmatch '^v(\d+)\.') {
+if ($nodeVersionRaw -notmatch '^v(\d+)\.(\d+)\.') {
     Write-Fail "Could not read Node's version from '$nodeVersionRaw'."
 }
 $nodeMajor = [int]$Matches[1]
-if ($nodeMajor -lt 22) {
-    Write-Fail ("Codexterity requires Node.js 22 or later; found $nodeVersionRaw. " +
+$nodeMinor = [int]$Matches[2]
+# Plan 0005: the CDP attacher uses Node's global WebSocket client, which is
+# stable from 22.4 -- so the floor is 22.4, not merely 22 (package.json's
+# "engines" says the same).
+if ($nodeMajor -lt 22 -or ($nodeMajor -eq 22 -and $nodeMinor -lt 4)) {
+    Write-Fail ("Codexterity requires Node.js 22.4 or later; found $nodeVersionRaw. " +
         'Install a newer Node.js from https://nodejs.org, then re-run this installer.')
 }
 Write-Info "Node.js $nodeVersionRaw found."

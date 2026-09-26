@@ -1,6 +1,6 @@
 # Plan 0005 — Launch Codex with package identity and inject over loopback CDP
 
-**Status:** **OPEN 2026-09-26. M1 and M2 DONE 2026-09-26; M3 in progress.** Owner approved the CDP route in chat on 2026-09-26
+**Status:** **CLOSED 2026-09-26. M1–M3 all DONE.** Shipped as tag `v0.3.0` ([notes](../releases/v0.3.0.md)). Both themes verified through the real installed shortcut on Codex `26.924.1866.0`; the owner's on-sight confirmation of Deep Navy Portrait is recorded in M3. Owner approved the CDP route in chat on 2026-09-26
 after the diagnosis below. Three milestones: M1 the shared CDP attacher, M2 the Windows launcher
 re-route, M3 docs, decision records, package, install and owner verification.
 
@@ -231,7 +231,21 @@ lines, and closing Codex ends the script. Then `cdx restore` and `cdx` again: st
 **through the same route with no port open** (`netstat` shows nothing on the chosen port). Then the
 running-instance guard: with Codex open, `cdx` refuses and names the PID.
 
-### M3 — Records, package, install, owner verification — NOT STARTED
+### M3 — Records, package, install, owner verification — DONE 2026-09-26
+
+**Outcome.** D-0005-1 and the D-0001-1 amendment are in `docs/DECISIONS.md`, with markers in
+`attach-cdp.js` and `launch.ps1`. `docs/ENGINEERING.md` carries the second "did not survive" record
+and the corrected fallback claim; README, the packaging README and `Install.ps1` state Node `22.4`.
+Three stale `NODE_OPTIONS` messages in `cli.js` were reworded. Package rebuilt, installed from the
+built artifact (the install matches the payload byte for byte apart from the stub, which the C#
+compiler stamps non-reproducibly, and the private theme). **Launched through the real Start-menu
+shortcut**: Captain's Cabin first (the installer's default), then Deep Navy Portrait after
+`cdx apply`. Both logs show the theme loaded, three pages themed, the hero PAINTING, the brass
+active-row mark, all three fonts, and four landmarks PRESENT. Deep Navy Portrait was left running
+for the owner's on-sight confirmation. Tagged `v0.3.0`.
+
+**Left as is, deliberately:** the first window's brief stock flash (recorded in the release notes),
+and `manifest.json`'s `verifiedAgainst` (D-0001-31, metadata nothing enforces).
 
 - `docs/DECISIONS.md`: D-0005-1 (above), and an amendment row on D-0001-1: the primary mechanism is
   now platform-split — CDP over loopback on Windows (required by Codex `26.924`'s identity check),

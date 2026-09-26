@@ -16,9 +16,12 @@
  * applying a theme."* Two things follow from it, and both are load-bearing
  * for the shape of this file:
  *
- *   1. `NODE_OPTIONS` is read at process START (D-0001-1), so Codex MUST be
- *      *launched* through Codexterity for the injector to attach at all —
- *      that step cannot be moved into the running app. `cdx apply <theme>`
+ *   1. The theme is attached to the Codex process Codexterity itself starts
+ *      (on Windows by launching it with a debugging port and attaching over
+ *      it, D-0005-1; on macOS by `NODE_OPTIONS`, read at process start,
+ *      D-0001-1), so Codex MUST be *launched* through Codexterity for the
+ *      injector to attach at all — that step cannot be moved into a Codex
+ *      started any other way. `cdx apply <theme>`
  *      therefore only ever PERSISTS a choice; it never launches anything
  *      itself, and it must say so plainly so nobody assumes it does.
  *   2. A shortcut is a fixed command line and cannot carry a changing
@@ -57,8 +60,8 @@ const USAGE = `Codexterity — cdx <verb> [args]
   cdx launch           same as bare "cdx" — the argument-free entry point a shortcut can target
   cdx apply <theme>    validate <theme> (a theme id, or a path to a directory or .ccskin) and
                         persist it as the active theme. Does NOT launch or repaint anything —
-                        NODE_OPTIONS is only read when a process starts, so run "cdx" (or
-                        "cdx launch") afterward, or use the shortcut once one exists.
+                        the theme is attached only to a Codex that Codexterity starts, so run
+                        "cdx" (or "cdx launch") afterward, or use the shortcut once one exists.
   cdx restore          clear the active theme, returning future launches to stock Codex.
                         A Codex window that is already running and themed stays themed
                         until it is restarted — this cannot un-paint a live window.
@@ -281,7 +284,7 @@ function cmdApply(themeArg, ctx) {
   );
   ctx.stdout(
     'This only PERSISTS the choice — it does not launch or repaint anything. ' +
-      'NODE_OPTIONS is read only when a process starts, so a Codex window already ' +
+      'The theme is attached only to a Codex that Codexterity starts, so a Codex window already ' +
       'running (or one started any other way) will not show this theme.\n'
   );
   ctx.stdout('Start Codex through Codexterity for it to appear: run "cdx" (or "cdx launch") with no arguments.\n');

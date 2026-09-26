@@ -1,7 +1,7 @@
 {
   "name": "codexterity",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A non-destructive theming engine for OpenAI's Codex Desktop app.",
   "license": "MIT",
   "type": "commonjs",

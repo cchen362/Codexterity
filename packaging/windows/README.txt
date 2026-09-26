@@ -10,7 +10,7 @@ re-signs any Codex file, on this machine or any other.
 
 Before you install
 -------------------
-1. Node.js 22 or later must be installed. If you don't have it, get it
+1. Node.js 22.4 or later must be installed. If you don't have it, get it
    from https://nodejs.org (the LTS build is fine) and install it first.
 2. Codex Desktop should be installed from the Microsoft Store. If it isn't
    yet, that's fine — install it whenever you like, before or after this.

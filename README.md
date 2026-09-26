@@ -13,8 +13,9 @@ This is an independent personal project and is not affiliated with or endorsed b
 
 ## Requirements
 
-- OpenAI Codex Desktop, **version 26.917 or newer** (September 2026 onwards). That release of Codex renamed the interface names themes attach to. Codexterity v0.2.0 targets only the new names, so an older Codex shows stock. [v0.1.0](docs/releases/v0.1.0.md) is the build for an older Codex, and it is no longer maintained.
-- Node.js 22 or newer
+- OpenAI Codex Desktop, **version 26.924 or newer** on Windows (late September 2026 onwards). That release of Codex started requiring a Windows package identity at launch, and Codexterity v0.3.0 starts Codex that way. Codex 26.917 renamed the interface names themes attach to, and every build since v0.2.0 targets only the new names, so an older Codex shows stock. [v0.2.0](docs/releases/v0.2.0.md) is the last build that starts Codex 26.917–26.923, and [v0.1.0](docs/releases/v0.1.0.md) the build for pre-OWL Codex; neither is maintained.
+- Node.js 22.4 or newer
+- On Windows, while a themed Codex is running, Codexterity keeps a Chrome DevTools connection open to it on a local-only (`127.0.0.1`) port chosen at random for each launch. That is how the theme reaches Codex now. It is not reachable from other machines, and it is not opened when Codex is launched unthemed.
 
 ## Using Codexterity
 
@@ -22,7 +23,7 @@ This is an independent personal project and is not affiliated with or endorsed b
 
 Use the installer included with a Windows release package, then launch **Codexterity** from the Start menu. Close any running Codex window before launching so the theme can be applied cleanly.
 
-**Always launch from the Codexterity shortcut.** Launching Codex from **Codex's own** icon gives you plain, unthemed Codex. That is expected and cannot be worked around: the theme is attached at the moment Codex's process starts, so a Codex that Codexterity did not start is a stock Codex. It is the most common reason for "my theme is gone".
+**Always launch from the Codexterity shortcut.** Launching Codex from **Codex's own** icon gives you plain, unthemed Codex. That is expected and cannot be worked around: the theme is attached to the Codex process Codexterity itself starts, so a Codex that Codexterity did not start is a stock Codex. It is the most common reason for "my theme is gone".
 
 The Windows installer and packaged launcher have been verified in the running app, on Codex 26.917, in both light and dark mode. The theme covers the whole app, including the ChatGPT Chat and Work areas that now live inside Codex. One deliberate exception: the code colours inside Codex's diff view stay OpenAI's own.
 
