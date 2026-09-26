@@ -13,6 +13,7 @@ const {
   describeLandmarkVerdict,
   reportLandmarkVerdicts,
 } = require(path.join('..', '..', 'injector', 'core', 'landmarks.js'));
+const { createPageAdapter } = require(path.join('..', '..', 'injector', 'core', 'cdp-page.js'));
 
 // ---------------------------------------------------------------------
 // Fixture: a real, loadable theme package whose landmark selectors cannot
@@ -298,6 +299,50 @@ test('describeLandmarkVerdict() uses singular "match" for exactly one match', ()
     windowUrl: MAIN_WINDOW_URL,
   });
   assert.ok(line.includes('(1 match)'), `expected singular "match", got: ${line}`);
+});
+
+// --- Plan 0005 M1: reportLandmarkVerdicts() runs unchanged through the CDP
+// page adapter, not just a fake webContents object. This is the "same
+// contract, two transports" claim the plan's design section makes for
+// cdp-page.js: it proves the adapter's .getURL()/.executeJavaScript() shape
+// is drop-in compatible with what landmarks.js already calls, using the REAL
+// createPageAdapter() (not a second hand-rolled fake) over a fake CDP client
+// so nothing here depends on a socket or Electron. ---
+
+test('reportLandmarkVerdicts() runs through a real cdp-page adapter (fake CDP client, no socket)', async () => {
+  const landmarks = [{ name: 'sidebar-panel', selector: '.app-shell-left-panel', required: true, governedBy: 'D-0001-13' }];
+  const fakeClient = {
+    async send(method, params, sessionId) {
+      assert.equal(method, 'Runtime.evaluate');
+      assert.equal(sessionId, 'session-xyz');
+      assert.equal(params.awaitPromise, true);
+      assert.equal(params.returnByValue, true);
+      // The adapter forwards whatever script it was given straight through;
+      // evaluate the landmark probe script against a stub `document` so the
+      // adapter and the probe script are BOTH exercised, not just one.
+      const stubDocument = {
+        querySelectorAll(sel) {
+          return sel === '.app-shell-left-panel' ? [1, 2] : [];
+        },
+      };
+      function evaluate(document) {
+        return eval(params.expression);
+      }
+      return { result: { value: evaluate(stubDocument) } };
+    },
+  };
+  const page = createPageAdapter({
+    client: fakeClient,
+    sessionId: 'session-xyz',
+    targetId: 'target-1',
+    url: MAIN_WINDOW_URL,
+  });
+  const { log, lines } = makeLogCollector();
+  await reportLandmarkVerdicts({ webContents: page, landmarks, phase: 'settled +15000ms', log });
+  const line = lines.find((l) => l.includes('sidebar-panel'));
+  assert.ok(line, 'expected a log line naming sidebar-panel');
+  assert.ok(line.includes('landmark PRESENT'), `expected PRESENT via the CDP adapter, got: ${line}`);
+  assert.ok(line.includes('(2 matches)'), `expected the match count via the CDP adapter, got: ${line}`);
 });
 
 test('describeLandmarkVerdict() reports a PROBE ERROR line for count === -1', () => {

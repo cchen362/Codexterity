@@ -1,19 +1,34 @@
 <#
 .SYNOPSIS
-    Codexterity Windows launcher -- Gate 0.
+    Codexterity Windows launcher -- Plan 0005 M2 (loopback CDP route).
 
 .DESCRIPTION
     The ONLY Windows-specific code in Codexterity (docs/ENGINEERING.md "Layer
     rule"). Resolves the installed Codex Desktop MSIX package via
     Get-AppxPackage (never a hardcoded WindowsApps path -- the Store rewrites
-    the install directory on every update), then launches it directly with
-    NODE_OPTIONS pointed at injector/core/preload.js so the shared injector
-    core can attempt D-0001-1's primary mechanism
-    (NODE_OPTIONS=--require <preload> + webContents.insertCSS()).
+    the install directory on every update), then launches it through
+    Invoke-CommandInDesktopPackage so the child process carries the package's
+    Windows identity, and runs the shared Node "attacher"
+    (injector/attach-cdp.js) against a loopback debugging port to apply the
+    theme.
+
+    Codex 26.924 requires package identity to start at all (Plan 0005,
+    "verified facts" 1-2) -- a direct child-process launch of ChatGPT.exe now
+    fails before any Codexterity code runs, identically themed or not. That
+    identity-carrying launch route does not pass this script's environment
+    block through to the child (fact 3), so the old preload mechanism
+    (NODE_OPTIONS=--require <preload>) cannot reach Codex on Windows any
+    more. What the route DOES pass through is command-line arguments, and
+    Codex honours --remote-debugging-port (fact 4) -- so this script starts
+    Codex with a loopback debugging port open and a separate Node process
+    (the attacher) connects to it over Chrome DevTools Protocol and injects
+    the theme into every Codex page, the same way the preload used to do it
+    from inside Codex's own process.
 
     This script contains NO styling/injection logic. All of that lives in
-    injector/core/. This script only resolves-and-launches, per the Layer
-    rule in docs/ENGINEERING.md.
+    injector/core/ and injector/attach-cdp.js. This script only resolves,
+    picks a port, launches, and runs the attacher, per the Layer rule in
+    docs/ENGINEERING.md.
 
     D-0001-3 (non-destructive): this script only ever READS from the Codex
     install directory (Get-AppxPackage, file existence checks) and never
@@ -21,17 +36,9 @@
     ~/.codex/.credentials.json.
 
 .NOTES
-    Gate 0 (Plan 0001 §1) is testing whether NODE_OPTIONS survives into the
-    packaged app's main process at all. Codex Desktop's Application entry in
-    its MSIX manifest declares EntryPoint="Windows.FullTrustApplication" --
-    i.e. it is a full-trust Win32 process wrapped for package identity
-    (Desktop Bridge), not an AppContainer UWP app. That is what makes a
-    *direct* child-process launch of its exe worth attempting: a normal
-    Win32 CreateProcess child inherits the parent's environment block the
-    ordinary way. The alternative activation route (`shell:AppsFolder\<AUMID>`
-    via explorer.exe) would NOT inherit env vars we set here, because
-    explorer.exe -- not this script -- would be the actual parent process.
-    That distinction is exactly what this script exists to test.
+    macOS is unaffected by any of this (its launcher keeps NODE_OPTIONS,
+    D-0001-16) -- macOS apps have no package-identity check. This file is
+    Windows-only, per the Layer rule.
 #>
 
 [CmdletBinding()]
@@ -60,27 +67,27 @@ param(
     # plain" and "launch the default theme" the same value and
     # indistinguishable from each other. Passing both -NoTheme and
     # -ThemePackage together is a caller bug, not a preference to resolve
-    # quietly -- see the guard right after param() below. When this is set,
-    # theme-package resolution is skipped entirely and neither NODE_OPTIONS
-    # nor CDX_THEME_PACKAGE is set on the child process, so the injector
-    # preload never loads and Codex starts exactly as it would from its own
-    # icon.
+    # quietly -- see the guard right after param() below. Under Plan 0005,
+    # this still means "start Codex through the identity-carrying route with
+    # no debugging port opened and no attacher run" (D-0005-1's own
+    # mitigation: don't leave a port open when nothing needs it) -- Codex
+    # starts exactly as it would from its own icon.
     [switch]$NoTheme,
 
     # D-0001-27 (Phase 4 M4) — the log fork. Unset (the default), this
     # script's behaviour is byte-for-byte what it was before this parameter
     # existed: every line still goes to the console via Write-Host, nothing
     # more. When set, every line this script would Write-Host — its own
-    # [codexterity-launcher] lines AND Codex's streamed stdout/stderr — is
-    # ALSO appended to this file. This does not replace the console output
-    # (a developer running the script by hand still sees everything); it is
-    # an additional sink for the ONE caller that has no console to read from
-    # at all: a double-clicked shortcut running through the GUI-subsystem
-    # stub (packaging/windows/Codexterity.cs), which sets
-    # CDX_LAUNCHER_LOG and is read by injector/cli.js's cmdLaunch(), which
-    # passes it through as this parameter. A logging failure (e.g. an
-    # unwritable path) must never take down the launch itself — see the
-    # try/catch around every write below.
+    # [codexterity-launcher] lines AND, under Plan 0005, the attacher's
+    # streamed stdout/stderr — is ALSO appended to this file. This does not
+    # replace the console output (a developer running the script by hand
+    # still sees everything); it is an additional sink for the ONE caller
+    # that has no console to read from at all: a double-clicked shortcut
+    # running through the GUI-subsystem stub (packaging/windows/Codexterity.cs),
+    # which sets CDX_LAUNCHER_LOG and is read by injector/cli.js's
+    # cmdLaunch(), which passes it through as this parameter. A logging
+    # failure (e.g. an unwritable path) must never take down the launch
+    # itself — see the try/catch around every write below.
     [string]$LogFile
 )
 
@@ -131,10 +138,9 @@ if ($NoTheme -and $PSBoundParameters.ContainsKey('ThemePackage')) {
 #    not need to know or guess which kind it was handed.
 #
 #    D-0001-32 -- when -NoTheme is set, this whole step is skipped: there is
-#    no package to resolve, no NODE_OPTIONS, no CDX_THEME_PACKAGE, and no
-#    injector preload loaded (step 3 and the environment block in step 4
-#    below both branch on $NoTheme too). Codex starts exactly as it would
-#    from its own icon.
+#    no package to resolve, no port opened, and no attacher run (step 4 and
+#    step 5 below both branch on $NoTheme too). Codex starts exactly as it
+#    would from its own icon.
 # ---------------------------------------------------------------------------
 if ($NoTheme) {
     Write-Info 'Unthemed launch (-NoTheme): no injector will be attached.'
@@ -182,13 +188,13 @@ $aumid = "$($package.PackageFamilyName)!$appId"
 
 Write-Info "AppId: $appId"
 Write-Info "EntryPoint: $entryPoint"
-Write-Info "AUMID (for reference, not used by this launch path): $aumid"
+Write-Info "AUMID: $aumid"
 
 if ($entryPoint -ne 'Windows.FullTrustApplication') {
     Write-Fail ("Codex's Application entry has EntryPoint='$entryPoint', not 'Windows.FullTrustApplication'. " +
-        "This launcher's direct-exe-launch approach is validated only for full-trust packaged apps; a " +
-        "different EntryPoint means direct child-process launch may not carry package identity or may be " +
-        "blocked outright, and this is a real Gate 0 finding, not something to route around.")
+        "Invoke-CommandInDesktopPackage is validated only for full-trust packaged apps; a different " +
+        "EntryPoint means this launch route may not apply, and this is a real finding, not something to " +
+        "route around.")
 }
 
 # ---------------------------------------------------------------------------
@@ -196,23 +202,29 @@ if ($entryPoint -ne 'Windows.FullTrustApplication') {
 #
 # Codex is single-instance. Starting it while a copy is already running makes
 # the new process hand off to the existing one ("Opening in existing browser
-# session") and exit immediately -- so our NODE_OPTIONS never reaches an
-# Electron main process and the theme is silently NOT applied. The user sees a
-# perfectly normal, completely unthemed Codex and no error at all, which is the
-# worst failure mode available to us.
+# session") and exit immediately -- so this launch would never open the
+# debugging port the theme needs and the theme is silently NOT applied. The
+# user sees a perfectly normal, completely unthemed Codex and no error at
+# all, which is the worst failure mode available to us.
 #
-# Detection matches on the PACKAGE PATH, not the process name: the executable
-# is ChatGPT.exe (not Codex.exe), and a name match on "ChatGPT" would also hit
-# the unrelated "ChatGPT Classic" app.
+# Detection matches on the process's ExecutablePath, not Get-Process (Plan
+# 0005, fact 8): a process started through Invoke-CommandInDesktopPackage
+# carries package identity, and Get-Process's .Path property is denied for
+# such a process from an ordinary shell -- it silently reports zero matches,
+# which would make this guard a no-op exactly when it matters. Win32_Process
+# (via Get-CimInstance) has no such restriction and reports the full command
+# line for every ChatGPT.exe process. Matching on ExecutablePath rather than
+# process name because the executable is ChatGPT.exe (not Codex.exe), and a
+# name match on "ChatGPT" would also hit the unrelated "ChatGPT Classic" app.
 #
 # This reports and stops rather than terminating anything. Closing the user's
 # running editor -- possibly mid-conversation -- is not a launcher's decision.
 # ---------------------------------------------------------------------------
-$running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-    $_.Path -and $_.Path.StartsWith($package.InstallLocation, [StringComparison]::OrdinalIgnoreCase)
+$running = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.ExecutablePath -and $_.ExecutablePath.StartsWith($package.InstallLocation, [StringComparison]::OrdinalIgnoreCase)
 })
 if ($running.Count -gt 0) {
-    Write-Fail ("Codex is already running ($($running.Count) process(es), e.g. PID $($running[0].Id)). " +
+    Write-Fail ("Codex is already running ($($running.Count) process(es), e.g. PID $($running[0].ProcessId)). " +
         "Codex is single-instance: launching now would hand off to the running copy and exit, and the " +
         "theme would NOT be applied -- with no visible error. Quit Codex completely, then re-run this " +
         "launcher. Nothing has been changed or closed for you.")
@@ -222,123 +234,173 @@ $exePath = Join-Path $package.InstallLocation $executableRelative
 if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
     Write-Fail "Resolved executable does not exist at '$exePath'."
 }
+$exePath = [System.IO.Path]::GetFullPath($exePath)
 Write-Info "Resolved executable: $exePath"
 
 # ---------------------------------------------------------------------------
-# 3. Locate the shared injector preload (platform-agnostic core). Skipped
-#    entirely under -NoTheme (D-0001-32) -- there is nothing to require.
+# 3. Locate the shared CDP attacher and node.exe. Skipped entirely under
+#    -NoTheme (D-0001-32) -- there is nothing to run.
 # ---------------------------------------------------------------------------
 if (-not $NoTheme) {
-    $preloadPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\injector\core\preload.js'))
-    if (-not (Test-Path -LiteralPath $preloadPath -PathType Leaf)) {
-        Write-Fail "Injector preload not found at '$preloadPath'."
+    $attacherPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\injector\attach-cdp.js'))
+    if (-not (Test-Path -LiteralPath $attacherPath -PathType Leaf)) {
+        Write-Fail "CDP attacher not found at '$attacherPath'."
     }
-    Write-Info "Injector preload: $preloadPath"
+    Write-Info "CDP attacher: $attacherPath"
+
+    $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $nodeCommand) {
+        $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    }
+    if (-not $nodeCommand) {
+        Write-Fail "node.exe was not found on PATH. Install Node.js (>=22.4) to run the CDP attacher."
+    }
+    $nodePath = $nodeCommand.Source
+    Write-Info "node.exe: $nodePath"
 }
 
 # ---------------------------------------------------------------------------
-# 4. Launch Codex directly as a child process, with NODE_OPTIONS and the
-#    theme path set in the environment block this specific child inherits.
-#    D-0001-1: NODE_OPTIONS is the primary mechanism under test. No
-#    --remote-debugging-port is ever set here (that is the CDP fallback,
-#    a different mechanism, not part of Gate 0).
+# 4. Pick a free loopback port, then launch Codex through
+#    Invoke-CommandInDesktopPackage so the child process carries the
+#    package's Windows identity (Plan 0005, fact 2) -- a direct child-process
+#    launch of ChatGPT.exe no longer starts at all on Codex 26.924 (fact 1).
+#
+#    This route does NOT pass this script's environment block through to the
+#    child (fact 3), so NODE_OPTIONS/CDX_THEME_PACKAGE would never reach
+#    Codex here -- that mechanism is gone on Windows. What it DOES pass
+#    through is command-line arguments, and Codex honours
+#    --remote-debugging-port (fact 4), which is how the attacher (step 5)
+#    reaches it instead.
+#
+#    The port is never fixed (D-0005-1): a random per-launch ephemeral
+#    loopback port, closed again the moment it is read, so the debugging
+#    endpoint Codex later opens is not a stable, guessable name on the
+#    machine. Under -NoTheme, no -Args are passed at all, so Codex never
+#    opens a debugging port in the first place -- there is nothing here for
+#    the attacher to attach to, and none is run.
 # ---------------------------------------------------------------------------
+$port = $null
+if (-not $NoTheme) {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    $port = $listener.LocalEndpoint.Port
+    $listener.Stop()
+    Write-Info "Debugging port: $port"
+}
+
+try {
+    if ($NoTheme) {
+        Invoke-CommandInDesktopPackage -PackageFamilyName $package.PackageFamilyName -AppId $appId -Command $exePath | Out-Null
+    } else {
+        Invoke-CommandInDesktopPackage -PackageFamilyName $package.PackageFamilyName -AppId $appId -Command $exePath -Args "--remote-debugging-port=$port" | Out-Null
+    }
+} catch {
+    Write-Fail "Failed to launch Codex via Invoke-CommandInDesktopPackage (exception: $($_.Exception.Message))."
+}
+
+Write-Info "Codex launched via Invoke-CommandInDesktopPackage (package identity)."
+
+if ($NoTheme) {
+    Write-Info 'Unthemed launch complete: no debugging port was opened and no attacher was run.'
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# 5. Run the shared CDP attacher in the FOREGROUND as a child of this script.
+#    Invoke-CommandInDesktopPackage returns promptly and does not wait for
+#    Codex to exit (Plan 0005, fact 5), so the attacher -- not Codex's own
+#    process -- is what this script waits on; it connects to the port above,
+#    applies the theme to every Codex page, and exits when Codex does (or on
+#    a theme-load failure, or a port-poll timeout). Its exit code becomes
+#    this script's exit code: 0 Codex exited normally, 1 the theme package
+#    failed to load, 2 the debugging port never came up within the timeout.
+#    In every case Codex itself keeps running (or already exited) -- a
+#    failure here means Codex is running unthemed, never that Codex failed
+#    to start.
+#
+#    D-0001-28 (Phase 4 M4) -- do not revert this to an event handler.
+#
+#    This DELIBERATELY does not use Register-ObjectEvent + BeginOutputReadLine,
+#    which is what this script used until Phase 4 M4 and which does not work.
+#    Measured, not theorised: a child emitting 800 lines fired the -Action
+#    scriptblock exactly 4 times, with ZERO exceptions raised -- and a slow child
+#    emitting 40 lines over 4 seconds also fired it 4 times, so the loss is
+#    rate-independent. The cause is that PowerShell dispatches -Action handlers on
+#    the runspace's own pipeline thread, and this script then blocks that very
+#    thread in $process.WaitForExit(). A blocked runspace pumps no events, so the
+#    handlers simply never run. (Start-Sleep does not pump them either, which is
+#    why "wait a moment for events to drain" does not rescue it.)
+#
+#    That defect was found reading Codex's own stdout/stderr; it applies just as
+#    much to the attacher's, which is why the same reader loop is kept here
+#    unchanged rather than reintroduced with the flaw. The attacher's log lines
+#    are what a failure dialog (packaging/windows/Codexterity.cs) would quote,
+#    so an empty log would turn a real failure into an unexplained one.
+#
+#    The replacement reads both streams with .NET async Tasks and polls them from
+#    THIS thread. Task completion is driven by the threadpool and needs no
+#    PowerShell event pumping, so nothing depends on the runspace being idle. Both
+#    streams are read concurrently, which is what avoids the classic deadlock of
+#    draining one pipe to EOF while the other fills its buffer.
+#
+#    The streams cannot be touched before Start(), so the loop lives below it.
+# ---------------------------------------------------------------------------
+# Quote-Arg: build a single command-line argument the way node.exe (an
+# ordinary MSVCRT-style argv parser) expects it, rather than using
+# ProcessStartInfo.ArgumentList -- that property does not exist under
+# Windows PowerShell 5.1, because 5.1 runs on .NET Framework, where
+# ArgumentList was never added to ProcessStartInfo (it is a .NET Core-only
+# member). This script targets 5.1 (the stub and injector/cli.js both invoke
+# powershell.exe), so ProcessStartInfo.Arguments -- a single pre-quoted
+# string -- is the only option, and it has to be quoted by hand. The
+# MSVCRT/CRT convention this follows: wrap the argument in double quotes,
+# and escape any embedded double quote as \". A literal backslash is NOT an
+# escape character under this convention unless it immediately precedes a
+# quote, so an ordinary Windows path with backslashes (e.g. a theme
+# package's absolute path) needs no backslash-escaping at all -- only quotes
+# inside the argument (which none of these arguments contain) would need it.
+function Quote-Arg([string]$Value) {
+    return '"' + ($Value -replace '"', '\"') + '"'
+}
+
 $psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = $exePath
+$psi.FileName = $nodePath
+$psi.Arguments = @(
+    (Quote-Arg $attacherPath),
+    '--port',
+    "$port",
+    '--theme',
+    (Quote-Arg $ThemePackage)
+) -join ' '
 $psi.UseShellExecute = $false
 $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $true
 $psi.CreateNoWindow = $false
-$psi.WorkingDirectory = $package.InstallLocation
+$psi.WorkingDirectory = $PSScriptRoot
 
-# Start from the current environment, then layer in our two variables --
-# unless -NoTheme is set (D-0001-32), in which case NEITHER is set and the
-# child inherits a plain environment, exactly as if launched from Codex's
-# own icon.
+# The attacher inherits this script's environment unmodified -- CDX_DEBUG_LOG_PATH
+# (read by the attacher's log() sink exactly as inject.js reads it) comes through
+# untouched, because this is an ordinary child-process launch of node.exe, not
+# the identity-carrying route used for Codex itself.
 foreach ($entry in [System.Environment]::GetEnvironmentVariables().GetEnumerator()) {
     $psi.EnvironmentVariables[$entry.Key] = $entry.Value
-}
-if ($NoTheme) {
-    # D-0001-32 -- REMOVE these rather than merely declining to set them. The
-    # loop above copies the WHOLE parent environment, so a NODE_OPTIONS
-    # inherited from the calling shell (a developer's own, or one left over
-    # from another tool) would still load the injector preload and this
-    # "unthemed" launch would come up silently THEMED -- the exact opposite of
-    # what was asked for, with nothing in the log to say why. Not adding a
-    # variable is not the same as guaranteeing its absence, and
-    # docs/ENGINEERING.md's standard is that the code make the violation
-    # impossible rather than merely avoid it.
-    $psi.EnvironmentVariables.Remove('NODE_OPTIONS')
-    $psi.EnvironmentVariables.Remove('CDX_THEME_PACKAGE')
-    Write-Info 'Launching with NODE_OPTIONS / CDX_THEME_PACKAGE removed from the child environment (unthemed).'
-} else {
-    # NODE_OPTIONS is tokenized by Node's own CLI-option parser, which treats
-    # backslashes inside a quoted value as escape characters (e.g. "\U", "\D",
-    # "\C" are not recognized escapes and get silently dropped) -- this was
-    # discovered during Gate 0 testing, where a backslash-separated Windows path
-    # arrived in the child process as "C:Userscchen362Desktop...", an unresolvable
-    # module specifier. Node accepts forward slashes in paths on Windows, so use
-    # those for the NODE_OPTIONS value specifically; CDX_THEME_PACKAGE below is
-    # read via fs, not Node's option parser, so it keeps native backslashes.
-    $preloadPathForNodeOptions = $preloadPath -replace '\\', '/'
-    $psi.EnvironmentVariables['NODE_OPTIONS'] = "--require `"$preloadPathForNodeOptions`""
-    # D-0001-25 -- CDX_THEME_PACKAGE replaces CDX_THEME_CSS_PATH. This one is read
-    # by the injector via plain fs (statSync/readFileSync inside the theme
-    # loader), not by Node's own CLI-option tokenizer, so it keeps native
-    # backslashes -- only NODE_OPTIONS above needs the forward-slash rewrite.
-    $psi.EnvironmentVariables['CDX_THEME_PACKAGE'] = $ThemePackage
-
-    Write-Info "Launching with NODE_OPTIONS=--require `"$preloadPathForNodeOptions`""
-    Write-Info "Launching with CDX_THEME_PACKAGE=$ThemePackage"
 }
 
 $process = New-Object System.Diagnostics.Process
 $process.StartInfo = $psi
 
-# ---------------------------------------------------------------------------
-# Stream Codex's stdout/stderr. D-0001-28 (Phase 4 M4) -- do not revert this to an event handler.
-#
-# This DELIBERATELY does not use Register-ObjectEvent + BeginOutputReadLine,
-# which is what this script used until Phase 4 M4 and which does not work.
-# Measured, not theorised: a child emitting 800 lines fired the -Action
-# scriptblock exactly 4 times, with ZERO exceptions raised -- and a slow child
-# emitting 40 lines over 4 seconds also fired it 4 times, so the loss is
-# rate-independent. The cause is that PowerShell dispatches -Action handlers on
-# the runspace's own pipeline thread, and this script then blocks that very
-# thread in $process.WaitForExit(). A blocked runspace pumps no events, so the
-# handlers simply never run. (Start-Sleep does not pump them either, which is
-# why "wait a moment for events to drain" does not rescue it.)
-#
-# That defect PRE-DATES this milestone -- it means the console streaming this
-# launcher advertises has never actually worked -- and it went unnoticed because
-# the injector writes its own log directly from inside Codex's process via
-# CDX_DEBUG_LOG_PATH, which is what every launch in this project was really
-# verified against. M4 made it worth fixing rather than merely noting: the
-# shortcut's failure dialog (packaging/windows/Codexterity.cs) quotes this log,
-# so an empty log would turn a real failure into an unexplained one.
-#
-# The replacement reads both streams with .NET async Tasks and polls them from
-# THIS thread. Task completion is driven by the threadpool and needs no
-# PowerShell event pumping, so nothing depends on the runspace being idle. Both
-# streams are read concurrently, which is what avoids the classic deadlock of
-# draining one pipe to EOF while the other fills its buffer.
-#
-# The streams cannot be touched before Start(), so the loop lives below it.
-
 try {
     $started = $process.Start()
 } catch {
-    Write-Fail ("Failed to start Codex directly (exception: $($_.Exception.Message)). " +
-        "This may indicate the full-trust exe cannot be launched outside its package activation context " +
-        "-- a real Gate 0 finding, not a bug in this script.")
+    Write-Fail ("Failed to start the CDP attacher (exception: $($_.Exception.Message)). " +
+        "Codex is running unthemed.")
 }
 
 if (-not $started) {
-    Write-Fail "Process.Start() returned false -- Codex did not launch."
+    Write-Fail "Process.Start() returned false -- the CDP attacher did not launch. Codex is running unthemed."
 }
 
-Write-Info "Codex launched (PID $($process.Id)). Streaming its stdout/stderr below."
-Write-Info "Close Codex normally when you are done observing; this script exits when the process exits."
+Write-Info "CDP attacher launched (PID $($process.Id)). Streaming its stdout/stderr below."
 
 $stdoutReader = $process.StandardOutput
 $stderrReader = $process.StandardError
@@ -380,4 +442,12 @@ while (-not ($outEof -and $errEof)) {
 }
 
 $process.WaitForExit()
-Write-Info "Codex process exited with code $($process.ExitCode)."
+
+switch ($process.ExitCode) {
+    0 { Write-Info "CDP attacher exited 0: Codex exited." }
+    2 { Write-Info "CDP attacher exited 2: Codex never opened its debugging port within the timeout -- Codex is running unthemed." }
+    1 { Write-Info "CDP attacher exited 1: theme package failed to load -- Codex is running unthemed." }
+    default { Write-Info "CDP attacher exited with code $($process.ExitCode)." }
+}
+
+exit $process.ExitCode

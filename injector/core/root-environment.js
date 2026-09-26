@@ -1,0 +1,774 @@
+'use strict';
+
+/**
+ * Codexterity — the root-environment diagnostic (Plan 0005 M1)
+ * -----------------------------------------------------------------
+ * Extracted verbatim (signature only changed) from injector/core/inject.js's
+ * private reportRootEnvironment(). Before this extraction it closed over
+ * inject.js's module-private log() and lastAppliedRoute slot, which meant
+ * only inject.js's Electron/NODE_OPTIONS route could ever call it. The CDP
+ * attacher (injector/attach-cdp.js) runs the SAME diagnostic against a
+ * webContents-shaped adapter (injector/core/cdp-page.js) instead of a real
+ * Electron webContents — reportRootEnvironment() itself does not know or
+ * care which one it was given, since both only need
+ * .executeJavaScript(script, awaitPromise). The two former closures (log,
+ * lastAppliedRoute) are now explicit parameters instead, per
+ * docs/ENGINEERING.md's rule that a shared module is required, never
+ * copied.
+ */
+
+/**
+ * Report the facts the whole styling strategy rests on, read from the live DOM.
+ *
+ * D-0001-2 (ORIGINAL, pre-OWL) assumed Codex toggles .electron-dark /
+ * .electron-light on the root element and exposes a semantic --color-* layer.
+ * That came from static analysis of a shipped bundle, never from a running
+ * app, and it held until Codex's 2026-09 "OWL" runtime update.
+ *
+ * D-0004-1 (Plan 0004 M1/M2, measured 2026-09-23) — Codex `26.917` replaced
+ * the mode hook and renamed 60 of the 77 primitive colour tokens this theme
+ * overrides. The root element no longer carries `.electron-dark` /
+ * `.electron-light` at all (rootClass now reads "(none)", which is itself
+ * informative, not a bug); the mode hook is `data-theme="dark"|"light"` on
+ * `<html>`, alongside `data-codex-window-type="electron"`. Most primitive
+ * tokens moved from `--color-X` to `--app-color-X` (e.g.
+ * `--color-background-surface` -> `--app-color-background-surface`); the
+ * rest (e.g. `--color-text-primary`, `--color-token-side-bar-background`,
+ * `--color-token-charts-purple`, `--color-token-text-link-foreground`) kept
+ * their old names. Both facts are checked here every run rather than
+ * trusted, exactly as the original D-0001-2 comment intended.
+ */
+async function reportRootEnvironment(webContents, { log, lastAppliedRoute }) {
+  // async because the font check must await document.fonts.load();
+  // executeJavaScript resolves a returned promise.
+  const script = `
+    (async () => {
+      const root = document.documentElement;
+      const cs = getComputedStyle(root);
+      // Two kinds of token, on purpose.
+      //
+      // The first several are ones WE define, and prove the sheet applied at
+      // all. The rest are DOWNSTREAM of ours — Codex derives them through its
+      // own chain (see docs/research/owl-token-inventory.md, superseding
+      // phase3-inventory-findings.md for the running version), and they are
+      // what actually paints the sidebar, the menu bar, links and the
+      // empty-state card icons. Checking only our own names would prove the
+      // stylesheet landed while the app still looked stock, which is exactly
+      // the gap Gate 0 fell into.
+      //
+      // D-0004-1 — names updated for Codex's OWL runtime (measured
+      // 2026-09-23, docs/research/owl-token-inventory.md). Most primitives
+      // moved from --color-X to --app-color-X; --color-text-primary and
+      // the two --color-token-* derived tokens below kept their old names
+      // (confirmed present in the M1 corpus,
+      // corpus-codex-home-dark.css) and are still worth checking because they
+      // sit downstream of Codex's own multi-stage chain, not because we set
+      // them ourselves.
+      const probe = ['--app-color-background-surface', '--color-text-primary',
+                     '--app-color-background-button-primary', '--radius-lg',
+                     '--app-color-background-surface-under', '--app-color-accent-purple',
+                     '--color-token-charts-purple', '--color-token-text-link-foreground',
+                     '--app-color-background-application-menu', '--color-token-side-bar-background'];
+      const tokens = {};
+      for (const t of probe) tokens[t] = cs.getPropertyValue(t).trim() || '(unset)';
+
+      // D-0001-18's OWN check, read at BOTH levels, because "the panel paints
+      // ui-monospace" has two causes that need opposite fixes and the font
+      // reading alone cannot tell them apart (measured 2026-08-02):
+      //
+      //   html=Neon  body=ui-monospace -> the body block LOST. Real regression.
+      //   html=Neon  body=Neon         -> the block WON and the panel does not
+      //                                   READ this variable. A reads-vs-paints
+      //                                   error, and the fix belongs elsewhere.
+      //
+      // Reported as raw values rather than a verdict: the whole point is that
+      // the two states are indistinguishable downstream, so collapsing them into
+      // one PASS/FAIL here would rebuild the ambiguity this exists to remove.
+      const MONO_VAR = '--vscode-editor-font-family';
+      const monoVarHtml = cs.getPropertyValue(MONO_VAR).trim() || '(unset)';
+      const monoVarBody = document.body
+        ? (getComputedStyle(document.body).getPropertyValue(MONO_VAR).trim() || '(unset)')
+        : '(no body)';
+      // A resolved token is not a painted pixel. The empty-state card icons were
+      // the visible symptom of the multi-accent violation, so the check that
+      // closes it has to read what the ELEMENTS compute, not what the root
+      // holds — an icon could still be painted by an inline fill attribute or a
+      // hue we never traced. Sampled by the utility classes the icons actually
+      // carry (docs/research/phase3-inventory-findings.md §3).
+      const painted = [];
+      for (const sel of ['.text-token-charts-green', '.text-token-charts-blue',
+                         '.text-token-charts-purple', '.text-token-charts-orange',
+                         '.text-token-charts-red']) {
+        const el = document.querySelector(sel);
+        if (!el) { painted.push(sel + ' = (absent)'); continue; }
+        const cs = getComputedStyle(el);
+        const kid = el.querySelector('path, circle, rect');
+        painted.push(sel + ' color=' + cs.color +
+          (kid ? ' childFill=' + getComputedStyle(kid).fill : ''));
+      }
+
+      // A font-family declaration that names an unavailable face fails SILENTLY:
+      // the computed style still reads back the name we asked for, and the app
+      // renders the fallback. That is exactly how "Fraunces renders throughout"
+      // was recorded at Gate 0 while the app was actually showing Georgia. So
+      // the check is document.fonts.check(), which answers whether the face is
+      // loadable, never the computed font-family.
+      // load() BEFORE check(). An @font-face the page has not painted with yet is
+      // never fetched, so check() alone reports "not available" for a face that
+      // is perfectly fine — Monaspace Neon reads false on the empty state purely
+      // because no code is on screen. load() forces the fetch and rejects if the
+      // src is actually broken, which is the failure we care about.
+      const fonts = [];
+      for (const family of ['Literata', 'Fraunces', 'Monaspace Neon']) {
+        let state;
+        try {
+          const faces = await document.fonts.load('14px "' + family + '"');
+          state = faces.length
+            ? (document.fonts.check('14px "' + family + '"') ? 'YES' : 'loaded-but-check-false')
+            : 'NO FACE MATCHED';
+        } catch (err) {
+          state = 'LOAD FAILED: ' + err.message;
+        }
+        fonts.push(family + '=' + state);
+      }
+      // Code surfaces. The 'pre, code, kbd, samp' landmark matched nothing at
+      // Gate 0, but the empty state contains no code, so that was never evidence
+      // of absence. Reported per-tag with the font actually resolved, so a zero
+      // on a screen without code is legible as "not applicable" rather than
+      // "missing" — and so the answer is recorded on whatever screen the user
+      // happens to be on, instead of needing a special run.
+      const code = [];
+      for (const tag of ['pre', 'code', 'kbd', 'samp']) {
+        const n = document.querySelectorAll(tag).length;
+        const el = n ? document.querySelector(tag) : null;
+        code.push(tag + '=' + n + (el ? ' font=' + getComputedStyle(el).fontFamily.split(',')[0] : ''));
+      }
+
+      // The hero and the character pass are the two pieces of approved design
+      // that were shipped-but-invisible: the hero was never referenced by any
+      // rule, and the character pass spent weeks bound to landmarks that matched
+      // nothing. Both now report whether they ACTUALLY PAINT, because "the token
+      // resolves" and "the file exists" have each already been mistaken for
+      // "the user can see it" once in this project.
+      const heroHost = document.querySelector('[container-name\\\\:home-main-content]') ||
+                       document.querySelector('.\\\\[container-name\\\\:home-main-content\\\\]');
+      let hero;
+      if (!heroHost) {
+        hero = 'container ABSENT (not the home screen?)';
+      } else {
+        const img = getComputedStyle(heroHost).backgroundImage;
+        hero = (img && img !== 'none' ? 'PAINTING (' + img.slice(0, 24) + '…)' : 'container present, NO background-image') +
+               '  emptyStateHeading=' + (heroHost.querySelector('.heading-xl') ? 'yes' : 'no');
+      }
+
+      // Character pass: the title bar reads --codex-titlebar-tint through
+      // --header-tint. Report the colour it actually computes, not our token.
+      // This hashed CSS-module class is fine as a diagnostic only (never a
+      // shipped landmark) — D-0004-1: confirmed still present, unchanged, in
+      // the M1 corpus captured against OWL (26.917), so left as-is.
+      const titleBar = document.querySelector('[class*="ApplicationMenuTopBar"]');
+      const tint = titleBar
+        ? getComputedStyle(titleBar).backgroundColor
+        : '(title bar element not found)';
+
+      // The ACTIVE-ROW BRASS INDICATOR (D-0001-14). A ::before cannot be
+      // inspected from outside the app, and screen-sampling it only proves
+      // absence, never why. Report the three things that can each independently
+      // make it invisible, separately, so a null result names its own cause:
+      // whether either hook MATCHES, whether the pseudo-element GENERATES a box
+      // (content), and what it actually COMPUTES.
+      const activeRow = document.querySelector(
+        '.sidebar-item[data-app-action-sidebar-thread-active="true"], .sidebar-item[aria-current="page"]');
+      let indicator;
+      if (!activeRow) {
+        const anyRow = document.querySelectorAll('.sidebar-item').length;
+        const anyActive = document.querySelectorAll('[data-app-action-sidebar-thread-active="true"]').length;
+        const anyCurrent = document.querySelectorAll('[aria-current="page"]').length;
+        indicator = 'NO MATCH — .sidebar-item=' + anyRow +
+                    '  [thread-active=true]=' + anyActive + '  [aria-current=page]=' + anyCurrent +
+                    (anyActive || anyCurrent ? '  (state exists but NOT on the .sidebar-item element)' : '');
+      } else {
+        const b = getComputedStyle(activeRow, '::before');
+        const own = getComputedStyle(activeRow);
+        indicator = 'matched; ::before content=' + b.content +
+                    ' w=' + b.width + ' h=' + b.height +
+                    ' bg=' + b.backgroundColor +
+                    ' position=' + b.position +
+                    ' | row position=' + own.position +
+                    ' overflow=' + own.overflow +
+                    ' zIndex=' + own.zIndex;
+      }
+
+      // THE EMPTY-STATE CARD HAIRLINE. D-0001-15 — no landmark is written for
+      // this, deliberately; the check below is the whole of the implementation.
+      // Measured 2026-08-02: on Electron the
+      // cards carry BOTH 'border border-token-input-border' AND
+      // 'electron:border-0 electron:ring-[0.5px] electron:ring-token-border-heavy'
+      // — Codex zeroes the border on this platform and substitutes a ring, which
+      // Tailwind implements as a BOX-SHADOW. Computed border-width is 0 0 0 0.
+      //
+      // So the hairline is reachable only through --tw-ring-color, which reads
+      // --color-token-border-heavy -> --color-border-heavy, a stage-1 token this
+      // theme already defines. No landmark is needed and none is written. What
+      // IS needed is proof that our value arrives, because a resolved token is
+      // not a painted pixel — reported as the ring colour the card computes.
+      //
+      // A border-based check here would read 0px and conclude "unstyled" on a
+      // screen showing four visibly outlined cards, which is why the width is
+      // reported alongside: the zero is the expected answer, not a fault.
+      // Found geometrically (a card is a large button) with the measured
+      // authored class as a second, independent route — the same two-hook
+      // reasoning as D-0001-14, so a Codex layout change that moves the size
+      // out of range does not silently produce "absent".
+      //
+      // A MISS MUST NAME ITS OWN CAUSE. The cards disappear whenever the
+      // composer holds text, and Codex PERSISTS that draft across a restart —
+      // so a fresh launch is not necessarily a clean empty state, and a bare
+      // "no cards" would be read as a theming failure when it is a draft. The
+      // negative branch therefore reports whether the home screen is even
+      // present, how many buttons were considered, and whether a draft is
+      // suppressing them.
+      // FOUND BY WHAT IT PAINTS, NOT BY ITS TAG. This census was 'button'-only
+      // until 2026-08-02, when it reported a confident NOT FOUND on a light
+      // home screen with an empty composer -- i.e. neither documented cause
+      // applied -- while the largest buttons on screen were 654x40 and 315x30.
+      // A card-sized <button> would have out-ranked those by area, so there was
+      // none, and a tag-scoped census cannot tell "no cards" from "the cards
+      // are not buttons". findings §8.5 already recorded this exact lesson for
+      // the PROBE's control census and rebuilt it geometrically; the lesson was
+      // never carried across to this check. It is now.
+      //
+      // The thing being measured is a HAIRLINE, so the census keys on painting
+      // one: a ring (box-shadow, which is what Electron substitutes for the
+      // zeroed border) or a real border, at card-ish geometry. Bounds are
+      // deliberately generous -- a maximized window widens the cards, and the
+      // old 320px ceiling was itself a way to miss them.
+      //
+      // Declared here rather than beside its other use further down: both
+      // scans share it, and a const is in its temporal dead zone until the
+      // line that declares it runs.
+      const SCAN_BUDGET = 4000;
+      const cardScan = [];
+      let cardScanned = 0;
+      for (const el of document.querySelectorAll('*')) {
+        if (++cardScanned > SCAN_BUDGET) break;
+        const r = el.getBoundingClientRect();
+        if (r.width < 100 || r.width > 700 || r.height < 40 || r.height > 300) continue;
+        const ecs = getComputedStyle(el);
+        const ring = ecs.boxShadow && ecs.boxShadow !== 'none';
+        const bordered = parseFloat(ecs.borderTopWidth) > 0 || parseFloat(ecs.borderLeftWidth) > 0;
+        const byClass = typeof el.className === 'string' && el.className.split(/\\s+/).indexOf('min-h-26') >= 0;
+        if (!ring && !bordered && !byClass) continue;
+        cardScan.push({ el, r, cs: ecs });
+      }
+      // Cards are siblings and contain no other ringed box, so keeping only
+      // candidates that contain no other candidate drops the wrappers.
+      const cards = cardScan.filter((c) => !cardScan.some((o) => o !== c && c.el.contains(o.el)));
+      let cardHairline;
+      if (!cards.length) {
+        const onHome = !!document.querySelector('.heading-xl');
+        const composerText = (document.querySelector('.ProseMirror') || {}).textContent || '';
+        // Report the biggest elements of ANY tag now, not the biggest buttons:
+        // the previous phrasing invited "no cards" to be read as a theming
+        // result when it was a census that could not see them.
+        const biggest = Array.from(document.querySelectorAll('*'))
+          .slice(0, SCAN_BUDGET)
+          .map((e) => e.getBoundingClientRect())
+          .filter((r) => r.width > 80 && r.height > 30)
+          .sort((a, b) => (b.width * b.height) - (a.width * a.height))
+          .slice(0, 3)
+          .map((r) => Math.round(r.width) + 'x' + Math.round(r.height))
+          .join(', ');
+        cardHairline = 'NOT FOUND — homeScreen=' + (onHome ? 'yes' : 'no') +
+          '  ringedOrBorderedCandidates=' + cardScan.length +
+          '  (largest elements of any tag: ' + (biggest || 'none') + ')' +
+          '  composerDraft=' + JSON.stringify(composerText.slice(0, 24)) +
+          (onHome && composerText.trim()
+            ? '  => a non-empty composer HIDES the cards, and Codex persists the draft across restarts. Clear the composer and re-sample; this is not a theming failure.'
+            : onHome ? '  => on the home screen with an empty composer and STILL no element painting a hairline at card geometry. The census is no longer tag-scoped, so this is now evidence about the screen rather than about the query.'
+                     : '  => not the home screen; cards exist only there.');
+      } else {
+        cardHairline = cards.length + ' card(s) <' + cards[0].el.tagName.toLowerCase() + '> ' +
+          Math.round(cards[0].r.width) + 'x' + Math.round(cards[0].r.height) +
+          '; ring-color=' + (cards[0].cs.getPropertyValue('--tw-ring-color').trim() || '(unset)') +
+          '  boxShadow=' + (cards[0].cs.boxShadow || 'none').slice(0, 60) +
+          '  border-width=' + cards[0].cs.borderTopWidth + ' (0px expected on Electron)' +
+          '  bg=' + cards[0].cs.backgroundColor;
+      }
+
+      // THE COMPOSER'S FILLED CIRCULAR CONTROL. D-0001-15 — no landmark here
+      // either, and this one CANNOT have a useful token override of its own.
+      // Voice when the composer is
+      // empty, SEND once text is typed. Measured 2026-08-02: it is ONE element
+      // whose aria-label flips between 'Start new voice chat' and 'Send'; the
+      // classes, size and position never change. It is painted by
+      // 'bg-token-foreground' -> --color-token-foreground -> --vscode-foreground
+      // -> --color-text-foreground, a stage-1 token this theme already sets.
+      //
+      // That token is also the app's main TEXT colour, so it cannot be
+      // retargeted at the button alone without recolouring every glyph in the
+      // app. The button therefore inherits the theme rather than being themed
+      // separately — and the thing that must be checked is not the fill but the
+      // CONTRAST between the disc and the glyph sitting on it. Both are read,
+      // because a foreground-coloured glyph on a foreground-coloured disc is
+      // invisible, and that failure would look like a missing icon rather than
+      // like a theming bug.
+      const filled = Array.from(document.querySelectorAll('button'))
+        .find((b) => b.className && typeof b.className === 'string' &&
+                     b.className.split(/\\s+/).indexOf('bg-token-foreground') >= 0);
+      let composerAction;
+      if (!filled) {
+        composerAction = 'not on this screen';
+      } else {
+        const cs = getComputedStyle(filled);
+        const glyph = filled.querySelector('path, circle, rect, polygon, svg');
+        const gcs = glyph ? getComputedStyle(glyph) : null;
+        composerAction = 'aria=' + JSON.stringify(filled.getAttribute('aria-label')) +
+          '  disc=' + cs.backgroundColor +
+          '  glyphFill=' + (gcs ? gcs.fill : '(no glyph)') +
+          '  glyphColor=' + (gcs ? gcs.color : '-');
+      }
+
+      // FLOATING SURFACES — menus, popovers, dialogs.
+      //
+      // Measured 2026-08-02: the open permissions popover is
+      // 'bg-token-dropdown-background/90 ring-token-border', i.e.
+      // --color-token-dropdown-background -> --vscode-dropdown-background ->
+      // --color-background-control-opaque, a stage-1 token this theme defines.
+      // Note that is NOT --color-background-elevated-primary-opaque, which the
+      // inventory's impact table names for "menus, popovers, dialogs" — that
+      // table ranks var() READS, and a token can be read 333 times and paint
+      // none of the menu in front of you (findings §2.1, the same trap as the
+      // sidebar).
+      //
+      // Reported opportunistically rather than on a dedicated run, because an
+      // unopened menu is UNMOUNTED, not hidden, and Codex exposes no
+      // UI-automation tree to open one from outside. So this records itself the
+      // first time anyone happens to have a menu open when a sample fires.
+      //
+      // The alpha and the backdrop-filter are reported deliberately: the panel
+      // is 90% opaque OVER A BLUR, so text on it does not sit on flat colour,
+      // and D-0001-6 computes every contrast figure this theme claims against
+      // flat colour. That is an open question, not a settled one — do not read
+      // a themed-looking colour here as a passed contrast check.
+      //
+      // COMPOSITING IS MEASURED, NOT MODELLED. Chromium reports colours
+      // authored in oklab as oklab(), so any hand-rolled sRGB parse of a
+      // computed value is wrong before the contrast maths even starts. Painting
+      // to a 1x1 canvas and reading the pixel back delegates BOTH the colour
+      // conversion and the alpha compositing to the same engine that paints the
+      // real panel — so what is reported is what the compositor did, in the
+      // space it did it in, not our reconstruction of it.
+      const cnv = document.createElement('canvas');
+      cnv.width = 1; cnv.height = 1;
+      const cx = cnv.getContext('2d', { willReadFrequently: true });
+      // 'over' MUST be opaque: a semi-transparent fill onto a cleared canvas
+      // composites against transparent black, which is not what any pixel on
+      // screen does.
+      const paint = (css, over) => {
+        try {
+          cx.clearRect(0, 0, 1, 1);
+          cx.fillStyle = over || '#000000';
+          cx.fillRect(0, 0, 1, 1);
+          cx.fillStyle = css;
+          cx.fillRect(0, 0, 1, 1);
+          const d = cx.getImageData(0, 0, 1, 1).data;
+          return [d[0], d[1], d[2]];
+        } catch (err) { return null; }
+      };
+      const hx = (c) => c ? '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase() : '(unpaintable)';
+      const lum = (c) => {
+        const f = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+        return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+      };
+      const cr = (a, b) => {
+        if (!a || !b) return 0;
+        const x = lum(a), y = lum(b);
+        return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+      };
+
+      // Recover a colour's ALPHA and its opaque form from two paints, rather
+      // than parsing the string. Painting css over black gives a*P; over white
+      // gives a*P + (1-a)*255. The difference is (1-a)*255 in every channel, so
+      // alpha falls out of the measurement and the opaque colour is a*P / a.
+      // This is what makes "is the menu really /90" an observation instead of a
+      // quotation from a stylesheet we did not read.
+      const decompose = (css) => {
+        const B = paint(css, '#000000');
+        const W = paint(css, '#FFFFFF');
+        if (!B || !W) return null;
+        let a = 0;
+        for (let i = 0; i < 3; i++) a += 1 - (W[i] - B[i]) / 255;
+        a = Math.min(1, Math.max(0, a / 3));
+        const opaque = a > 0.004 ? B.map((v) => Math.min(255, Math.round(v / a))) : [0, 0, 0];
+        return { alpha: a, opaque, darkest: B, lightest: W };
+      };
+
+      // The first ancestor that actually paints. The transparent-ancestor walk
+      // is the lesson of D-0001-13: an element's own backgroundColor is very
+      // often rgba(0,0,0,0) and the colour on screen belongs to something
+      // further up — reading the element alone reports "unpainted" for a
+      // surface the user can plainly see.
+      const effectiveBg = (start) => {
+        for (let el = start; el; el = el.parentElement) {
+          const c = paint(getComputedStyle(el).backgroundColor, '#FF00FF');
+          if (c && !(c[0] === 255 && c[1] === 0 && c[2] === 255)) return { colour: c, from: el };
+        }
+        return null;
+      };
+
+      const panel = document.querySelector('[role=menu], [role=dialog], [role=alertdialog], [role=listbox]');
+      let floatingSurface;
+      if (!panel) {
+        floatingSurface = 'none open at this sample (a closed menu is unmounted, not hidden — not a finding)';
+      } else {
+        const cs = getComputedStyle(panel);
+        const rect = panel.getBoundingClientRect();
+
+        // WHICH INK TIERS ACTUALLY PAINT HERE. This is the measurement the
+        // translucency question reduces to. The theme's contrast-critical
+        // tokens are SOLVED to land exactly on 4.5:1 (tools/palette/audit.mjs
+        // binary-searches to target), so they carry ~0.1-0.36 of headroom and a
+        // translucent surface consumes more than that — while the label and
+        // secondary tiers have enough spare to survive ANY backdrop. So the
+        // panel is safe or unsafe entirely according to which tiers it carries,
+        // and listing them is the difference between a verdict and a guess.
+        // Only elements with their own visible text are counted; a wrapper
+        // inherits a colour it never paints.
+        const inks = new Map();
+        for (const el of panel.querySelectorAll('*')) {
+          let own = '';
+          for (const n of el.childNodes) if (n.nodeType === 3) own += n.nodeValue;
+          own = own.trim();
+          if (!own) continue;
+          const ecs = getComputedStyle(el);
+          if (ecs.visibility === 'hidden' || ecs.display === 'none') continue;
+          const key = ecs.color;
+          if (!inks.has(key)) inks.set(key, { sample: own.slice(0, 20), n: 0 });
+          inks.get(key).n++;
+        }
+
+        // WHAT IS BEHIND IT. elementsFromPoint returns topmost-first, so
+        // anything after the panel's own subtree is genuinely behind the panel
+        // at that point. Sampled on a 3x3 grid inset from the edges, because a
+        // panel commonly straddles two different surfaces and one centre probe
+        // would report whichever it happened to land on.
+        const behind = new Map();
+        for (const fx of [0.15, 0.5, 0.85]) {
+          for (const fy of [0.15, 0.5, 0.85]) {
+            const px = rect.left + rect.width * fx;
+            const py = rect.top + rect.height * fy;
+            let stack;
+            try { stack = document.elementsFromPoint(px, py); } catch (err) { continue; }
+            for (const el of stack) {
+              if (panel === el || panel.contains(el)) continue;
+              const bcs = getComputedStyle(el);
+              const bg = paint(bcs.backgroundColor, '#FF00FF');
+              // Skip fully transparent ancestors: painting them over magenta
+              // leaves magenta, which is how a no-op is detected without
+              // parsing the colour string ourselves.
+              if (!bg || (bg[0] === 255 && bg[1] === 0 && bg[2] === 255)) continue;
+              const key = hx(paint(bcs.backgroundColor, '#000000')) + '/' + hx(paint(bcs.backgroundColor, '#FFFFFF'));
+              if (!behind.has(key)) behind.set(key, { css: bcs.backgroundColor, n: 0 });
+              behind.get(key).n++;
+              break;
+            }
+          }
+        }
+
+        // THE VERDICT. Reported against three backdrops, in decreasing
+        // strength of claim:
+        //   flat   — the panel colour alone, i.e. what the theme's own audit
+        //            assumes and what D-0001-6 requires.
+        //   #000 / #FFF — the UNCONDITIONAL bound. The panel is 90% opaque, so
+        //            no backdrop that exists or could ever exist moves it
+        //            further than these two. A tier that clears AA against both
+        //            is closed PERMANENTLY, with no dependence on catching a
+        //            representative screen — which matters because a menu can
+        //            only be sampled if the user happens to have one open.
+        // The observed backdrops are reported too, but they are evidence about
+        // this screen; the bound is the part that generalises.
+        const surf = decompose(cs.backgroundColor);
+        const verdicts = [];
+        for (const [colour, info] of inks) {
+          const fg = paint(colour, '#808080');
+          const flat = surf ? cr(fg, surf.opaque) : 0;
+          const lo = surf ? cr(fg, surf.darkest) : 0;
+          const hi = surf ? cr(fg, surf.lightest) : 0;
+          const worst = Math.min(lo, hi);
+          verdicts.push(hx(fg) + ' x' + info.n + ' ' + JSON.stringify(info.sample) +
+            ' -> flat ' + flat.toFixed(2) +
+            '  over#000 ' + lo.toFixed(2) + '  over#FFF ' + hi.toFixed(2) +
+            '  WORST ' + worst.toFixed(2) + ' ' +
+            (worst >= 4.5
+              ? 'PASSES AA OVER ANY BACKDROP — closed, no landmark needed'
+              : 'below 4.5 in the worst case; judge against the observed backdrop above'));
+        }
+
+        floatingSurface = '<' + panel.tagName.toLowerCase() + ' role=' + panel.getAttribute('role') + '> ' +
+          Math.round(rect.width) + 'x' + Math.round(rect.height) +
+          '  bg=' + cs.backgroundColor +
+          (surf ? '  measuredAlpha=' + surf.alpha.toFixed(3) + '  opaqueForm=' + hx(surf.opaque) : '  (bg unpaintable)') +
+          '  backdropFilter=' + cs.backdropFilter +
+          // The newline escapes below are DOUBLE-escaped, and must be. This
+          // file is a Node template literal whose VALUE is evaluated as
+          // JavaScript in the renderer: a singly-escaped newline resolves to a
+          // real line break in that value, splitting the string literal across
+          // two lines and throwing at executeJavaScript time. Same reason the
+          // regexes above are written with a doubled backslash. Note that a
+          // comment is not a refuge from this — one written the other way here
+          // broke the parse exactly as the code did.
+          '\\n      behind it: ' + (behind.size
+            ? Array.from(behind.values()).map((b) => b.css + ' x' + b.n).join('  |  ')
+            : '(nothing opaque found under the panel — it may sit over the window material)') +
+          '\\n      ink tiers painted on it (' + inks.size + '):' +
+          (verdicts.length ? '\\n        ' + verdicts.join('\\n        ') : ' (none — panel carries no text of its own)');
+      }
+
+      // DIFF / EDITOR / TERMINAL SURFACES — never measured under the theme
+      // (findings §8.6). Deliberately NOT found by tag: the diff view contains
+      // no pre/code/kbd/samp element at all, so the code-surface line above
+      // reads pre=0 code=0 on a screen full of visible code and does not cover
+      // this. Found instead by the property that actually defines these
+      // regions — a sizeable block rendering in the theme's mono face — which
+      // no markup change can invalidate the way a class or tag can.
+      //
+      // This is an OBSERVATION, not a landmark: nothing here is styled from it.
+      //
+      // Bounded on purpose. This runs inside the user's live editor, not a test
+      // page: a conversation view can hold many thousands of divs, and an
+      // unbounded getComputedStyle sweep would stall the UI thread of the app we
+      // are supposed to leave fully functional. A diagnostic that degrades the
+      // app it is diagnosing is not an acceptable trade, so the scan stops after
+      // a fixed budget and says so rather than running to completion.
+      // Two runs reported "no mono block" while the owner believed a diff was
+      // open. Before concluding anything about the SCREEN, this has to be able
+      // to distinguish three different states it previously collapsed into one
+      // message: nothing mono on screen at all; something mono on screen but
+      // below the size/tag filter; and a scan that ran out of budget. So a
+      // separate, unfiltered tally runs first and is reported either way.
+      // Without it, "no diff" is indistinguishable from "the query cannot see
+      // the diff" -- which is exactly the mistake the card census just made.
+      // WHERE the font-family actually comes from. font-family INHERITS, so an
+      // element computing ui-monospace may be stating nothing itself and simply
+      // carrying an ancestor's value. Checking el.style alone answers the wrong
+      // question -- measured 2026-08-02, where the terminal panel reported
+      // inlineFontFamily=none while still painting ui-monospace, and the ancestor
+      // was never looked at. Walk to the HIGHEST ancestor sharing the same
+      // computed value: that element is where the value enters the subtree, and
+      // it is the only element a fix could target.
+      function fontOrigin(el, fam) {
+        let origin = el;
+        let node = el.parentElement;
+        while (node && getComputedStyle(node).fontFamily === fam) {
+          origin = node;
+          node = node.parentElement;
+        }
+        const ocs = getComputedStyle(origin);
+        const inline = origin.style && origin.style.fontFamily;
+        return 'fontOrigin=<' + origin.tagName.toLowerCase() + '>' +
+          (origin === el ? ' (the region itself)' : ' (ancestor)') +
+          ' class="' + String(origin.className || '').slice(0, 60) + '"' +
+          ' inline=' + (inline ? '"' + inline.split(',')[0] + '" (INLINE — unreachable by CSS)' : 'none') +
+          // The variable AT THE ORIGIN, which is the one that would matter.
+          ' ' + MONO_VAR + '=' + (ocs.getPropertyValue(MONO_VAR).trim() || '(unset)').split(',')[0] +
+          ' --default-mono-font-family=' + (ocs.getPropertyValue('--default-mono-font-family').trim() || '(unset)').split(',')[0];
+      }
+
+      const monoRegions = [];
+      let scanned = 0;
+      let scanTruncated = false;
+      let monoAnySize = 0;
+      let monoBiggest = null;
+      const monoFamilies = new Set();
+      for (const el of document.querySelectorAll('*')) {
+        if (++scanned > SCAN_BUDGET) { scanTruncated = true; break; }
+        const ecs = getComputedStyle(el);
+        const fam = ecs.fontFamily || '';
+        if (!/Monaspace|monospace|Consolas|Menlo/i.test(fam)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          monoAnySize++;
+          monoFamilies.add(fam.split(',')[0]);
+          // Carry the FACE, not just the geometry. D-0001-18 is a question about
+          // which font-family wins on <body>, and the size/tag filter below can
+          // reject every candidate on a screen that is visibly full of code --
+          // measured 2026-08-02, where a diff rendered as 40px-tall <span> rows.
+          // When that happens the tally is the only line that reports, so it has
+          // to carry the answer. The regex above matches Monaspace, Consolas and
+          // Menlo alike, so a bare count cannot tell the D-0001-18 pass case from
+          // the exact failure it predicts.
+          if (!monoBiggest || r.width * r.height > monoBiggest.w * monoBiggest.h) {
+            const bsurface = effectiveBg(el);
+            const bink = paint(ecs.color, '#808080');
+            monoBiggest = {
+              w: r.width,
+              h: r.height,
+              tag: el.tagName.toLowerCase(),
+              font: fam.split(',')[0],
+              ink: hx(bink),
+              surface: bsurface ? hx(bsurface.colour) : null,
+              contrast: bsurface ? cr(bink, bsurface.colour) : null,
+            };
+          }
+        }
+        if (r.width < 200 || r.height < 60) continue;
+        if (!/^(div|section|main|table|pre|code|tbody|article)$/.test(el.tagName.toLowerCase())) continue;
+        // Only the OUTERMOST such block, or every nested row reports itself.
+        if (monoRegions.some((m) => m.el.contains(el))) continue;
+        // The region's own background is usually transparent, so the surface
+        // the code actually sits on belongs to an ancestor. Walk to it rather
+        // than reporting rgba(0,0,0,0) as "the diff surface".
+        const surface = effectiveBg(el);
+        const ink = paint(ecs.color, '#808080');
+        monoRegions.push({
+          el,
+          line: Math.round(r.width) + 'x' + Math.round(r.height) +
+            '  font=' + fam.split(',')[0] +
+            // The variable AS THIS ELEMENT SEES IT. If it reads Monaspace Neon
+            // while the element paints ui-monospace, the element's font-family
+            // does not come from this variable at all -- e.g. an inline style
+            // written by JS, which no stylesheet can reach.
+            '  ' + MONO_VAR + '=' + (ecs.getPropertyValue(MONO_VAR).trim() || '(unset)').split(',')[0] +
+            '  ' + fontOrigin(el, fam) +
+            '  ink=' + hx(ink) +
+            '  surface=' + (surface ? hx(surface.colour) + ' (from <' + surface.from.tagName.toLowerCase() + '>)' : 'NONE opaque up to <html>') +
+            '  contrast=' + (surface ? cr(ink, surface.colour).toFixed(2) + (cr(ink, surface.colour) >= 4.5 ? ' PASS' : ' FAIL') : 'unprovable — nothing paints behind it'),
+        });
+        if (monoRegions.length >= 4) break;
+      }
+      // A miss must name its own cause (findings §8.5). "None found" after a
+      // truncated scan is a different statement from "none found" after a
+      // complete one, and reporting them identically is how an absent surface
+      // gets read as a measured negative.
+      const monoTally = 'monoElements=' + monoAnySize +
+        (monoBiggest ? ' biggest=<' + monoBiggest.tag + '> ' +
+          Math.round(monoBiggest.w) + 'x' + Math.round(monoBiggest.h) +
+          ' font=' + monoBiggest.font +
+          ' ink=' + monoBiggest.ink +
+          ' surface=' + (monoBiggest.surface || 'NONE opaque up to <html>') +
+          (monoBiggest.contrast === null
+            ? ' contrast=unprovable'
+            : ' contrast=' + monoBiggest.contrast.toFixed(2) +
+              (monoBiggest.contrast >= 4.5 ? ' PASS' : ' FAIL'))
+          : '') +
+        // Every DISTINCT mono face on screen, because the detection regex above
+        // matches ours and Codex's stock stack alike. If Monaspace Neon and
+        // ui-monospace both appear, D-0001-18 has reached some surfaces and not
+        // others, which a single "biggest" sample would hide.
+        (monoFamilies.size ? '  faces={' + [...monoFamilies].join(' | ') + '}' : '') +
+        '  scanned=' + scanned + (scanTruncated ? ' (TRUNCATED)' : '');
+      const codeRegions = monoRegions.length
+        ? monoRegions.map((m) => m.line)
+        : [scanTruncated
+            ? 'none — scan hit its ' + SCAN_BUDGET + '-element budget. INCONCLUSIVE, not a negative result. ' + monoTally
+            : monoAnySize
+              ? 'no qualifying block, BUT ' + monoTally + ' — mono text IS on screen and the size/tag filter is what rejected it. ' +
+                'This is a finding about the QUERY, not about the screen.'
+              : 'nothing on screen renders in a mono face at all (' + monoTally + '). No diff/terminal/code view was open at this sample — an unrun measurement, not a negative result.'];
+
+      // D-0001-19 — the terminal is xterm.js, which sizes its cell grid by
+      // MEASURING .xterm-char-measure-element and paints glyphs into .xterm-rows.
+      // Those two must carry the SAME face or the grid desynchronises: correct
+      // glyphs, misplaced cursor and selection. That misalignment is invisible to
+      // any contrast or font check, so what is reported here is the PRECONDITION
+      // for coherence -- both faces, side by side, plus the measured cell box.
+      // A split is a defect even when both names look right individually.
+      const xtermRows = document.querySelector('.xterm-rows');
+      const xtermMeasure = document.querySelector('.xterm-char-measure-element');
+      let xterm = null;
+      if (xtermRows || xtermMeasure) {
+        const rowFam = xtermRows ? getComputedStyle(xtermRows).fontFamily.split(',')[0] : '(no .xterm-rows)';
+        const measFam = xtermMeasure ? getComputedStyle(xtermMeasure).fontFamily.split(',')[0] : '(no measure element)';
+        const mr = xtermMeasure ? xtermMeasure.getBoundingClientRect() : null;
+        xterm = 'rows=' + rowFam + '  measureElement=' + measFam +
+          (mr ? '  cell=' + mr.width.toFixed(2) + 'x' + mr.height.toFixed(2) : '') +
+          '  => ' + (xtermRows && xtermMeasure
+            ? (rowFam === measFam
+                ? 'COHERENT (measurement and paint agree)'
+                : 'SPLIT — grid will misalign; cursor/selection will not sit on the glyphs')
+            : 'INCOMPLETE — one of the two elements is not mounted, so coherence is UNTESTED, not confirmed');
+      }
+
+      const heading = document.querySelector('.heading-xl, .heading-lg, .heading-2xl');
+      const headingFont = heading ? getComputedStyle(heading).fontFamily : '(no heading on screen)';
+      const bodyFont = document.body ? getComputedStyle(document.body).fontFamily : '(no body)';
+
+      return {
+        painted,
+        fonts,
+        code,
+        hero,
+        tint,
+        indicator,
+        cardHairline,
+        composerAction,
+        floatingSurface,
+        codeRegions,
+        xterm,
+        monoVarHtml,
+        monoVarBody,
+        headingFont,
+        bodyFont,
+        rootClass: root.className || '(none)',
+        bodyClass: document.body ? (document.body.className || '(none)') : '(no body)',
+        // D-0004-1 — the mode hook moved from a root CLASS to root ATTRIBUTES.
+        // rootClass is kept (it now correctly reads "(none)" on OWL, which is
+        // itself informative — a class-based check would silently look for
+        // something that no longer exists) and the two attributes that
+        // replaced it are read alongside it.
+        dataTheme: root.getAttribute('data-theme') || '(unset)',
+        windowType: root.getAttribute('data-codex-window-type') || '(unset)',
+        styleTagPresent: !!document.getElementById('codexterity-theme'),
+        tokens,
+        bodyBg: document.body ? getComputedStyle(document.body).backgroundColor : '(no body)',
+        sheetCount: document.styleSheets.length,
+      };
+    })();
+  `;
+  try {
+    const env = await webContents.executeJavaScript(script, true);
+    log(`  root class:  ${env.rootClass}`);
+    log(`  body class:  ${env.bodyClass}`);
+    log(`  root data-theme: ${env.dataTheme}   data-codex-window-type: ${env.windowType}`);
+    // D-0004-1 (measured 2026-09-23) — on OWL, insertCSS() SUCCEEDS, and a
+    // successful insertCSS never creates the <style id="codexterity-theme">
+    // element at all (that element is only the style-tag FALLBACK route's
+    // marker). So "our <style> present: false" here is the EXPECTED, healthy
+    // reading for a theme that applied via insertCSS, not a sign of failure —
+    // reporting it bare, as this line used to, would read as a false alarm on
+    // every working OWL launch. lastAppliedRoute (set on the main-process side,
+    // where the actual insertCSS/style-tag attempt happened) is the ground
+    // truth for which route applied; the DOM marker is reported alongside it
+    // only as corroborating detail.
+    log(`  injection route applied: ${lastAppliedRoute || '(none recorded yet this process)'}` +
+        `   <style id="codexterity-theme"> present: ${env.styleTagPresent}   stylesheets: ${env.sheetCount}`);
+    log(`  body background: ${env.bodyBg}`);
+    for (const [name, value] of Object.entries(env.tokens)) {
+      log(`  ${name}: ${value}`);
+    }
+    for (const row of env.painted || []) log(`  painted ${row}`);
+    if (env.fonts) log(`  fonts loadable: ${env.fonts.join('  ')}`);
+    if (env.code) log(`  code surfaces: ${env.code.join('  ')}`);
+    if (env.hero) log(`  hero: ${env.hero}`);
+    if (env.tint) log(`  title-bar tint computes: ${env.tint}`);
+    if (env.indicator) log(`  active-row indicator: ${env.indicator}`);
+    if (env.cardHairline) log(`  empty-state card hairline: ${env.cardHairline}`);
+    if (env.composerAction) log(`  composer filled control: ${env.composerAction}`);
+    if (env.floatingSurface) log(`  floating surface: ${env.floatingSurface}`);
+    for (const row of env.codeRegions || []) log(`  code/diff/terminal region: ${row}`);
+    if (env.xterm) log(`  D-0001-19  xterm terminal: ${env.xterm}`);
+    // D-0001-18 — the two levels are logged ADJACENTLY and unreduced, because
+    // the whole diagnostic value is in comparing them to each other.
+    if (env.monoVarHtml !== undefined) {
+      log(`  D-0001-18  --vscode-editor-font-family on <html>: ${env.monoVarHtml}`);
+      log(`  D-0001-18  --vscode-editor-font-family on <body>: ${env.monoVarBody}`);
+    }
+    if (env.bodyFont) log(`  body font-family:    ${env.bodyFont}`);
+    if (env.headingFont) log(`  heading font-family: ${env.headingFont}`);
+  } catch (err) {
+    log(`  root environment probe FAILED: ${err.message}`);
+  }
+}
+
+module.exports = { reportRootEnvironment };

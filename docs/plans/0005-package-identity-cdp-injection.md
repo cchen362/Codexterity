@@ -1,6 +1,6 @@
 # Plan 0005 — Launch Codex with package identity and inject over loopback CDP
 
-**Status:** **OPEN 2026-09-26. M1 not started.** Owner approved the CDP route in chat on 2026-09-26
+**Status:** **OPEN 2026-09-26. M1 and M2 DONE 2026-09-26; M3 in progress.** Owner approved the CDP route in chat on 2026-09-26
 after the diagnosis below. Three milestones: M1 the shared CDP attacher, M2 the Windows launcher
 re-route, M3 docs, decision records, package, install and owner verification.
 
@@ -177,7 +177,18 @@ moves out of it into the shared module.
 
 ## Milestones
 
-### M1 — The shared CDP attacher (`injector/`) — NOT STARTED
+### M1 — The shared CDP attacher (`injector/`) — DONE 2026-09-26
+
+**Outcome.** Built to the contract; `npm test` 408/408 (374 + 34 new). Verified against a running
+Codex `26.924` exactly as fact 4 launched it: theme loaded, all three `app://` pages attached,
+`injected OK via CDP style tag` on each, and on the main page `sidebar-panel`, `sidebar-active-row`,
+`heading-display` and `home-hero` PRESENT. **One defect was found only by M2's FRESH-launch test,
+not by this attach-to-a-running-app check:** Chromium announces a new page target
+(`Target.targetCreated`) with an empty URL, so the `app://` filter rejected every page and the first
+real launch themed nothing while the log said "connected". Fixed by also attaching on
+`Target.targetInfoChanged`; a regression test drives that exact sequence. `inject.js` shrank from
+1,333 to 516 lines through the three extractions (`style-tag.js`, `log-sink.js`,
+`root-environment.js`) and is otherwise unchanged.
 
 Build `injector/core/cdp-client.js`, `injector/core/cdp-page.js`, `injector/core/style-tag.js`
 (the moved `buildStyleTagScript`) and the entry `injector/attach-cdp.js` to the contract above.
@@ -195,7 +206,18 @@ that port with `themes/captains-cabin`, and reading `injector.log`: theme loaded
 attached, `injected OK via CDP style tag` per page, landmarks PRESENT on the main page, and the
 theme visible on screen. Then closing Codex and seeing the attacher exit 0.
 
-### M2 — The Windows launcher re-route — NOT STARTED
+### M2 — The Windows launcher re-route — DONE 2026-09-26
+
+**Outcome.** `launch.ps1` re-routed per the contract; `build-windows-package.js` already copies
+`injector/` recursively, so no packaging change was needed. **One defect was caught in review:** the
+first draft used `ProcessStartInfo.ArgumentList`, which exists in .NET Core but not in the .NET
+Framework that Windows PowerShell 5.1 runs on, so every real launch would have thrown; replaced with
+a quoted `Arguments` string. Verified from a developer shell with `node injector/cli.js` and Deep Navy
+Portrait applied: Codex `26.924` started with identity on a random port, the theme painted (captured
+from the running app), the hero reported PAINTING, four landmarks PRESENT, the launcher log carried
+the attacher's lines, and the script exited 0 when Codex closed. `-NoTheme` through the same cmdlet
+started stock Codex with **zero** listening sockets owned by any Codex process. With Codex open,
+`cdx` refused and named the PID (the CIM-based guard).
 
 Change `launcher/windows/launch.ps1` to the launcher contract above. Extend
 `tests/cli/cli.test.js` only if `cli.js` changes (it should not). `tests/packaging/windows.test.js`
