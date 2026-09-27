@@ -6,6 +6,8 @@
 // no mechanism prose lives here — see tools/palette/emit-theme.mjs for that.
 // Regenerate the shipped files with:  node tools/palette/emit-theme.mjs
 
+import { HERO_HOST, MAIN_TOP_FADE, HEADER_SLOT_CONTROLS } from '../codex-surface.mjs';
+
 // ── Palette inputs ──────────────────────────────────────────────────────────
 // The recipe names the ground KEY; the emitter resolves it through
 // palette-engine.mjs's GROUNDS and fails loudly and by name on an unknown
@@ -115,6 +117,9 @@ const SHAPE = {
 // on `:has(.heading-xl)`, the empty state's own centred heading, so the image
 // cannot paint behind a loaded conversation. If either stops matching, the
 // empty state falls back to flat ground — the pre-hero look, not breakage.
+// Since 2026-09-27 that gate still decides WHEN the hero shows, but the image
+// paints on the whole main panel (HERO_HOST in codex-surface.mjs), because
+// Codex 26.924.2738 put a toolbar strip above home-main-content.
 //
 // FULL BLEED, which is what was approved. D-0001-8 rejected a full-bleed
 // atmospheric background behind THE WHOLE APP and narrowed it to *empty states
@@ -266,8 +271,22 @@ const LANDMARKS = [
   },
   {
     name: 'home-hero',
-    selector: '.\\[container-name\\:home-main-content\\]:has(.heading-xl)',
-    probe: ':has(.heading-xl)',
+    selector: HERO_HOST,
+    probe: `${HERO_HOST} {`,
+    governedBy: 'D-0001-9',
+    required: false,
+  },
+  {
+    name: 'home-hero-top-fade',
+    selector: MAIN_TOP_FADE,
+    probe: `${MAIN_TOP_FADE} {`,
+    governedBy: 'D-0001-9',
+    required: false,
+  },
+  {
+    name: 'home-hero-header-controls',
+    selector: HEADER_SLOT_CONTROLS,
+    probe: `${HEADER_SLOT_CONTROLS} {`,
     governedBy: 'D-0001-9',
     required: false,
   },

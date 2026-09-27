@@ -873,7 +873,7 @@
  * and has no meaning on a parchment ground. Light mode keeps the flat empty
  * state, which is a complete and correct look on its own.
  */
-:is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]) .\[container-name\:home-main-content\]:has(.heading-xl) {
+:is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]) [data-app-shell-main-surface="default"]:has(.\[container-name\:home-main-content\] .heading-xl) {
   /* FULL BLEED, under a computed scrim — two layers, scrim first (on top).
      The image fills the panel; the scrim is what makes text over it provable. */
   background-image:
@@ -893,6 +893,22 @@
      the opposite and put the worst pixels where the text is. */
   background-position: center, center !important;
   background-repeat: no-repeat, no-repeat !important;
+}
+
+:is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]) [data-app-shell-main-surface="default"]:has(.\[container-name\:home-main-content\] .heading-xl) [data-app-shell-main-content-top-fade] > [class*="_MainContentTopFade_"] {
+  /* Codex's toolbar fade is drawn in flat ground colour, so over the image it
+     reads as a dark seam, not a fade. Hidden on the empty state only (D-0001-9). */
+  display: none !important;
+}
+
+:is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]):has([data-app-shell-main-surface="default"] .\[container-name\:home-main-content\] .heading-xl) [data-app-shell-header-slot] :is(button, a, [role="button"]) {
+  /* The header's controls now float over the image, not flat ground. Ink them
+     with the colour the scrim is solved against: Codex's own text-tertiary
+     measured 1.38:1 over Deep Navy Portrait's dark hero, under the 3:1 an icon
+     needs. Where a hero's scrim veils the top of the panel this is proven
+     everywhere the image can crop to; where it does not (Captain's Cabin's
+     clear top), it is the lightest ink the theme has over a dark image. */
+  color: var(--color-text-primary) !important;
 }
 
 /*

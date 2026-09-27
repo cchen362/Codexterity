@@ -397,3 +397,37 @@ export const HEADING_CLASSES = [
   'heading-2xl', 'heading-3xl', 'heading-4xl', 'heading-xl', 'heading-lg',
   'heading-base', 'heading-sm', 'heading-xs', 'heading-dialog', 'heading-subsection',
 ];
+
+// The empty-state hero's hooks (D-0001-9, hook amended 2026-09-27).
+//
+// HOME_CONTENT is the home screen's content box: a Tailwind arbitrary-property
+// class whose name IS its declaration, so it is authored, not build-hashed.
+// The empty state is that box holding its own centred '.heading-xl'.
+//
+// HERO_HOST is what the hero PAINTS ON, and it is deliberately not
+// HOME_CONTENT any more. Codex 26.924.2738 added a toolbar strip across the
+// top of the main panel (WorkspaceContent's padding-top, 52px measured) and
+// HOME_CONTENT now starts below it, so a hero painted there left a band of
+// flat ground above the image. The panel itself carries Codex's authored data
+// attribute data-app-shell-main-surface="default", which spans the strip too.
+// The gate is flattened to one :has() with a descendant combinator because
+// CSS does not allow a :has() nested inside another.
+//
+// MAIN_TOP_FADE is the 40px gradient Codex draws under that toolbar so
+// scrolled thread text fades out beneath it. Over the hero it paints a dark
+// seam, so the hero rule hides it, on the empty state only. Its class is a
+// CSS-module name ('_MainContentTopFade_<hash>_<n>'), matched by substring on
+// the module's local name and anchored under its authored data attribute; if
+// either drifts, the seam returns and nothing else changes.
+//
+// HEADER_SLOT_CONTROLS are the buttons Codex floats in that strip (measured:
+// "New tab", top right, inked text-tertiary). They live in the fixed global
+// <header>, NOT inside the panel, so a rule reaching them is gated from the
+// mode-scope element with :has(HERO_GATE) instead of hanging off HERO_HOST.
+// Both header slots were measured lying over the panel's strip.
+export const HOME_CONTENT = '.\\[container-name\\:home-main-content\\]';
+const MAIN_SURFACE = '[data-app-shell-main-surface="default"]';
+export const HERO_GATE = `${MAIN_SURFACE} ${HOME_CONTENT} .heading-xl`;
+export const HERO_HOST = `${MAIN_SURFACE}:has(${HOME_CONTENT} .heading-xl)`;
+export const MAIN_TOP_FADE = '[data-app-shell-main-content-top-fade] > [class*="_MainContentTopFade_"]';
+export const HEADER_SLOT_CONTROLS = '[data-app-shell-header-slot] :is(button, a, [role="button"])';

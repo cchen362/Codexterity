@@ -19,7 +19,8 @@ import { buildDark, buildLight, buildSyntax, GROUNDS, ratio } from './palette-en
 import { run, runSyntax } from './audit.mjs';
 import {
   MODE_SCOPE, ANY_MODE_SCOPE, tokenGroups, TOKEN_ALIASES, tokenProperty, ansiSlots,
-  codexSyntaxSlots, FONT_FAMILY_TOKENS, HEADING_CLASSES,
+  codexSyntaxSlots, FONT_FAMILY_TOKENS, HEADING_CLASSES, HERO_GATE, HERO_HOST, MAIN_TOP_FADE,
+  HEADER_SLOT_CONTROLS,
 } from './codex-surface.mjs';
 
 // ── Recipe validation — fail loudly, by name ────────────────────────────────
@@ -627,7 +628,7 @@ function buildHeroModeRule(recipe, mode, heroLayerValue) {
     return `      ${rendered}${i === stops.length - 1 ? '),' : ','}`;
   });
   const scope = MODE_SCOPE[mode];
-  return `${scope} .\\[container-name\\:home-main-content\\]:has(.heading-xl) {
+  return `${scope} ${HERO_HOST} {
   /* FULL BLEED, under a computed scrim — two layers, scrim first (on top).
      The image fills the panel; the scrim is what makes text over it provable. */
   background-image:
@@ -642,6 +643,22 @@ ${stopLines.join('\n')}
      the opposite and put the worst pixels where the text is. */
   background-position: ${recipe.hero.position}, ${recipe.hero.position} !important;
   background-repeat: no-repeat, no-repeat !important;
+}
+
+${scope} ${HERO_HOST} ${MAIN_TOP_FADE} {
+  /* Codex's toolbar fade is drawn in flat ground colour, so over the image it
+     reads as a dark seam, not a fade. Hidden on the empty state only (D-0001-9). */
+  display: none !important;
+}
+
+${scope}:has(${HERO_GATE}) ${HEADER_SLOT_CONTROLS} {
+  /* The header's controls now float over the image, not flat ground. Ink them
+     with the colour the scrim is solved against: Codex's own text-tertiary
+     measured 1.38:1 over Deep Navy Portrait's dark hero, under the 3:1 an icon
+     needs. Where a hero's scrim veils the top of the panel this is proven
+     everywhere the image can crop to; where it does not (Captain's Cabin's
+     clear top), it is the lightest ink the theme has over a dark image. */
+  color: var(${tokenProperty('text-primary')}) !important;
 }`;
 }
 
@@ -661,10 +678,10 @@ ${stopLines.join('\n')}
 // consumers of the identical bytes. Mapping heroB64 into each mode's rule
 // inline, as the pre-fix code did, wrote the ~2M-char base64 string twice —
 // measured at 92.7% of that theme's 4.3MB stylesheet. The fix is to write
-// the payload once, on the container element itself (not the mode scope —
-// this is a THEME-PRIVATE payload, and a global custom property name for it
-// would be visible, and collidable, from every other rule in the cascade for
-// no benefit: nothing outside this container ever needs to read it).
+// the payload once, on the element that paints it, HERO_HOST (not the mode
+// scope — this is a THEME-PRIVATE payload, and a global custom property name
+// for it would be visible, and collidable, from every other rule in the
+// cascade for no benefit: nothing outside that element ever needs to read it).
 function buildHeroBlock(recipe, heroB64) {
   const heroUrl = `url(data:${recipe.hero.mime};base64,${heroB64})`;
 
@@ -675,15 +692,15 @@ ${rules.join('\n\n')}`;
   }
 
   // Two-plus consumers: emit the payload once, referenced by both mode
-  // rules through a custom property scoped to the container that paints it.
-  // The container selector carries no mode-scope prefix (unlike the mode
+  // rules through a custom property scoped to the element that paints it.
+  // That selector carries no mode-scope prefix (unlike the mode
   // rules below it) because only one of [data-theme="dark"]/[data-theme="light"]
   // is ever present on <html> at a time (D-0004-1's own mode-scope selector
   // matches exactly one at once), so this single declaration reaches
   // whichever mode is active without needing to be duplicated per mode
   // itself — duplicating THIS rule would reintroduce exactly the repetition
   // it exists to remove.
-  const heroVarRule = `.\\[container-name\\:home-main-content\\]:has(.heading-xl) {
+  const heroVarRule = `${HERO_HOST} {
   /* The hero payload, written ONCE and shared by every mode rule below via
      var(--codexterity-hero) — see D-0003-9(b) in emit-theme.mjs's
      buildHeroBlock for why this indirection exists only when the hero has

@@ -22,6 +22,8 @@
 // rebuilt from a fresh clone, which is correct for a private theme and must
 // not be "fixed" by committing the photograph.
 
+import { HERO_HOST, MAIN_TOP_FADE, HEADER_SLOT_CONTROLS } from '../codex-surface.mjs';
+
 // ── Palette inputs ──────────────────────────────────────────────────────────
 // THIS RECIPE ADDS NO NEW COLOUR. It sets only the ground key — no
 // `accentHue` and no `lightGround` override anywhere below — and that
@@ -308,8 +310,22 @@ const LANDMARKS = [
   },
   {
     name: 'home-hero',
-    selector: '.\\[container-name\\:home-main-content\\]:has(.heading-xl)',
-    probe: ':has(.heading-xl)',
+    selector: HERO_HOST,
+    probe: `${HERO_HOST} {`,
+    governedBy: 'D-0001-9',
+    required: false,
+  },
+  {
+    name: 'home-hero-top-fade',
+    selector: MAIN_TOP_FADE,
+    probe: `${MAIN_TOP_FADE} {`,
+    governedBy: 'D-0001-9',
+    required: false,
+  },
+  {
+    name: 'home-hero-header-controls',
+    selector: HEADER_SLOT_CONTROLS,
+    probe: `${HEADER_SLOT_CONTROLS} {`,
     governedBy: 'D-0001-9',
     required: false,
   },

@@ -150,15 +150,20 @@ async function reportRootEnvironment(webContents, { log, lastAppliedRoute }) {
       // nothing. Both now report whether they ACTUALLY PAINT, because "the token
       // resolves" and "the file exists" have each already been mistaken for
       // "the user can see it" once in this project.
-      const heroHost = document.querySelector('[container-name\\\\:home-main-content]') ||
-                       document.querySelector('.\\\\[container-name\\\\:home-main-content\\\\]');
+      // Since 2026-09-27 (D-0001-9) the hero paints on the main panel that
+      // CONTAINS the home content box, not on the box itself, so read the
+      // image off the panel; the box still decides whether it is the empty state.
+      const homeContent = document.querySelector('[container-name\\\\:home-main-content]') ||
+                          document.querySelector('.\\\\[container-name\\\\:home-main-content\\\\]');
       let hero;
-      if (!heroHost) {
+      if (!homeContent) {
         hero = 'container ABSENT (not the home screen?)';
       } else {
-        const img = getComputedStyle(heroHost).backgroundImage;
-        hero = (img && img !== 'none' ? 'PAINTING (' + img.slice(0, 24) + '…)' : 'container present, NO background-image') +
-               '  emptyStateHeading=' + (heroHost.querySelector('.heading-xl') ? 'yes' : 'no');
+        const heroHost = homeContent.closest('[data-app-shell-main-surface="default"]');
+        const img = heroHost ? getComputedStyle(heroHost).backgroundImage : null;
+        hero = (!heroHost ? 'main surface ABSENT, NO background-image'
+                : img && img !== 'none' ? 'PAINTING (' + img.slice(0, 24) + '…)' : 'main surface present, NO background-image') +
+               '  emptyStateHeading=' + (homeContent.querySelector('.heading-xl') ? 'yes' : 'no');
       }
 
       // Character pass: the title bar reads --codex-titlebar-tint through

@@ -49,7 +49,19 @@
     },
     {
       "name": "home-hero",
-      "selector": ".\\[container-name\\:home-main-content\\]:has(.heading-xl)",
+      "selector": "[data-app-shell-main-surface=\"default\"]:has(.\\[container-name\\:home-main-content\\] .heading-xl)",
+      "governedBy": "D-0001-9",
+      "required": false
+    },
+    {
+      "name": "home-hero-top-fade",
+      "selector": "[data-app-shell-main-content-top-fade] > [class*=\"_MainContentTopFade_\"]",
+      "governedBy": "D-0001-9",
+      "required": false
+    },
+    {
+      "name": "home-hero-header-controls",
+      "selector": "[data-app-shell-header-slot] :is(button, a, [role=\"button\"])",
       "governedBy": "D-0001-9",
       "required": false
     },

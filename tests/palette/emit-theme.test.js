@@ -385,16 +385,51 @@ describe('a recipe declaring hero.modes = [dark, light] emits one hero rule per 
     fs.rmSync(tmpOut, { recursive: true, force: true });
   });
 
+  // Written out literally rather than built from codex-surface.mjs, so this
+  // test is an independent check of the emitted text. D-0001-9 (hook amended
+  // 2026-09-27): the hero paints on the main panel, gated on the home content
+  // box holding the empty-state heading -- one :has(), since CSS forbids
+  // nesting them.
+  const HERO_SELECTOR = '[data-app-shell-main-surface="default"]:has(.\\[container-name\\:home-main-content\\] .heading-xl)';
+  const FADE_SELECTOR = '[data-app-shell-main-content-top-fade] > [class*="_MainContentTopFade_"]';
+  const DARK_SCOPE = ':is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"])';
+  const LIGHT_SCOPE = ':is([data-codex-window-type][data-theme="light"], [data-codex-window-type] [data-theme="light"])';
+  const DARK_HERO_RULE = `${DARK_SCOPE} ${HERO_SELECTOR} {`;
+  const LIGHT_HERO_RULE = `${LIGHT_SCOPE} ${HERO_SELECTOR} {`;
+
   test('a hero rule is emitted under BOTH the dark and light mode scopes', () => {
     // Plan 0004 M2 — mode selectors are now MODE_SCOPE.dark/.light
     // (codex-surface.mjs), not '.electron-dark'/'.electron-light'.
-    assert.match(css, /:is\(\[data-codex-window-type\]\[data-theme="dark"\], \[data-codex-window-type\] \[data-theme="dark"\]\) \.\\\[container-name\\:home-main-content\\\]:has\(\.heading-xl\) \{/);
-    assert.match(css, /:is\(\[data-codex-window-type\]\[data-theme="light"\], \[data-codex-window-type\] \[data-theme="light"\]\) \.\\\[container-name\\:home-main-content\\\]:has\(\.heading-xl\) \{/);
+    assert.ok(css.includes(DARK_HERO_RULE), 'dark hero rule missing');
+    assert.ok(css.includes(LIGHT_HERO_RULE), 'light hero rule missing');
+  });
+
+  test("each hero mode hides Codex's toolbar fade on the empty state, and only there", () => {
+    for (const scope of [DARK_SCOPE, LIGHT_SCOPE]) {
+      const start = css.indexOf(`${scope} ${HERO_SELECTOR} ${FADE_SELECTOR} {`);
+      assert.ok(start >= 0, `fade rule missing under ${scope}`);
+      assert.match(css.slice(start, css.indexOf('}', start)), /display: none !important;/);
+    }
+    // Never hidden unconditionally: every occurrence sits under the hero gate.
+    const all = css.split(FADE_SELECTOR).length - 1;
+    const gated = css.split(`${HERO_SELECTOR} ${FADE_SELECTOR}`).length - 1;
+    assert.equal(all, gated);
+  });
+
+  test("each hero mode re-inks the header's floating controls with text-primary, gated on the empty state", () => {
+    const gate = ':has([data-app-shell-main-surface="default"] .\\[container-name\\:home-main-content\\] .heading-xl)';
+    const controls = '[data-app-shell-header-slot] :is(button, a, [role="button"])';
+    for (const scope of [DARK_SCOPE, LIGHT_SCOPE]) {
+      const start = css.indexOf(`${scope}${gate} ${controls} {`);
+      assert.ok(start >= 0, `header-controls rule missing under ${scope}`);
+      assert.match(css.slice(start, css.indexOf('}', start)), /color: var\(--color-text-primary\) !important;/);
+    }
+    assert.equal(css.split(controls).length - 1, css.split(`${gate} ${controls}`).length - 1);
   });
 
   test("each mode's own scrim stops appear in its own rule, and not the other mode's", () => {
-    const darkRuleStart = css.indexOf(':is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]) .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
-    const lightRuleStart = css.indexOf(':is([data-codex-window-type][data-theme="light"], [data-codex-window-type] [data-theme="light"]) .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    const darkRuleStart = css.indexOf(DARK_HERO_RULE);
+    const lightRuleStart = css.indexOf(LIGHT_HERO_RULE);
     assert.ok(darkRuleStart >= 0 && lightRuleStart >= 0);
 
     // Rules are emitted dark-then-light (recipe.hero.modes order), so the
@@ -442,8 +477,8 @@ describe('a recipe declaring hero.modes = [dark, light] emits one hero rule per 
 
     // Both mode rules must read the payload back through the variable --
     // this is what makes ONE embed sufficient for TWO rules that need it.
-    const darkRuleStart = css.indexOf(':is([data-codex-window-type][data-theme="dark"], [data-codex-window-type] [data-theme="dark"]) .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
-    const lightRuleStart = css.indexOf(':is([data-codex-window-type][data-theme="light"], [data-codex-window-type] [data-theme="light"]) .\\[container-name\\:home-main-content\\]:has(.heading-xl) {');
+    const darkRuleStart = css.indexOf(DARK_HERO_RULE);
+    const lightRuleStart = css.indexOf(LIGHT_HERO_RULE);
     const darkRuleText = css.slice(darkRuleStart, lightRuleStart);
     const lightRuleText = css.slice(lightRuleStart, lightRuleStart + 1000);
     assert.match(darkRuleText, /var\(--codexterity-hero\)/);
